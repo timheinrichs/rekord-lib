@@ -211,6 +211,54 @@ pub struct ConvertResult {
     pub error: Option<String>,
 }
 
+/// Schlanke Projektion eines Tracks als Kandidat für die Duplikatsuche.
+#[derive(Debug, Clone, Deserialize)]
+pub struct DupCandidate {
+    pub id: String,
+    pub path: String,
+    pub codec: String,
+    pub container: String,
+    pub sample_rate: u32,
+    pub bits_per_sample: u32,
+    pub lossless: bool,
+    pub duration_secs: f64,
+    pub compatible: bool,
+}
+
+/// Eine Datei innerhalb einer Duplikat-Gruppe, inkl. Qualitäts-/Größeninfos.
+#[derive(Debug, Clone, Serialize)]
+pub struct DuplicateFile {
+    pub id: String,
+    pub path: String,
+    pub file_name: String,
+    pub codec: String,
+    pub container: String,
+    pub sample_rate: u32,
+    pub bits_per_sample: u32,
+    pub lossless: bool,
+    pub duration_secs: f64,
+    pub compatible: bool,
+    pub size_bytes: u64,
+}
+
+/// Eine Gruppe erkannter Duplikate (derselbe Track in mehreren Dateien).
+#[derive(Debug, Clone, Serialize)]
+pub struct DuplicateGroup {
+    /// Stabile Gruppen-ID (kleinster Pfad der Gruppe).
+    pub id: String,
+    pub files: Vec<DuplicateFile>,
+    /// Vorschlag, welche Datei behalten werden soll (höchste Qualität).
+    pub keep_id: String,
+}
+
+/// Ergebnis eines Löschvorgangs pro Datei.
+#[derive(Debug, Clone, Serialize)]
+pub struct DeleteResult {
+    pub path: String,
+    pub success: bool,
+    pub error: Option<String>,
+}
+
 /// Verbundenes Bandcamp-Konto.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct BandcampAccount {

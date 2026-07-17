@@ -28,6 +28,19 @@ export function formatSampleRate(hz: number): string {
   return `${(hz / 1000).toFixed(1)} kHz`;
 }
 
+export function formatBytes(bytes: number): string {
+  if (!bytes || bytes < 0) return "–";
+  if (bytes < 1024) return `${bytes} B`;
+  const units = ["KB", "MB", "GB"];
+  let val = bytes / 1024;
+  let i = 0;
+  while (val >= 1024 && i < units.length - 1) {
+    val /= 1024;
+    i++;
+  }
+  return `${val.toFixed(val < 10 ? 1 : 0)} ${units[i]}`;
+}
+
 export type Badge = { label: string; className: string; title?: string };
 
 /** Erzeugt die Status-Badges für einen Track (Kompatibilität, Metadaten, Herkunft). */

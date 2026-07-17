@@ -118,6 +118,89 @@ export interface ConvertProgress {
   stage: string;
 }
 
+export interface ScanProgress {
+  generation: number;
+  done: number;
+  total: number;
+  running: boolean;
+}
+
+export interface ScanStatus {
+  running: boolean;
+  generation: number;
+  done: number;
+  total: number;
+}
+
+export interface ScanDone {
+  generation: number;
+  cancelled: boolean;
+  tracks: TrackAnalysis[];
+}
+
+export interface DedupeProgress {
+  generation: number;
+  done: number;
+  total: number;
+  stage: string;
+  running: boolean;
+}
+
+export interface DedupeStatus {
+  running: boolean;
+  generation: number;
+  done: number;
+  total: number;
+  stage: string;
+  has_result: boolean;
+}
+
+export interface DedupeDone {
+  generation: number;
+  cancelled: boolean;
+  groups: DuplicateGroup[];
+}
+
+/** Schlanke Projektion eines Tracks als Kandidat für die Duplikatsuche. */
+export interface DupCandidate {
+  id: string;
+  path: string;
+  codec: string;
+  container: string;
+  sample_rate: number;
+  bits_per_sample: number;
+  lossless: boolean;
+  duration_secs: number;
+  compatible: boolean;
+}
+
+export interface DuplicateFile {
+  id: string;
+  path: string;
+  file_name: string;
+  codec: string;
+  container: string;
+  sample_rate: number;
+  bits_per_sample: number;
+  lossless: boolean;
+  duration_secs: number;
+  compatible: boolean;
+  size_bytes: number;
+}
+
+export interface DuplicateGroup {
+  id: string;
+  files: DuplicateFile[];
+  /** Vorschlag, welche Datei behalten werden soll (höchste Qualität). */
+  keep_id: string;
+}
+
+export interface DeleteResult {
+  path: string;
+  success: boolean;
+  error: string | null;
+}
+
 export const FORMAT_LABELS: Record<TargetFormat, string> = {
   aiff: "AIFF (empfohlen)",
   wav: "WAV",

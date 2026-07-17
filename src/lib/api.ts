@@ -9,7 +9,16 @@ import type {
   ConvertProgress,
   ConvertResult,
   CoverInput,
+  DedupeDone,
+  DedupeProgress,
+  DedupeStatus,
+  DeleteResult,
+  DupCandidate,
+  DuplicateGroup,
   MetadataSuggestions,
+  ScanDone,
+  ScanProgress,
+  ScanStatus,
   TrackAnalysis,
 } from "../types";
 
@@ -39,9 +48,68 @@ export function analyzeFiles(paths: string[]): Promise<TrackAnalysis[]> {
   return invoke<TrackAnalysis[]>("analyze_files", { paths });
 }
 
-/** Scannt den Library-Ordner rekursiv und analysiert alle Audiodateien. */
-export function scanLibrary(dir: string): Promise<TrackAnalysis[]> {
-  return invoke<TrackAnalysis[]>("scan_library", { dir });
+/** Startet einen Library-Scan (Hintergrund-Singleton). false = lief bereits. */
+export function startScan(dir: string): Promise<boolean> {
+  return invoke<boolean>("start_scan", { dir });
+}
+
+/** Aktueller Scan-Status (zum Andocken nach Reload). */
+export function scanStatus(): Promise<ScanStatus> {
+  return invoke<ScanStatus>("scan_status");
+}
+
+/** Bricht einen laufenden Scan ab. */
+export function cancelScan(): Promise<void> {
+  return invoke("cancel_scan");
+}
+
+/** Abonniert Fortschritts-Events des Library-Scans. */
+export function onScanProgress(
+  cb: (p: ScanProgress) => void,
+): Promise<UnlistenFn> {
+  return listen<ScanProgress>("scan://progress", (e) => cb(e.payload));
+}
+
+/** Abonniert das Abschluss-Event des Scans (liefert das Ergebnis). */
+export function onScanDone(cb: (d: ScanDone) => void): Promise<UnlistenFn> {
+  return listen<ScanDone>("scan://done", (e) => cb(e.payload));
+}
+
+/** Startet die Duplikatsuche (Hintergrund-Singleton). false = lief bereits. */
+export function startDedupe(candidates: DupCandidate[]): Promise<boolean> {
+  return invoke<boolean>("start_dedupe", { candidates });
+}
+
+/** Aktueller Dedupe-Status (running/Fortschritt/Ergebnis vorhanden). */
+export function dedupeStatus(): Promise<DedupeStatus> {
+  return invoke<DedupeStatus>("dedupe_status");
+}
+
+/** Liefert das zwischengespeicherte Dedupe-Ergebnis (oder null). */
+export function dedupeResult(): Promise<DuplicateGroup[] | null> {
+  return invoke<DuplicateGroup[] | null>("dedupe_result");
+}
+
+/** Bricht eine laufende Duplikatsuche ab. */
+export function cancelDedupe(): Promise<void> {
+  return invoke("cancel_dedupe");
+}
+
+/** Abonniert Fortschritts-Events der Duplikatsuche. */
+export function onDedupeProgress(
+  cb: (p: DedupeProgress) => void,
+): Promise<UnlistenFn> {
+  return listen<DedupeProgress>("dedupe://progress", (e) => cb(e.payload));
+}
+
+/** Abonniert das Abschluss-Event der Duplikatsuche (liefert das Ergebnis). */
+export function onDedupeDone(cb: (d: DedupeDone) => void): Promise<UnlistenFn> {
+  return listen<DedupeDone>("dedupe://done", (e) => cb(e.payload));
+}
+
+/** Verschiebt Dateien in den Papierkorb (umkehrbar). */
+export function deleteFiles(paths: string[]): Promise<DeleteResult[]> {
+  return invoke<DeleteResult[]>("delete_files", { paths });
 }
 
 /** Startet die Konvertierung. Fortschritt kommt über onConvertProgress. */

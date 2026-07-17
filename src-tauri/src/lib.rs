@@ -2,6 +2,7 @@ mod audio;
 mod bandcamp;
 mod commands;
 mod error;
+mod jobs;
 mod metadata;
 mod models;
 
@@ -15,6 +16,8 @@ pub fn run() {
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_store::Builder::new().build())
         .manage(bandcamp::session::BandcampState::default())
+        .manage(jobs::ScanState::default())
+        .manage(jobs::DedupeState::default())
         .setup(|app| {
             // Gespeicherte Bandcamp-Sitzung beim Start wiederherstellen.
             let state = app.state::<bandcamp::session::BandcampState>();
@@ -23,11 +26,18 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             commands::analyze_files,
-            commands::scan_library,
+            commands::start_scan,
+            commands::scan_status,
+            commands::cancel_scan,
             commands::suggest_metadata,
             commands::cover_preview,
             commands::cover_thumbnail,
             commands::convert_tracks,
+            commands::start_dedupe,
+            commands::dedupe_status,
+            commands::dedupe_result,
+            commands::cancel_dedupe,
+            commands::delete_files,
             commands::bandcamp_login,
             commands::bandcamp_connect,
             commands::bandcamp_disconnect,

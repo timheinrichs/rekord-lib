@@ -1,17 +1,47 @@
+use std::sync::atomic::Ordering;
+
 use base64::Engine;
-use tauri::{AppHandle, Emitter, State};
+use tauri::{AppHandle, Emitter, Manager, State};
 
 use crate::audio::convert::ConvertProgress;
-use crate::audio::{compat, convert, probe};
+use crate::audio::{compat, convert, dedupe, probe};
 use crate::bandcamp::session::BandcampState;
 use crate::bandcamp::{collection, download, session};
 use crate::error::AppResult;
+use crate::jobs::{DedupeState, ScanState};
 use crate::metadata::read::read_metadata;
 use crate::metadata::{artwork, suggest, write};
 use crate::models::{
     BandcampAccount, BandcampDownloadResult, BandcampItem, ConvertJob, ConvertOptions,
-    ConvertResult, CoverInput, MetadataSuggestions, TrackAnalysis,
+    ConvertResult, CoverInput, DeleteResult, DupCandidate, DuplicateGroup, MetadataSuggestions,
+    TrackAnalysis,
 };
+
+/// Fortschritt des Library-Scans (an das Frontend gestreamt).
+#[derive(Debug, Clone, serde::Serialize)]
+struct ScanProgress {
+    generation: u64,
+    done: usize,
+    total: usize,
+    running: bool,
+}
+
+/// Abschluss-Event des Scans; liefert das Ergebnis.
+#[derive(Debug, Clone, serde::Serialize)]
+struct ScanDone {
+    generation: u64,
+    cancelled: bool,
+    tracks: Vec<TrackAnalysis>,
+}
+
+/// Aktueller Scan-Status (zum Wieder-Andocken nach Reload).
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct ScanStatus {
+    running: bool,
+    generation: u64,
+    done: usize,
+    total: usize,
+}
 
 fn file_name(path: &str) -> String {
     std::path::Path::new(path)
@@ -79,19 +109,103 @@ fn collect_audio_files(dir: &std::path::Path, out: &mut Vec<String>) {
     }
 }
 
-/// Scannt den Library-Ordner rekursiv und analysiert alle gefundenen Audiodateien.
+/// Startet einen Library-Scan als Hintergrund-Singleton. Läuft bereits einer,
+/// passiert nichts (Rückgabe `false`) – der laufende Prozess bleibt bestehen.
+/// Ergebnis kommt via `scan://done`, Fortschritt via `scan://progress`.
 #[tauri::command]
-pub async fn scan_library(app: AppHandle, dir: String) -> AppResult<Vec<TrackAnalysis>> {
-    let mut paths = Vec::new();
-    collect_audio_files(std::path::Path::new(&dir), &mut paths);
-
-    let mut out = Vec::with_capacity(paths.len());
-    for path in paths {
-        if let Some(track) = analyze_path(&app, path).await {
-            out.push(track);
-        }
+pub fn start_scan(app: AppHandle, state: State<'_, ScanState>, dir: String) -> bool {
+    // Single-flight: nur starten, wenn nicht bereits ein Scan läuft.
+    if state.running.swap(true, Ordering::SeqCst) {
+        return false;
     }
-    Ok(out)
+    state.cancel.store(false, Ordering::SeqCst);
+    state.done.store(0, Ordering::SeqCst);
+    state.total.store(0, Ordering::SeqCst);
+    let generation = state.generation.fetch_add(1, Ordering::SeqCst) + 1;
+
+    // Ein frischer Scan bedeutet: die Library hat sich (evtl.) geändert –
+    // ein zwischengespeichertes Duplikat-Ergebnis ist damit ungültig.
+    if let Ok(mut r) = app.state::<DedupeState>().result.lock() {
+        *r = None;
+    }
+
+    let app = app.clone();
+    tauri::async_runtime::spawn(async move {
+        let mut paths = Vec::new();
+        collect_audio_files(std::path::Path::new(&dir), &mut paths);
+        let total = paths.len();
+        app.state::<ScanState>().total.store(total, Ordering::SeqCst);
+        let _ = app.emit(
+            "scan://progress",
+            ScanProgress {
+                generation,
+                done: 0,
+                total,
+                running: true,
+            },
+        );
+
+        let mut out = Vec::with_capacity(total);
+        let mut cancelled = false;
+        for (i, path) in paths.into_iter().enumerate() {
+            if app.state::<ScanState>().cancel.load(Ordering::SeqCst) {
+                cancelled = true;
+                break;
+            }
+            if let Some(track) = analyze_path(&app, path).await {
+                out.push(track);
+            }
+            app.state::<ScanState>().done.store(i + 1, Ordering::SeqCst);
+            let _ = app.emit(
+                "scan://progress",
+                ScanProgress {
+                    generation,
+                    done: i + 1,
+                    total,
+                    running: true,
+                },
+            );
+        }
+
+        app.state::<ScanState>().running.store(false, Ordering::SeqCst);
+        let _ = app.emit(
+            "scan://progress",
+            ScanProgress {
+                generation,
+                done: app.state::<ScanState>().done.load(Ordering::SeqCst),
+                total,
+                running: false,
+            },
+        );
+        let _ = app.emit(
+            "scan://done",
+            ScanDone {
+                generation,
+                cancelled,
+                tracks: out,
+            },
+        );
+    });
+    true
+}
+
+/// Aktueller Scan-Status (zum Andocken an einen laufenden Scan nach Reload).
+#[tauri::command]
+pub fn scan_status(state: State<'_, ScanState>) -> ScanStatus {
+    ScanStatus {
+        running: state.running.load(Ordering::SeqCst),
+        generation: state.generation.load(Ordering::SeqCst),
+        done: state.done.load(Ordering::SeqCst),
+        total: state.total.load(Ordering::SeqCst),
+    }
+}
+
+/// Bricht einen laufenden Scan ab (der Task beendet sich beim nächsten Schritt).
+#[tauri::command]
+pub fn cancel_scan(state: State<'_, ScanState>) {
+    if state.running.load(Ordering::SeqCst) {
+        state.cancel.store(true, Ordering::SeqCst);
+    }
 }
 
 /// Liefert Metadaten-Vorschläge (vorhandene Tags, Dateiname-Vermutung,
@@ -218,6 +332,113 @@ pub async fn convert_tracks(
     }
 
     Ok(results)
+}
+
+/// Abschluss-Event der Duplikatsuche.
+#[derive(Debug, Clone, serde::Serialize)]
+struct DedupeDone {
+    generation: u64,
+    cancelled: bool,
+    groups: Vec<DuplicateGroup>,
+}
+
+/// Aktueller Dedupe-Status (zum Andocken/erneuten Öffnen).
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct DedupeStatus {
+    running: bool,
+    generation: u64,
+    done: usize,
+    total: usize,
+    stage: String,
+    has_result: bool,
+}
+
+/// Startet die Duplikatsuche als Hintergrund-Singleton. Läuft bereits eine,
+/// passiert nichts (`false`) – der laufende Prozess bleibt bestehen.
+/// Ergebnis via `dedupe://done`, Fortschritt via `dedupe://progress`.
+#[tauri::command]
+pub fn start_dedupe(
+    app: AppHandle,
+    state: State<'_, DedupeState>,
+    candidates: Vec<DupCandidate>,
+) -> bool {
+    if state.running.swap(true, Ordering::SeqCst) {
+        return false;
+    }
+    state.cancel.store(false, Ordering::SeqCst);
+    state.done.store(0, Ordering::SeqCst);
+    state.total.store(0, Ordering::SeqCst);
+    if let Ok(mut s) = state.stage.lock() {
+        *s = "Analysiere".to_string();
+    }
+    *state.result.lock().unwrap() = None;
+    let generation = state.generation.fetch_add(1, Ordering::SeqCst) + 1;
+
+    let app = app.clone();
+    tauri::async_runtime::spawn(async move {
+        let (groups, cancelled) = dedupe::find_duplicates(&app, candidates, generation).await;
+        let state = app.state::<DedupeState>();
+        if !cancelled {
+            *state.result.lock().unwrap() = Some(groups.clone());
+        }
+        state.running.store(false, Ordering::SeqCst);
+        let _ = app.emit(
+            "dedupe://done",
+            DedupeDone {
+                generation,
+                cancelled,
+                groups,
+            },
+        );
+    });
+    true
+}
+
+/// Aktueller Dedupe-Status (running + Fortschritt + ob ein Ergebnis vorliegt).
+#[tauri::command]
+pub fn dedupe_status(state: State<'_, DedupeState>) -> DedupeStatus {
+    DedupeStatus {
+        running: state.running.load(Ordering::SeqCst),
+        generation: state.generation.load(Ordering::SeqCst),
+        done: state.done.load(Ordering::SeqCst),
+        total: state.total.load(Ordering::SeqCst),
+        stage: state.stage.lock().map(|s| s.clone()).unwrap_or_default(),
+        has_result: state.result.lock().map(|r| r.is_some()).unwrap_or(false),
+    }
+}
+
+/// Liefert das Ergebnis des letzten abgeschlossenen Laufs (falls vorhanden).
+#[tauri::command]
+pub fn dedupe_result(state: State<'_, DedupeState>) -> Option<Vec<DuplicateGroup>> {
+    state.result.lock().ok().and_then(|r| r.clone())
+}
+
+/// Bricht eine laufende Duplikatsuche ab.
+#[tauri::command]
+pub fn cancel_dedupe(state: State<'_, DedupeState>) {
+    if state.running.load(Ordering::SeqCst) {
+        state.cancel.store(true, Ordering::SeqCst);
+    }
+}
+
+/// Verschiebt die angegebenen Dateien in den Papierkorb (umkehrbar).
+#[tauri::command]
+pub async fn delete_files(paths: Vec<String>) -> Vec<DeleteResult> {
+    paths
+        .into_iter()
+        .map(|p| match trash::delete(&p) {
+            Ok(()) => DeleteResult {
+                path: p,
+                success: true,
+                error: None,
+            },
+            Err(e) => DeleteResult {
+                path: p,
+                success: false,
+                error: Some(e.to_string()),
+            },
+        })
+        .collect()
 }
 
 // ---------------------------------------------------------------------------

@@ -3,10 +3,20 @@ import { getCurrentWebview } from "@tauri-apps/api/webview";
 import {
   bandcampCollection,
   bandcampDownload,
+  cancelDedupe,
+  cancelScan,
   convertTracks,
+  dedupeStatus,
   onConvertProgress,
-  scanLibrary,
+  onDedupeDone,
+  onDedupeProgress,
+  onScanDone,
+  onScanProgress,
+  scanStatus,
+  startDedupe,
+  startScan,
 } from "../lib/api";
+import { loadLibrary, saveLibrary } from "../lib/library";
 import {
   editComplete,
   formatDuration,
@@ -23,12 +33,15 @@ import type {
   ConvertProgress,
   ConvertResult,
   CoverInput,
+  DedupeProgress,
+  ScanProgress,
   TrackAnalysis,
   TrackEdit,
 } from "../types";
 import MetadataEditor from "./MetadataEditor";
 import BulkMetadataEditor, { type BulkPatch } from "./BulkMetadataEditor";
 import CoverThumb from "./CoverThumb";
+import DuplicatesModal from "./DuplicatesModal";
 
 interface Props {
   settings: Settings;
@@ -43,7 +56,11 @@ type Filter = "all" | "convert" | "incomplete";
 export default function LibraryView({ settings, account, onOpenSettings }: Props) {
   const [tracks, setTracks] = useState<TrackAnalysis[]>([]);
   const [loading, setLoading] = useState(false);
+  const [scanProgress, setScanProgress] = useState<ScanProgress | null>(null);
   const [converting, setConverting] = useState(false);
+  const [dupOpen, setDupOpen] = useState(false);
+  const [dedupeProgress, setDedupeProgress] = useState<DedupeProgress | null>(null);
+  const [dedupeRunning, setDedupeRunning] = useState(false);
   const [dragging, setDragging] = useState(false);
   const [progress, setProgress] = useState<Record<string, ConvertProgress>>({});
   const [results, setResults] = useState<Record<string, ConvertResult>>({});
@@ -59,26 +76,103 @@ export default function LibraryView({ settings, account, onOpenSettings }: Props
   const [error, setError] = useState<string | null>(null);
 
   const libraryDir = settings.library_dir;
+  // Erst persistieren, nachdem der Cache geladen wurde – sonst überschreibt der
+  // initiale (leere) State den gespeicherten Stand beim Mount.
+  const hydratedRef = useRef(false);
 
+  // Startet einen (Hintergrund-)Scan. Läuft bereits einer, dockt die UI nur an.
   const rescan = useCallback(async () => {
     if (!libraryDir) {
       setTracks([]);
       return;
     }
-    setLoading(true);
     setError(null);
-    try {
-      setTracks(await scanLibrary(libraryDir));
-    } catch (e) {
-      setError(`Scan fehlgeschlagen: ${e}`);
-    } finally {
-      setLoading(false);
-    }
+    setLoading(true);
+    void startScan(libraryDir);
   }, [libraryDir]);
 
+  // Persistente Scan-Listener (einmalig): Fortschritt + Ergebnis.
   useEffect(() => {
-    void rescan();
-  }, [rescan]);
+    let unProg: (() => void) | undefined;
+    let unDone: (() => void) | undefined;
+    void (async () => {
+      unProg = await onScanProgress((p) => {
+        setScanProgress(p);
+        setLoading(p.running);
+      });
+      unDone = await onScanDone((d) => {
+        setLoading(false);
+        if (!d.cancelled) setTracks(d.tracks);
+      });
+    })();
+    return () => {
+      unProg?.();
+      unDone?.();
+    };
+  }, []);
+
+  // Persistente Dedupe-Listener: Fortschritt (in dieselbe Leiste) + Abschluss.
+  useEffect(() => {
+    let unProg: (() => void) | undefined;
+    let unDone: (() => void) | undefined;
+    void (async () => {
+      unProg = await onDedupeProgress((p) => {
+        setDedupeProgress(p);
+        setDedupeRunning(p.running);
+      });
+      unDone = await onDedupeDone((d) => {
+        setDedupeRunning(false);
+        // Bei Erfolg (auch ohne Treffer) die Ergebnisse anzeigen.
+        if (!d.cancelled) setDupOpen(true);
+      });
+    })();
+    return () => {
+      unProg?.();
+      unDone?.();
+    };
+  }, []);
+
+  // Beim Start / Ordnerwechsel: zwischengespeicherte Liste sofort anzeigen,
+  // dann an einen laufenden Scan andocken oder einen neuen (Hintergrund-)Scan
+  // starten. Die Liste bleibt dabei sichtbar.
+  useEffect(() => {
+    let active = true;
+    hydratedRef.current = false;
+    void (async () => {
+      const cache = await loadLibrary();
+      if (active && cache && cache.library_dir === libraryDir) {
+        setTracks(cache.tracks);
+        setEdits(cache.edits ?? {});
+      }
+      // Ab jetzt darf persistiert werden (Cache wurde berücksichtigt).
+      hydratedRef.current = true;
+      if (!active || !libraryDir) return;
+      const status = await scanStatus();
+      if (!active) return;
+      if (status.running) {
+        // An laufenden Scan andocken statt neu zu starten.
+        setLoading(true);
+        setScanProgress({
+          generation: status.generation,
+          done: status.done,
+          total: status.total,
+          running: true,
+        });
+      } else {
+        await rescan();
+      }
+    })();
+    return () => {
+      active = false;
+    };
+  }, [libraryDir, rescan]);
+
+  // Track-Datenbank persistent halten (erst nach der Hydration, damit der
+  // initiale leere State den Cache nicht überschreibt).
+  useEffect(() => {
+    if (!libraryDir || !hydratedRef.current) return;
+    void saveLibrary({ library_dir: libraryDir, tracks, edits });
+  }, [libraryDir, tracks, edits]);
 
   // Konvertierungsaufträge ausführen (Ausgabe in die Library).
   const runConvert = useCallback(
@@ -303,11 +397,78 @@ export default function LibraryView({ settings, account, onOpenSettings }: Props
     [tracks, selected],
   );
 
+  // Nach dem Verschieben von Duplikaten in den Papierkorb.
+  const handleDuplicatesDeleted = useCallback(
+    (paths: string[]) => {
+      const gone = new Set(paths);
+      setTracks((prev) => prev.filter((t) => !gone.has(t.path)));
+      setSelected((prev) => {
+        const next = new Set(prev);
+        paths.forEach((p) => next.delete(p));
+        return next;
+      });
+      setDupOpen(false);
+      void rescan();
+    },
+    [rescan],
+  );
+
+  // Duplikatsuche starten (läuft im Hintergrund, Fortschritt in der Scan-Leiste).
+  const findDuplicates = useCallback(async () => {
+    const status = await dedupeStatus();
+    if (status.running) return; // läuft bereits – Leiste zeigt Fortschritt
+    if (status.has_result) {
+      setDupOpen(true); // fertiges Ergebnis direkt zeigen
+      return;
+    }
+    const candidates = tracks.map((t) => ({
+      id: t.id,
+      path: t.path,
+      codec: t.audio.codec,
+      container: t.audio.container,
+      sample_rate: t.audio.sample_rate,
+      bits_per_sample: t.audio.bits_per_sample,
+      lossless: t.audio.lossless,
+      duration_secs: t.audio.duration_secs,
+      compatible: t.compat.compatible,
+    }));
+    void startDedupe(candidates);
+  }, [tracks]);
+
   const stats = useMemo(() => {
     const needConvert = visibleTracks.filter((t) => !t.compat.compatible).length;
     const incomplete = visibleTracks.filter(isIncomplete).length;
     return { total: visibleTracks.length, needConvert, incomplete };
   }, [visibleTracks, isIncomplete]);
+
+  // Eine Leiste für beide Hintergrund-Jobs (Scan & Duplikatsuche).
+  const scanPct =
+    scanProgress && scanProgress.total > 0
+      ? Math.round((scanProgress.done / scanProgress.total) * 100)
+      : 0;
+  const dedupePct =
+    dedupeProgress && dedupeProgress.total > 0
+      ? Math.round((dedupeProgress.done / dedupeProgress.total) * 100)
+      : 0;
+  const showBar = loading || dedupeRunning;
+  const progressBar = dedupeRunning
+    ? {
+        label:
+          dedupeProgress?.stage === "Vergleiche"
+            ? "Vergleiche Fingerabdrücke…"
+            : "Suche Duplikate…",
+        done: dedupeProgress?.done ?? 0,
+        total: dedupeProgress?.total ?? 0,
+        pct: dedupePct,
+        cancel: () => void cancelDedupe(),
+      }
+    : {
+        label: "Scanne Library…",
+        done: scanProgress?.done ?? 0,
+        total: scanProgress?.total ?? 0,
+        pct: scanPct,
+        cancel: () => void cancelScan(),
+      };
 
   // ---- Empty states ----
   if (!libraryDir) {
@@ -335,7 +496,7 @@ export default function LibraryView({ settings, account, onOpenSettings }: Props
       <div className="mb-4 flex flex-wrap items-center gap-3">
         <button
           onClick={() => void rescan()}
-          disabled={loading || converting}
+          disabled={loading || converting || dedupeRunning}
           className="rounded-lg border border-neutral-700 px-3 py-2 text-sm hover:border-sky-500 disabled:opacity-50"
         >
           {loading ? "Scanne…" : "Neu scannen"}
@@ -351,6 +512,14 @@ export default function LibraryView({ settings, account, onOpenSettings }: Props
           }
         >
           {syncing ? "Gleiche ab…" : "Mit Bandcamp abgleichen"}
+        </button>
+        <button
+          onClick={() => void findDuplicates()}
+          disabled={loading || converting || dedupeRunning || tracks.length < 2}
+          className="rounded-lg border border-neutral-700 px-3 py-2 text-sm hover:border-fuchsia-500 disabled:opacity-50"
+          title="Doppelte Tracks über alle Formate finden"
+        >
+          {dedupeRunning ? "Suche Duplikate…" : "Duplikate suchen"}
         </button>
         {selected.size > 0 && (
           <>
@@ -373,6 +542,36 @@ export default function LibraryView({ settings, account, onOpenSettings }: Props
         <div className="ml-auto text-sm text-neutral-400">
           {stats.total} Titel · {stats.needConvert} zu konvertieren ·{" "}
           {stats.incomplete} Metadaten unvollständig
+        </div>
+      </div>
+
+      {/* Fortschritt (Scan & Duplikatsuche): gleitet zwischen Buttons und Liste ein/aus. */}
+      <div
+        className={`overflow-hidden transition-all duration-500 ease-out ${
+          showBar ? "mb-4 max-h-24 opacity-100" : "mb-0 max-h-0 opacity-0"
+        }`}
+      >
+        <div className="rounded-lg border border-neutral-800 bg-neutral-900/40 px-4 py-3">
+          <div className="mb-2 flex items-center gap-3 text-sm">
+            <span className="text-neutral-300">{progressBar.label}</span>
+            <span className="text-neutral-500">
+              {progressBar.total > 0
+                ? `${progressBar.done} / ${progressBar.total}`
+                : ""}
+            </span>
+            <button
+              onClick={progressBar.cancel}
+              className="ml-auto rounded-md border border-neutral-700 px-2 py-0.5 text-xs text-neutral-300 hover:border-red-500 hover:text-red-300"
+            >
+              Abbrechen
+            </button>
+          </div>
+          <div className="h-2 w-full overflow-hidden rounded-full bg-neutral-800">
+            <div
+              className="h-full rounded-full bg-sky-500 transition-all duration-300 ease-out"
+              style={{ width: `${progressBar.pct}%` }}
+            />
+          </div>
         </div>
       </div>
 
@@ -639,6 +838,13 @@ export default function LibraryView({ settings, account, onOpenSettings }: Props
           count={selected.size}
           onClose={() => setBulkOpen(false)}
           onApply={applyBulk}
+        />
+      )}
+
+      {dupOpen && (
+        <DuplicatesModal
+          onClose={() => setDupOpen(false)}
+          onDeleted={handleDuplicatesDeleted}
         />
       )}
     </main>
