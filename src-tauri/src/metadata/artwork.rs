@@ -40,6 +40,24 @@ pub fn process_cover(bytes: &[u8]) -> AppResult<Vec<u8>> {
     }
 }
 
+/// Erzeugt ein kleines quadratisches JPEG-Thumbnail (längste Kante `edge` px)
+/// für die Anzeige in der Track-Liste. Deutlich kleiner als [`process_cover`].
+pub fn thumbnail(bytes: &[u8], edge: u32) -> AppResult<Vec<u8>> {
+    let img = image::load_from_memory(bytes)
+        .map_err(|e| AppError::Metadata(format!("Cover konnte nicht gelesen werden: {e}")))?;
+
+    let resized = img.resize(edge, edge, image::imageops::FilterType::Triangle);
+    let rgb = resized.to_rgb8();
+    let (rw, rh) = (rgb.width(), rgb.height());
+
+    let mut buf = Vec::new();
+    let encoder = image::codecs::jpeg::JpegEncoder::new_with_quality(&mut buf, 80);
+    encoder
+        .write_image(rgb.as_raw(), rw, rh, ExtendedColorType::Rgb8)
+        .map_err(|e| AppError::Metadata(format!("JPEG-Encoding fehlgeschlagen: {e}")))?;
+    Ok(buf)
+}
+
 /// Lädt das Front-Cover einer MusicBrainz-Release von der Cover Art Archive.
 pub async fn fetch_musicbrainz_cover(
     client: &reqwest::Client,

@@ -72,6 +72,11 @@ export function coverPreview(
   return invoke<string | null>("cover_preview", { source, cover });
 }
 
+/** Liefert ein kleines eingebettetes Cover-Thumbnail (data:-URL) für die Liste. */
+export function coverThumbnail(path: string): Promise<string | null> {
+  return invoke<string | null>("cover_thumbnail", { path });
+}
+
 /** Öffnet den Datei-Dialog zur Auswahl einer Bilddatei (Cover). */
 export async function pickImageFile(): Promise<string | null> {
   const selected = await open({

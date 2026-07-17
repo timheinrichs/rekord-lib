@@ -26,6 +26,7 @@ pub fn run() {
             commands::scan_library,
             commands::suggest_metadata,
             commands::cover_preview,
+            commands::cover_thumbnail,
             commands::convert_tracks,
             commands::bandcamp_login,
             commands::bandcamp_connect,

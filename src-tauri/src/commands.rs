@@ -115,6 +115,20 @@ pub async fn cover_preview(source: String, cover: CoverInput) -> AppResult<Optio
     }
 }
 
+/// Liefert ein kleines eingebettetes Cover-Thumbnail als data:-URL für die
+/// Anzeige in der Track-Liste. `None`, wenn die Datei kein Cover enthält.
+#[tauri::command]
+pub async fn cover_thumbnail(path: String) -> AppResult<Option<String>> {
+    match write::read_cover_bytes(&path) {
+        Some(bytes) => {
+            let jpeg = artwork::thumbnail(&bytes, 96)?;
+            let b64 = base64::engine::general_purpose::STANDARD.encode(&jpeg);
+            Ok(Some(format!("data:image/jpeg;base64,{b64}")))
+        }
+        None => Ok(None),
+    }
+}
+
 /// Konvertiert die übergebenen Aufträge in das gewählte Zielformat und schreibt
 /// anschließend bestätigte Metadaten + Cover. Fortschritt via `convert://progress`.
 #[tauri::command]

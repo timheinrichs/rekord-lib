@@ -7,7 +7,12 @@ import {
   onConvertProgress,
   scanLibrary,
 } from "../lib/api";
-import { formatDuration, formatSampleRate, trackBadges } from "../lib/format";
+import {
+  editComplete,
+  formatDuration,
+  formatSampleRate,
+  trackBadges,
+} from "../lib/format";
 import { syncCollection, type SyncResult } from "../lib/bandcampSync";
 import type { Settings } from "../lib/settings";
 import type {
@@ -17,10 +22,13 @@ import type {
   ConvertOptions,
   ConvertProgress,
   ConvertResult,
+  CoverInput,
   TrackAnalysis,
   TrackEdit,
 } from "../types";
 import MetadataEditor from "./MetadataEditor";
+import BulkMetadataEditor, { type BulkPatch } from "./BulkMetadataEditor";
+import CoverThumb from "./CoverThumb";
 
 interface Props {
   settings: Settings;
@@ -29,6 +37,8 @@ interface Props {
 }
 
 type DlState = "idle" | "loading" | "done" | "error";
+
+type Filter = "all" | "convert" | "incomplete";
 
 export default function LibraryView({ settings, account, onOpenSettings }: Props) {
   const [tracks, setTracks] = useState<TrackAnalysis[]>([]);
@@ -39,7 +49,10 @@ export default function LibraryView({ settings, account, onOpenSettings }: Props
   const [results, setResults] = useState<Record<string, ConvertResult>>({});
   const [edits, setEdits] = useState<Record<string, TrackEdit>>({});
   const [editingId, setEditingId] = useState<string | null>(null);
+  const [bulkOpen, setBulkOpen] = useState(false);
   const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [filter, setFilter] = useState<Filter>("all");
+  const [search, setSearch] = useState("");
   const [sync, setSync] = useState<SyncResult | null>(null);
   const [syncing, setSyncing] = useState(false);
   const [dl, setDl] = useState<Record<string, DlState>>({});
@@ -219,22 +232,76 @@ export default function LibraryView({ settings, account, onOpenSettings }: Props
     });
   }, []);
 
+  // Ist ein Track (unter Berücksichtigung offener Edits) unvollständig?
+  const isIncomplete = useCallback(
+    (t: TrackAnalysis) => {
+      const edit = edits[t.id];
+      return edit ? !editComplete(edit) : t.metadata_incomplete;
+    },
+    [edits],
+  );
+
+  // Sichtbare Tracks gemäß Filter + Suche.
+  const visibleTracks = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    return tracks.filter((t) => {
+      if (filter === "convert" && t.compat.compatible) return false;
+      if (filter === "incomplete" && !isIncomplete(t)) return false;
+      if (q) {
+        const hay = [t.metadata.title, t.metadata.artist, t.metadata.album, t.file_name]
+          .filter(Boolean)
+          .join(" ")
+          .toLowerCase();
+        if (!hay.includes(q)) return false;
+      }
+      return true;
+    });
+  }, [tracks, filter, search, isIncomplete]);
+
+  const allVisibleSelected =
+    visibleTracks.length > 0 && visibleTracks.every((t) => selected.has(t.id));
+
   const toggleSelectAll = useCallback(() => {
-    setSelected((prev) =>
-      prev.size === tracks.length ? new Set() : new Set(tracks.map((t) => t.id)),
-    );
-  }, [tracks]);
+    setSelected((prev) => {
+      const ids = visibleTracks.map((t) => t.id);
+      const allSel = ids.length > 0 && ids.every((id) => prev.has(id));
+      const next = new Set(prev);
+      if (allSel) ids.forEach((id) => next.delete(id));
+      else ids.forEach((id) => next.add(id));
+      return next;
+    });
+  }, [visibleTracks]);
 
   const saveEdit = useCallback((id: string, edit: TrackEdit) => {
     setEdits((prev) => ({ ...prev, [id]: edit }));
     setEditingId(null);
   }, []);
 
+  // Bulk-Edit: gewählte Felder auf alle selektierten Tracks anwenden.
+  const applyBulk = useCallback(
+    (patch: BulkPatch) => {
+      setEdits((prev) => {
+        const next = { ...prev };
+        tracks.forEach((t) => {
+          if (!selected.has(t.id)) return;
+          const base = prev[t.id]?.metadata ?? t.metadata;
+          const cover: CoverInput =
+            prev[t.id]?.cover ??
+            (t.metadata.has_cover ? { kind: "keep" } : { kind: "none" });
+          next[t.id] = { metadata: { ...base, ...patch }, cover };
+        });
+        return next;
+      });
+      setBulkOpen(false);
+    },
+    [tracks, selected],
+  );
+
   const stats = useMemo(() => {
-    const needConvert = tracks.filter((t) => !t.compat.compatible).length;
-    const incomplete = tracks.filter((t) => t.metadata_incomplete).length;
-    return { total: tracks.length, needConvert, incomplete };
-  }, [tracks]);
+    const needConvert = visibleTracks.filter((t) => !t.compat.compatible).length;
+    const incomplete = visibleTracks.filter(isIncomplete).length;
+    return { total: visibleTracks.length, needConvert, incomplete };
+  }, [visibleTracks, isIncomplete]);
 
   // ---- Empty states ----
   if (!libraryDir) {
@@ -257,7 +324,7 @@ export default function LibraryView({ settings, account, onOpenSettings }: Props
   }
 
   return (
-    <main className="mx-auto max-w-6xl px-6 py-6">
+    <main className="w-full px-6 py-6">
       {/* Toolbar */}
       <div className="mb-4 flex flex-wrap items-center gap-3">
         <button
@@ -280,13 +347,22 @@ export default function LibraryView({ settings, account, onOpenSettings }: Props
           {syncing ? "Gleiche ab…" : "Mit Bandcamp abgleichen"}
         </button>
         {selected.size > 0 && (
-          <button
-            onClick={convertSelected}
-            disabled={converting}
-            className="rounded-lg bg-emerald-600 px-4 py-2 text-sm font-medium hover:bg-emerald-500 disabled:opacity-50"
-          >
-            {converting ? "Konvertiere…" : `Auswahl konvertieren (${selected.size})`}
-          </button>
+          <>
+            <button
+              onClick={() => setBulkOpen(true)}
+              disabled={converting}
+              className="rounded-lg border border-neutral-700 px-3 py-2 text-sm hover:border-sky-500 disabled:opacity-50"
+            >
+              Metadaten bearbeiten ({selected.size})
+            </button>
+            <button
+              onClick={convertSelected}
+              disabled={converting}
+              className="rounded-lg bg-emerald-600 px-4 py-2 text-sm font-medium hover:bg-emerald-500 disabled:opacity-50"
+            >
+              {converting ? "Konvertiere…" : `Auswahl konvertieren (${selected.size})`}
+            </button>
+          </>
         )}
         <div className="ml-auto text-sm text-neutral-400">
           {stats.total} Titel · {stats.needConvert} zu konvertieren ·{" "}
@@ -351,6 +427,36 @@ export default function LibraryView({ settings, account, onOpenSettings }: Props
         </section>
       )}
 
+      {/* Filterleiste */}
+      {tracks.length > 0 && (
+        <div className="mb-3 flex flex-wrap items-center gap-2">
+          <FilterChip
+            active={filter === "all"}
+            onClick={() => setFilter("all")}
+            label={`Alle (${tracks.length})`}
+          />
+          <FilterChip
+            active={filter === "convert"}
+            onClick={() => setFilter("convert")}
+            label={`Zu konvertieren (${
+              tracks.filter((t) => !t.compat.compatible).length
+            })`}
+          />
+          <FilterChip
+            active={filter === "incomplete"}
+            onClick={() => setFilter("incomplete")}
+            label={`Metadaten unvollständig (${tracks.filter(isIncomplete).length})`}
+          />
+          <input
+            type="search"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Suchen…"
+            className="ml-auto w-56 rounded-lg border border-neutral-700 bg-neutral-800 px-3 py-1.5 text-sm outline-none focus:border-sky-500"
+          />
+        </div>
+      )}
+
       {/* Track-Liste / Drop-Zone */}
       <section
         className={`overflow-hidden rounded-xl border-2 border-dashed transition-colors ${
@@ -370,6 +476,10 @@ export default function LibraryView({ settings, account, onOpenSettings }: Props
               </p>
             )}
           </div>
+        ) : visibleTracks.length === 0 ? (
+          <div className="flex h-40 flex-col items-center justify-center gap-2 text-neutral-500">
+            <p className="text-sm">Keine Titel passen zum Filter.</p>
+          </div>
         ) : (
           <table className="w-full text-sm">
             <thead className="text-left text-neutral-400">
@@ -377,12 +487,13 @@ export default function LibraryView({ settings, account, onOpenSettings }: Props
                 <th className="w-10 px-4 py-3">
                   <input
                     type="checkbox"
-                    checked={selected.size === tracks.length && tracks.length > 0}
+                    checked={allVisibleSelected}
                     onChange={toggleSelectAll}
                     className="h-4 w-4 rounded border-neutral-600 bg-neutral-800"
                     aria-label="Alle auswählen"
                   />
                 </th>
+                <th className="w-14 px-4 py-3"></th>
                 <th className="px-4 py-3 font-medium">Titel</th>
                 <th className="px-4 py-3 font-medium">Artist</th>
                 <th className="px-4 py-3 font-medium">Album</th>
@@ -393,7 +504,7 @@ export default function LibraryView({ settings, account, onOpenSettings }: Props
               </tr>
             </thead>
             <tbody>
-              {tracks.map((t) => {
+              {visibleTracks.map((t) => {
                 const prog = progress[t.id];
                 const result = results[t.id];
                 const fromBandcamp = !!sync?.originById[t.id];
@@ -410,6 +521,9 @@ export default function LibraryView({ settings, account, onOpenSettings }: Props
                         className="h-4 w-4 rounded border-neutral-600 bg-neutral-800"
                         aria-label={`${t.file_name} auswählen`}
                       />
+                    </td>
+                    <td className="px-4 py-3">
+                      <CoverThumb path={t.path} hasCover={t.metadata.has_cover} />
                     </td>
                     <td
                       className="max-w-xs truncate px-4 py-3 text-neutral-100"
@@ -511,6 +625,37 @@ export default function LibraryView({ settings, account, onOpenSettings }: Props
             />
           );
         })()}
+
+      {bulkOpen && (
+        <BulkMetadataEditor
+          count={selected.size}
+          onClose={() => setBulkOpen(false)}
+          onApply={applyBulk}
+        />
+      )}
     </main>
+  );
+}
+
+function FilterChip({
+  active,
+  onClick,
+  label,
+}: {
+  active: boolean;
+  onClick: () => void;
+  label: string;
+}) {
+  return (
+    <button
+      onClick={onClick}
+      className={`rounded-full px-3 py-1.5 text-sm ring-1 transition-colors ${
+        active
+          ? "bg-sky-600/20 text-sky-200 ring-sky-500/40"
+          : "text-neutral-400 ring-neutral-700 hover:text-neutral-200 hover:ring-neutral-500"
+      }`}
+    >
+      {label}
+    </button>
   );
 }
