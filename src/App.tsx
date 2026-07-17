@@ -74,21 +74,28 @@ export default function App() {
         )}
       </header>
 
-      {ready &&
-        (view === "settings" ? (
-          <SettingsView
-            settings={settings}
-            onSettingsChange={updateSettings}
-            account={account}
-            onAccountChange={setAccount}
-          />
-        ) : (
-          <LibraryView
-            settings={settings}
-            account={account}
-            onOpenSettings={() => setView("settings")}
-          />
-        ))}
+      {ready && (
+        <>
+          {/* LibraryView bleibt gemountet, damit laufende Scans/Zustände beim
+              Öffnen der Einstellungen nicht unterbrochen oder neu gestartet
+              werden – sie wird nur ausgeblendet. */}
+          <div className={view === "settings" ? "hidden" : undefined}>
+            <LibraryView
+              settings={settings}
+              account={account}
+              onOpenSettings={() => setView("settings")}
+            />
+          </div>
+          {view === "settings" && (
+            <SettingsView
+              settings={settings}
+              onSettingsChange={updateSettings}
+              account={account}
+              onAccountChange={setAccount}
+            />
+          )}
+        </>
+      )}
     </div>
   );
 }
