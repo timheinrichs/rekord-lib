@@ -165,6 +165,7 @@ export interface DedupeDone {
 export interface DupCandidate {
   id: string;
   path: string;
+  name: string;
   codec: string;
   container: string;
   sample_rate: number;

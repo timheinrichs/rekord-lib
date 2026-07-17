@@ -216,6 +216,8 @@ pub struct ConvertResult {
 pub struct DupCandidate {
     pub id: String,
     pub path: String,
+    /// Anzeigename (Titel oder Dateiname) für die Namensähnlichkeit.
+    pub name: String,
     pub codec: String,
     pub container: String,
     pub sample_rate: u32,

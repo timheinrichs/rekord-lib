@@ -46,6 +46,11 @@ export default function DuplicatesModal({ onClose, onDeleted }: Props) {
     return { paths, bytes };
   }, [groups, keepById]);
 
+  // Eine Gruppe als „kein Duplikat" verwerfen (nur aus der Ansicht entfernen).
+  const dismissGroup = (id: string) => {
+    setGroups((gs) => gs.filter((g) => g.id !== id));
+  };
+
   const handleDelete = async () => {
     if (!toDelete.paths.length) return;
     setDeleting(true);
@@ -112,6 +117,18 @@ export default function DuplicatesModal({ onClose, onDeleted }: Props) {
                   key={g.id}
                   className="overflow-hidden rounded-xl border border-neutral-800"
                 >
+                  <div className="flex items-center justify-between border-b border-neutral-800 bg-neutral-900/60 px-4 py-2">
+                    <span className="text-xs text-neutral-500">
+                      {g.files.length} Dateien
+                    </span>
+                    <button
+                      onClick={() => dismissGroup(g.id)}
+                      title="Diese Gruppe ist kein Duplikat – aus der Liste entfernen"
+                      className="rounded-md border border-neutral-700 px-2 py-1 text-xs text-neutral-300 hover:border-amber-500 hover:text-amber-300"
+                    >
+                      Kein Duplikat
+                    </button>
+                  </div>
                   {g.files.map((f) => {
                     const keep = keepById[g.id] === f.id;
                     return (

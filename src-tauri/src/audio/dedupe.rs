@@ -9,13 +9,33 @@ use crate::audio::fingerprint;
 use crate::jobs::DedupeState;
 use crate::models::{DupCandidate, DuplicateFile, DuplicateGroup};
 
-/// Score-Obergrenze (0 = identisch, größer = unähnlicher), ab der ein Segment
-/// als Übereinstimmung gilt. Echte Treffer liegen deutlich darunter (< 1).
-const DUP_SCORE_MAX: f64 = 3.0;
-/// Mindestdauer (Sekunden) eines übereinstimmenden Segments.
-const DUP_MIN_SECS: f32 = 12.0;
-/// Toleranz der Spieldauer (Sekunden) für die Vorgruppierung.
-const DURATION_TOLERANCE: f64 = 3.0;
+// Kriterien für einen Duplikat-Match. Gemessen an echten Daten:
+// - dieselbe Aufnahme: Score ~3.3, Abdeckung ~1.0
+// - verschiedene Tracks: meist kein Segment; schwache Zufalls-Teilmatches
+//   (z. B. gleicher Beat) haben niedrige Abdeckung (~0.1). Genau diese haben
+//   über Union-Find fremde Tracks zu Riesengruppen verkettet.
+/// Score-Obergrenze eines Match-Segments (0 = identisch).
+const AUDIO_SCORE_MAX: f64 = 5.0;
+/// Mindest-Abdeckung: Anteil des kürzeren Fingerabdrucks, den das Segment abdeckt.
+const COVERAGE_MIN: f64 = 0.7;
+/// Namensähnlichkeit (Wort-Overlap 0..1), ab der Name+Länge allein ein Duplikat
+/// ergeben (kein Fingerprint nötig) – z. B. gleicher Name, anderes Format.
+const NAME_HIGH: f64 = 0.85;
+/// Namensähnlichkeit, die ein Audio-Match zusätzlich bestätigen muss.
+const NAME_MIN: f64 = 0.5;
+/// Nahezu identisches Audio gilt auch ohne Namensähnlichkeit als Duplikat.
+const IDENTICAL_SCORE: f64 = 3.0;
+const IDENTICAL_COVERAGE: f64 = 0.9;
+/// Dateiendungs-Tokens, die bei der Namensähnlichkeit ignoriert werden.
+const EXT_TOKENS: &[&str] = &[
+    "aiff", "aif", "wav", "flac", "alac", "m4a", "mp3", "aac", "ogg", "opus", "wma",
+];
+/// Toleranz der Spieldauer (Sekunden) für die Vorgruppierung. Duplikate haben
+/// (auch über Formate hinweg) nahezu identische Länge – eng halten spart massiv
+/// Fingerprints in großen Libraries.
+const DURATION_TOLERANCE: f64 = 1.0;
+/// Wie viele Dateien parallel fingerprintet werden (je ein ffmpeg-Prozess).
+const FP_CONCURRENCY: usize = 8;
 
 /// Fortschritt der Duplikatsuche (an das Frontend gestreamt).
 #[derive(Clone, Serialize)]
@@ -47,14 +67,62 @@ fn emit(app: &AppHandle, generation: u64, done: usize, total: usize, stage: &str
     );
 }
 
-/// Gelten zwei Fingerabdrücke als derselbe Track?
-fn is_duplicate(fp1: &[u32], fp2: &[u32], config: &Configuration) -> bool {
-    match match_fingerprints(fp1, fp2, config) {
-        Ok(segments) => segments
-            .iter()
-            .any(|s| s.score <= DUP_SCORE_MAX && s.duration(config) >= DUP_MIN_SECS),
-        Err(_) => false,
+/// Bestes Match-Segment als (Score, Abdeckung 0..1 des kürzeren Fingerabdrucks).
+fn best_match(fp1: &[u32], fp2: &[u32], config: &Configuration) -> Option<(f64, f64)> {
+    let segments = match_fingerprints(fp1, fp2, config).ok()?;
+    let min_len = fp1.len().min(fp2.len()).max(1) as f64;
+    segments
+        .iter()
+        .map(|s| (s.score, s.items_count as f64 / min_len))
+        .min_by(|a, b| a.0.partial_cmp(&b.0).unwrap_or(std::cmp::Ordering::Equal))
+}
+
+type Tokens = std::collections::HashSet<String>;
+
+/// Wort-Tokens eines Namens (klein, ohne 1-Zeichen-, reine-Zahlen- und
+/// Dateiendungs-Tokens). So sind "Song.aiff" und "Song.wav" namensgleich.
+fn name_tokens(name: &str) -> Tokens {
+    name.to_lowercase()
+        .split(|c: char| !c.is_alphanumeric())
+        .filter(|t| {
+            t.len() >= 2
+                && !t.chars().all(|c| c.is_numeric())
+                && !EXT_TOKENS.contains(t)
+        })
+        .map(|t| t.to_string())
+        .collect()
+}
+
+/// Jaccard-Ähnlichkeit zweier Token-Mengen (Schnitt/Vereinigung, 0..1).
+/// Bewusst nicht der Overlap-Koeffizient: sonst gilt eine Teilmenge (z. B.
+/// "Version I", dessen "I" als 1-Zeichen-Token wegfällt) als 100%-Treffer und
+/// verkettet verschiedene Versionen fälschlich.
+fn token_overlap(a: &Tokens, b: &Tokens) -> f64 {
+    let union = a.union(b).count();
+    if union == 0 {
+        return 0.0;
     }
+    a.intersection(b).count() as f64 / union as f64
+}
+
+/// Gelten zwei Dateien anhand des Audios als derselbe Track? Starker Match
+/// (Score + Abdeckung) UND ähnlicher Name – oder nahezu identisches Audio
+/// (dann reicht der Audio-Match allein, auch bei anderem Namen).
+fn audio_duplicate(
+    fp1: &[u32],
+    fp2: &[u32],
+    tok1: &Tokens,
+    tok2: &Tokens,
+    config: &Configuration,
+) -> bool {
+    let Some((score, coverage)) = best_match(fp1, fp2, config) else {
+        return false;
+    };
+    if score > AUDIO_SCORE_MAX || coverage < COVERAGE_MIN {
+        return false;
+    }
+    let identical = score <= IDENTICAL_SCORE && coverage >= IDENTICAL_COVERAGE;
+    identical || token_overlap(tok1, tok2) >= NAME_MIN
 }
 
 // --- Union-Find zum Zusammenfassen zusammenhängender Duplikate ---
@@ -101,65 +169,95 @@ pub async fn find_duplicates(
             .total_cmp(&candidates[b].duration_secs)
     });
 
-    // Nur Dateien fingerprinten, die mit mindestens einer anderen eine ähnliche
-    // Dauer teilen (Dateien mit einzigartiger Länge können keine Duplikate sein).
-    let mut needs_fp = vec![false; n];
+    // Wort-Tokens je Datei (für Namensähnlichkeit).
+    let tokens: Vec<Tokens> = candidates.iter().map(|c| name_tokens(&c.name)).collect();
+
+    // Kandidaten-Paare mit ähnlicher Länge (im nach Dauer sortierten Fenster).
+    let mut pairs: Vec<(usize, usize)> = Vec::new();
     for oi in 0..n {
         let i = order[oi];
-        if oi + 1 < n {
-            let j = order[oi + 1];
-            if (candidates[j].duration_secs - candidates[i].duration_secs).abs()
-                <= DURATION_TOLERANCE
-            {
-                needs_fp[i] = true;
-                needs_fp[j] = true;
-            }
-        }
-    }
-
-    // Fingerabdrücke berechnen (der teure Teil) mit Fortschritt.
-    let to_fp: Vec<usize> = (0..n).filter(|&i| needs_fp[i]).collect();
-    let total = to_fp.len();
-    let mut fps: Vec<Option<Vec<u32>>> = vec![None; n];
-    for (k, &i) in to_fp.iter().enumerate() {
-        if app.state::<DedupeState>().cancel.load(Ordering::SeqCst) {
-            return (vec![], true);
-        }
-        emit(app, generation, k, total, "Analysiere", true);
-        if let Ok(fp) = fingerprint::fingerprint(app, &candidates[i].path).await {
-            fps[i] = Some(fp);
-        }
-    }
-    emit(app, generation, total, total, "Vergleiche", true);
-
-    // Innerhalb der Dauer-Toleranz paarweise vergleichen und verbinden.
-    let config = fingerprint::config();
-    let mut parent: Vec<usize> = (0..n).collect();
-    for oi in 0..n {
-        if app.state::<DedupeState>().cancel.load(Ordering::SeqCst) {
-            return (vec![], true);
-        }
-        let i = order[oi];
-        let Some(fi) = fps[i].as_ref() else { continue };
         for oj in (oi + 1)..n {
             let j = order[oj];
             if candidates[j].duration_secs - candidates[i].duration_secs > DURATION_TOLERANCE {
                 break; // sortiert -> ab hier alle zu weit entfernt
             }
-            let Some(fj) = fps[j].as_ref() else { continue };
-            if is_duplicate(fi, fj, &config) {
-                uf_union(&mut parent, i, j);
+            pairs.push((i, j));
+        }
+    }
+
+    let mut parent: Vec<usize> = (0..n).collect();
+
+    // Tier 1: aussagekräftig gleicher Name + gleiche Länge = Duplikat, ganz ohne
+    // Fingerprint (z. B. gleicher Titel, anderes Format). Übrige gleich-lange
+    // Paare kommen in die Audio-Prüfung.
+    let mut needs_fp = vec![false; n];
+    let mut audio_pairs: Vec<(usize, usize)> = Vec::new();
+    for &(i, j) in &pairs {
+        let inter = tokens[i].intersection(&tokens[j]).count();
+        if inter >= 2 && token_overlap(&tokens[i], &tokens[j]) >= NAME_HIGH {
+            uf_union(&mut parent, i, j);
+        } else {
+            needs_fp[i] = true;
+            needs_fp[j] = true;
+            audio_pairs.push((i, j));
+        }
+    }
+
+    // Fingerabdrücke berechnen (der teure Teil) – parallel mit Fortschritt.
+    // Nur für Dateien nötig, die eine gleich lange, aber anders benannte Datei
+    // haben (Tier-1-Treffer brauchen keinen Fingerprint).
+    let to_fp: Vec<usize> = (0..n).filter(|&i| needs_fp[i]).collect();
+    let total = to_fp.len();
+    let mut fps: Vec<Option<Vec<u32>>> = vec![None; n];
+    let mut done = 0usize;
+    emit(app, generation, 0, total, "Analysiere", true);
+    for chunk in to_fp.chunks(FP_CONCURRENCY) {
+        if app.state::<DedupeState>().cancel.load(Ordering::SeqCst) {
+            return (vec![], true);
+        }
+        // Ganzen Chunk gleichzeitig dekodieren/fingerprinten.
+        let handles: Vec<(usize, _)> = chunk
+            .iter()
+            .map(|&i| {
+                let app2 = app.clone();
+                let path = candidates[i].path.clone();
+                (
+                    i,
+                    tauri::async_runtime::spawn(async move {
+                        fingerprint::fingerprint(&app2, &path).await.ok()
+                    }),
+                )
+            })
+            .collect();
+        for (i, handle) in handles {
+            if let Ok(Some(fp)) = handle.await {
+                fps[i] = Some(fp);
             }
+            done += 1;
+            emit(app, generation, done, total, "Analysiere", true);
+        }
+    }
+    emit(app, generation, total, total, "Vergleiche", true);
+
+    // Tier 2: gleich lange, aber anders benannte Paare per Audio prüfen.
+    let config = fingerprint::config();
+    for &(i, j) in &audio_pairs {
+        if app.state::<DedupeState>().cancel.load(Ordering::SeqCst) {
+            return (vec![], true);
+        }
+        let (Some(fi), Some(fj)) = (fps[i].as_ref(), fps[j].as_ref()) else {
+            continue;
+        };
+        if audio_duplicate(fi, fj, &tokens[i], &tokens[j], &config) {
+            uf_union(&mut parent, i, j);
         }
     }
 
     // Komponenten mit >= 2 Mitgliedern zu Gruppen zusammenfassen.
     let mut groups_map: HashMap<usize, Vec<usize>> = HashMap::new();
     for i in 0..n {
-        if fps[i].is_some() {
-            let root = uf_find(&mut parent, i);
-            groups_map.entry(root).or_default().push(i);
-        }
+        let root = uf_find(&mut parent, i);
+        groups_map.entry(root).or_default().push(i);
     }
 
     let mut groups: Vec<DuplicateGroup> = Vec::new();

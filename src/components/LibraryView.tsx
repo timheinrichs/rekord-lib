@@ -457,6 +457,7 @@ export default function LibraryView({ settings, account, onOpenSettings }: Props
     const candidates = tracks.map((t) => ({
       id: t.id,
       path: t.path,
+      name: edits[t.id]?.metadata.title || t.metadata.title || t.file_name,
       codec: t.audio.codec,
       container: t.audio.container,
       sample_rate: t.audio.sample_rate,
@@ -466,7 +467,7 @@ export default function LibraryView({ settings, account, onOpenSettings }: Props
       compatible: t.compat.compatible,
     }));
     void startDedupe(candidates);
-  }, [tracks]);
+  }, [tracks, edits]);
 
   // Vorhandene Werte je Feld als Auswahl-Vorschläge (aus Tracks + Edits).
   const fieldOptions = useMemo(() => {
