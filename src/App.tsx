@@ -41,7 +41,7 @@ export default function App() {
   }, []);
 
   return (
-    <div className="min-h-screen bg-neutral-950 text-neutral-100">
+    <div className="min-h-screen bg-bg font-mono text-fg">
       {ready && (
         <>
           {/* LibraryView bleibt gemountet (inkl. eigenem Header), damit laufende
@@ -61,7 +61,7 @@ export default function App() {
                 right={
                   <button
                     onClick={() => setView("library")}
-                    className="shrink-0 rounded-lg border border-neutral-700 px-4 py-2 text-sm font-medium hover:border-sky-500"
+                    className="shrink-0 rounded-lg border border-border-strong px-4 py-2 text-sm font-medium hover:border-accent-500"
                   >
                     Fertig
                   </button>

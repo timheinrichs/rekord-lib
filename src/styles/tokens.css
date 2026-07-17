@@ -1,0 +1,124 @@
+/* =========================================================================
+   rekord-lib — Design Tokens
+   Tailwind v4 (CSS-first). Import this once, e.g. in src/main.css:
+     @import "./tokens.css";
+   Utilities werden automatisch generiert: bg-accent-500, text-fg,
+   border-border, rounded-lg, font-mono, …
+   Für Tailwind v3 siehe tailwind.config.js (spiegelt dieselben Werte).
+   ========================================================================= */
+
+@import "tailwindcss";
+
+/* Dark ist der Default (custom variant, damit dark: Utilities greifen) */
+@custom-variant dark (&:where([data-theme="dark"], [data-theme="dark"] *));
+
+@theme {
+  /* ---- Typografie ---------------------------------------------------- */
+  --font-sans: "Inter", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, "SFMono-Regular", "Menlo", monospace;
+
+  /* ---- Marken-Akzent (Violett – aus dem Logo) ----------------------- */
+  --color-accent-50:  #EEEDFC;
+  --color-accent-100: #DAD7F8;
+  --color-accent-200: #BCB6F1;
+  --color-accent-300: #9C93E9;
+  --color-accent-400: #8177E0;
+  --color-accent-500: #6A5FD6;   /* Basis / Wellenform */
+  --color-accent-600: #574BC0;   /* primäre Aktion (Hover 500) */
+  --color-accent-700: #473C9E;
+  --color-accent-800: #3A327E;
+  --color-accent-900: #282160;
+  --color-accent-950: #191340;
+
+  /* ---- Graphite (kühle Neutraltöne, dark-first) --------------------- */
+  --color-graphite-0:   #FFFFFF;
+  --color-graphite-50:  #F6F6F8;
+  --color-graphite-100: #ECECEF;
+  --color-graphite-200: #D9D9DF;
+  --color-graphite-300: #B7B7C0;
+  --color-graphite-400: #8C8C98;
+  --color-graphite-500: #666671;
+  --color-graphite-600: #4A4A55;
+  --color-graphite-700: #343440;
+  --color-graphite-750: #292933;
+  --color-graphite-800: #201F28;
+  --color-graphite-850: #17161D;
+  --color-graphite-900: #100F14;   /* App-Hintergrund dark */
+  --color-graphite-950: #09090C;
+
+  /* ---- Status (an App-Zustände gekoppelt) --------------------------- */
+  --color-success-500: #22B27A;    /* kompatibel / bereit           */
+  --color-warning-500: #F5A623;    /* Konvertierung nötig / FLAC-Hinweis */
+  --color-danger-500:  #E5484D;    /* inkompatibel / E-8305-Risiko  */
+  --color-info-500:    #3B82F6;
+
+  /* ---- Semantische, theme-abhängige Farben (via Variablen) ---------- */
+  --color-bg:            var(--bg);
+  --color-surface:       var(--surface);
+  --color-surface-2:     var(--surface-2);
+  --color-border:        var(--border);
+  --color-border-strong: var(--border-strong);
+  --color-fg:            var(--fg);
+  --color-fg-muted:      var(--fg-muted);
+  --color-fg-subtle:     var(--fg-subtle);
+
+  /* ---- Radius ------------------------------------------------------- */
+  --radius-sm: 4px;
+  --radius-md: 8px;
+  --radius-lg: 12px;
+  --radius-xl: 16px;
+  --radius-2xl: 20px;
+
+  /* ---- Elevation (dezent, für dunkle UI abgestimmt) ----------------- */
+  --shadow-sm: 0 1px 2px rgb(0 0 0 / 0.30);
+  --shadow-md: 0 4px 12px rgb(0 0 0 / 0.35);
+  --shadow-lg: 0 12px 32px rgb(0 0 0 / 0.45);
+}
+
+/* =========================================================================
+   Theme-Variablen — Dark ist Standard.
+   Umschalten über <html data-theme="light|dark">.
+   ========================================================================= */
+:root,
+[data-theme="dark"] {
+  --bg:            #100F14;   /* graphite-900 */
+  --surface:       #17161D;   /* graphite-850 – Panels/Cards */
+  --surface-2:     #201F28;   /* graphite-800 – erhöhte Fläche */
+  --border:        #292933;   /* graphite-750 */
+  --border-strong: #343440;   /* graphite-700 */
+  --fg:            #F6F6F8;   /* graphite-50 */
+  --fg-muted:      #B7B7C0;   /* graphite-300 */
+  --fg-subtle:     #8C8C98;   /* graphite-400 */
+
+  --bg-success: #123026; --fg-success: #4FD6A0;
+  --bg-warning: #3A2A0E; --fg-warning: #F7B84E;
+  --bg-danger:  #3A1518; --fg-danger:  #F0696D;
+  --bg-accent:  #241F52; --fg-accent:  #9C93E9;
+
+  color-scheme: dark;
+}
+
+[data-theme="light"] {
+  --bg:            #F6F6F8;
+  --surface:       #FFFFFF;
+  --surface-2:     #ECECEF;
+  --border:        #D9D9DF;
+  --border-strong: #B7B7C0;
+  --fg:            #100F14;
+  --fg-muted:      #4A4A55;
+  --fg-subtle:     #666671;
+
+  --bg-success: #E6F6EF; --fg-success: #10794F;
+  --bg-warning: #FCF0D9; --fg-warning: #7A4E06;
+  --bg-danger:  #FCEBEC; --fg-danger:  #A62529;
+  --bg-accent:  #EEEDFC; --fg-accent:  #473C9E;
+
+  color-scheme: light;
+}
+
+/* Grundlayer */
+@layer base {
+  html { font-family: var(--font-sans); }
+  body { background: var(--bg); color: var(--fg); }
+  code, kbd, pre, samp { font-family: var(--font-mono); }
+}

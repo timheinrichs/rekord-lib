@@ -61,7 +61,7 @@ export default function CoverThumb({ path, hasCover }: Props) {
   return (
     <div
       ref={ref}
-      className="flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded bg-neutral-800"
+      className="flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded bg-surface-2"
     >
       {url ? (
         <img src={url} className="h-full w-full object-cover" alt="" />
@@ -84,7 +84,7 @@ function MusicIcon() {
       strokeWidth="2"
       strokeLinecap="round"
       strokeLinejoin="round"
-      className="text-neutral-600"
+      className="text-fg-subtle"
       aria-hidden="true"
     >
       <path d="M9 18V5l12-2v13" />

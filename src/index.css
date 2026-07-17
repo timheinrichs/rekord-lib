@@ -1,8 +1,5 @@
-@import "tailwindcss";
-
-:root {
-  color-scheme: dark;
-}
+/* Marken-Design-Tokens (Tailwind v4, single source of truth). */
+@import "./styles/tokens.css";
 
 html,
 body,
@@ -11,8 +8,7 @@ body,
   margin: 0;
 }
 
-body {
-  font-family: Inter, Avenir, Helvetica, Arial, sans-serif;
+html {
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 }

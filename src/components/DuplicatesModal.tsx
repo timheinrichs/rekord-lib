@@ -77,19 +77,19 @@ export default function DuplicatesModal({ onClose, onDeleted }: Props) {
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
-      <div className="flex max-h-[90vh] w-full max-w-4xl flex-col overflow-hidden rounded-2xl border border-neutral-800 bg-neutral-900 shadow-2xl">
-        <header className="flex items-center justify-between border-b border-neutral-800 px-5 py-3">
+      <div className="flex max-h-[90vh] w-full max-w-4xl flex-col overflow-hidden rounded-2xl border border-border bg-surface shadow-2xl">
+        <header className="flex items-center justify-between border-b border-border px-5 py-3">
           <h2 className="text-sm font-medium">
             Duplikate
             {!loading && groups.length > 0 && (
-              <span className="ml-2 text-neutral-500">
+              <span className="ml-2 text-fg-subtle">
                 {groups.length} Gruppe{groups.length === 1 ? "" : "n"}
               </span>
             )}
           </h2>
           <button
             onClick={onClose}
-            className="text-neutral-400 hover:text-neutral-100"
+            className="text-fg-muted hover:text-fg"
           >
             ✕
           </button>
@@ -97,17 +97,17 @@ export default function DuplicatesModal({ onClose, onDeleted }: Props) {
 
         <div className="flex-1 overflow-y-auto p-5">
           {loading ? (
-            <p className="py-16 text-center text-sm text-neutral-400">Lädt…</p>
+            <p className="py-16 text-center text-sm text-fg-muted">Lädt…</p>
           ) : groups.length === 0 ? (
-            <div className="flex flex-col items-center gap-2 py-16 text-center text-neutral-400">
-              <p className="text-lg text-neutral-200">Keine Duplikate gefunden</p>
+            <div className="flex flex-col items-center gap-2 py-16 text-center text-fg-muted">
+              <p className="text-lg text-fg">Keine Duplikate gefunden</p>
               <p className="text-sm">
                 Alle Tracks in der Library sind eindeutig.
               </p>
             </div>
           ) : (
             <div className="flex flex-col gap-4">
-              <p className="text-xs text-neutral-500">
+              <p className="text-xs text-fg-subtle">
                 Wähle pro Gruppe die Datei, die du behalten möchtest. Alle
                 anderen werden in den Papierkorb verschoben. Vorausgewählt ist
                 die höchste Qualität.
@@ -115,16 +115,16 @@ export default function DuplicatesModal({ onClose, onDeleted }: Props) {
               {groups.map((g) => (
                 <div
                   key={g.id}
-                  className="overflow-hidden rounded-xl border border-neutral-800"
+                  className="overflow-hidden rounded-xl border border-border"
                 >
-                  <div className="flex items-center justify-between border-b border-neutral-800 bg-neutral-900/60 px-4 py-2">
-                    <span className="text-xs text-neutral-500">
+                  <div className="flex items-center justify-between border-b border-border bg-surface px-4 py-2">
+                    <span className="text-xs text-fg-subtle">
                       {g.files.length} Dateien
                     </span>
                     <button
                       onClick={() => dismissGroup(g.id)}
                       title="Diese Gruppe ist kein Duplikat – aus der Liste entfernen"
-                      className="rounded-md border border-neutral-700 px-2 py-1 text-xs text-neutral-300 hover:border-amber-500 hover:text-amber-300"
+                      className="rounded-md border border-border-strong px-2 py-1 text-xs text-fg-muted hover:border-warning-500 hover:text-warning-500"
                     >
                       Kein Duplikat
                     </button>
@@ -134,8 +134,8 @@ export default function DuplicatesModal({ onClose, onDeleted }: Props) {
                     return (
                       <label
                         key={f.id}
-                        className={`flex cursor-pointer items-center gap-3 border-b border-neutral-800/60 px-4 py-3 last:border-0 ${
-                          keep ? "bg-emerald-500/5" : "hover:bg-neutral-800/30"
+                        className={`flex cursor-pointer items-center gap-3 border-b border-border px-4 py-3 last:border-0 ${
+                          keep ? "bg-success-500/5" : "hover:bg-surface-2"
                         }`}
                       >
                         <input
@@ -150,13 +150,13 @@ export default function DuplicatesModal({ onClose, onDeleted }: Props) {
                         <div className="min-w-0 flex-1">
                           <p
                             className={`truncate text-sm ${
-                              keep ? "text-neutral-100" : "text-neutral-400"
+                              keep ? "text-fg" : "text-fg-muted"
                             }`}
                             title={f.path}
                           >
                             {f.file_name}
                           </p>
-                          <p className="truncate text-xs text-neutral-500">
+                          <p className="truncate text-xs text-fg-subtle">
                             {f.codec.toUpperCase()} ·{" "}
                             {formatSampleRate(f.sample_rate)}
                             {f.bits_per_sample > 0 &&
@@ -168,11 +168,11 @@ export default function DuplicatesModal({ onClose, onDeleted }: Props) {
                         <div className="flex shrink-0 items-center gap-2">
                           <QualityBadge f={f} />
                           {keep ? (
-                            <span className="rounded-full bg-emerald-500/15 px-2 py-0.5 text-xs text-emerald-300 ring-1 ring-emerald-500/30">
+                            <span className="rounded-full bg-success-500/15 px-2 py-0.5 text-xs text-success-500 ring-1 ring-success-500/30">
                               Behalten
                             </span>
                           ) : (
-                            <span className="rounded-full bg-red-500/15 px-2 py-0.5 text-xs text-red-300 ring-1 ring-red-500/30">
+                            <span className="rounded-full bg-danger-500/15 px-2 py-0.5 text-xs text-danger-500 ring-1 ring-danger-500/30">
                               Löschen
                             </span>
                           )}
@@ -187,28 +187,28 @@ export default function DuplicatesModal({ onClose, onDeleted }: Props) {
         </div>
 
         {!loading && groups.length > 0 && (
-          <footer className="flex items-center gap-3 border-t border-neutral-800 px-5 py-3">
-            <div className="mr-auto text-sm text-neutral-400">
+          <footer className="flex items-center gap-3 border-t border-border px-5 py-3">
+            <div className="mr-auto text-sm text-fg-muted">
               {toDelete.paths.length} Datei(en) löschen ·{" "}
-              <span className="text-emerald-300">
+              <span className="text-success-500">
                 {formatBytes(toDelete.bytes)} frei
               </span>
             </div>
             {error && (
-              <span className="max-w-sm truncate text-xs text-red-300" title={error}>
+              <span className="max-w-sm truncate text-xs text-danger-500" title={error}>
                 {error}
               </span>
             )}
             <button
               onClick={onClose}
-              className="rounded-lg border border-neutral-700 px-4 py-2 text-sm hover:border-neutral-500"
+              className="rounded-lg border border-border-strong px-4 py-2 text-sm hover:border-border-strong"
             >
               Schließen
             </button>
             <button
               onClick={handleDelete}
               disabled={deleting || toDelete.paths.length === 0}
-              className="rounded-lg bg-red-600 px-4 py-2 text-sm font-medium hover:bg-red-500 disabled:opacity-40"
+              className="rounded-lg bg-danger-500 px-4 py-2 text-sm font-medium hover:bg-danger-500/90 disabled:opacity-40"
             >
               {deleting
                 ? "Verschiebe…"
@@ -223,11 +223,11 @@ export default function DuplicatesModal({ onClose, onDeleted }: Props) {
 
 function QualityBadge({ f }: { f: DuplicateFile }) {
   return f.lossless ? (
-    <span className="rounded-full bg-sky-500/15 px-2 py-0.5 text-xs text-sky-300 ring-1 ring-sky-500/30">
+    <span className="rounded-full bg-accent-500/15 px-2 py-0.5 text-xs text-accent-300 ring-1 ring-accent-500/30">
       Verlustfrei
     </span>
   ) : (
-    <span className="rounded-full bg-neutral-700/40 px-2 py-0.5 text-xs text-neutral-400 ring-1 ring-neutral-600/40">
+    <span className="rounded-full bg-surface-2 px-2 py-0.5 text-xs text-fg-muted ring-1 ring-border-strong">
       Verlustbehaftet
     </span>
   );

@@ -63,21 +63,21 @@ export default function BulkMetadataEditor({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
-      <div className="flex w-full max-w-lg flex-col overflow-hidden rounded-2xl border border-neutral-800 bg-neutral-900 shadow-2xl">
-        <header className="flex items-center justify-between border-b border-neutral-800 px-5 py-3">
+      <div className="flex w-full max-w-lg flex-col overflow-hidden rounded-2xl border border-border bg-surface shadow-2xl">
+        <header className="flex items-center justify-between border-b border-border px-5 py-3">
           <h2 className="text-sm font-medium">
             Metadaten bearbeiten · {count} Titel
           </h2>
           <button
             onClick={onClose}
-            className="text-neutral-400 hover:text-neutral-100"
+            className="text-fg-muted hover:text-fg"
           >
             ✕
           </button>
         </header>
 
         <div className="flex flex-col gap-3 p-5">
-          <p className="text-xs text-neutral-500">
+          <p className="text-xs text-fg-subtle">
             Häkchen setzen, um ein Feld für alle ausgewählten Titel zu
             überschreiben. Leeres Feld entfernt den Wert.
           </p>
@@ -93,10 +93,10 @@ export default function BulkMetadataEditor({
                     onChange={(e) =>
                       setEnabled((s) => ({ ...s, [key]: e.target.checked }))
                     }
-                    className="h-4 w-4 rounded border-neutral-600 bg-neutral-800"
+                    className="h-4 w-4 rounded border-border-strong bg-surface-2"
                   />
                   <span
-                    className={enabled[key] ? "text-neutral-200" : "text-neutral-500"}
+                    className={enabled[key] ? "text-fg" : "text-fg-subtle"}
                   >
                     {label}
                   </span>
@@ -108,7 +108,7 @@ export default function BulkMetadataEditor({
                   onChange={(e) =>
                     setValues((s) => ({ ...s, [key]: e.target.value }))
                   }
-                  className="flex-1 rounded-lg border border-neutral-700 bg-neutral-800 px-3 py-2 text-sm outline-none focus:border-sky-500 disabled:opacity-40"
+                  className="flex-1 rounded-lg border border-border-strong bg-surface-2 px-3 py-2 text-sm outline-none focus:border-accent-500 disabled:opacity-40"
                 />
                 {listId && (
                   <datalist id={listId}>
@@ -122,17 +122,17 @@ export default function BulkMetadataEditor({
           })}
         </div>
 
-        <footer className="flex justify-end gap-3 border-t border-neutral-800 px-5 py-3">
+        <footer className="flex justify-end gap-3 border-t border-border px-5 py-3">
           <button
             onClick={onClose}
-            className="rounded-lg border border-neutral-700 px-4 py-2 text-sm hover:border-neutral-500"
+            className="rounded-lg border border-border-strong px-4 py-2 text-sm hover:border-border-strong"
           >
             Abbrechen
           </button>
           <button
             onClick={handleApply}
             disabled={!anyEnabled}
-            className="rounded-lg bg-emerald-600 px-4 py-2 text-sm font-medium hover:bg-emerald-500 disabled:opacity-40"
+            className="rounded-lg bg-accent-600 px-4 py-2 text-sm font-medium hover:bg-accent-500 disabled:opacity-40"
           >
             Übernehmen
           </button>

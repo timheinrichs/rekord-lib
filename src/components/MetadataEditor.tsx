@@ -177,14 +177,14 @@ export default function MetadataEditor({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
-      <div className="flex max-h-[90vh] w-full max-w-3xl flex-col overflow-hidden rounded-2xl border border-neutral-800 bg-neutral-900 shadow-2xl">
-        <header className="flex items-center justify-between border-b border-neutral-800 px-5 py-3">
+      <div className="flex max-h-[90vh] w-full max-w-3xl flex-col overflow-hidden rounded-2xl border border-border bg-surface shadow-2xl">
+        <header className="flex items-center justify-between border-b border-border px-5 py-3">
           <h2 className="truncate text-sm font-medium" title={track.file_name}>
             Metadaten · {track.file_name}
           </h2>
           <button
             onClick={onClose}
-            className="text-neutral-400 hover:text-neutral-100"
+            className="text-fg-muted hover:text-fg"
           >
             ✕
           </button>
@@ -201,17 +201,17 @@ export default function MetadataEditor({
               const listId = opts.length ? `edit-dl-${key}` : undefined;
               return (
                 <label key={key} className="flex flex-col gap-1 text-sm">
-                  <span className="text-neutral-400">
+                  <span className="text-fg-muted">
                     {label}
-                    {required && <span className="ml-0.5 text-rose-400">*</span>}
+                    {required && <span className="ml-0.5 text-danger-500">*</span>}
                   </span>
                   <div className="flex gap-2">
                     <input
                       value={form[key]}
                       list={listId}
                       onChange={(e) => set(key, e.target.value)}
-                      className={`flex-1 rounded-lg border bg-neutral-800 px-3 py-2 outline-none focus:border-sky-500 ${
-                        missing ? "border-rose-500/60" : "border-neutral-700"
+                      className={`flex-1 rounded-lg border bg-surface-2 px-3 py-2 outline-none focus:border-accent-500 ${
+                        missing ? "border-danger-500/60" : "border-border-strong"
                       }`}
                     />
                     {listId && (
@@ -225,7 +225,7 @@ export default function MetadataEditor({
                       <button
                         onClick={() => set(key, guess!)}
                         title={`Vorschlag übernehmen: ${guess}`}
-                        className="max-w-[40%] truncate rounded-lg border border-sky-600/40 bg-sky-600/10 px-2 py-1 text-xs text-sky-300 hover:bg-sky-600/20"
+                        className="max-w-[40%] truncate rounded-lg border border-accent-600/40 bg-accent-600/10 px-2 py-1 text-xs text-accent-300 hover:bg-accent-600/20"
                       >
                         ↩ {guess}
                       </button>
@@ -238,14 +238,14 @@ export default function MetadataEditor({
 
           {/* Cover */}
           <div className="flex flex-col gap-3">
-            <span className="text-sm text-neutral-400">Cover</span>
-            <div className="flex aspect-square w-full items-center justify-center overflow-hidden rounded-lg border border-neutral-700 bg-neutral-800">
+            <span className="text-sm text-fg-muted">Cover</span>
+            <div className="flex aspect-square w-full items-center justify-center overflow-hidden rounded-lg border border-border-strong bg-surface-2">
               {coverLoading ? (
-                <span className="text-xs text-neutral-500">Lädt…</span>
+                <span className="text-xs text-fg-subtle">Lädt…</span>
               ) : coverUrl ? (
                 <img src={coverUrl} className="h-full w-full object-cover" alt="Cover" />
               ) : (
-                <span className="text-xs text-neutral-500">Kein Cover</span>
+                <span className="text-xs text-fg-subtle">Kein Cover</span>
               )}
             </div>
             <div className="flex flex-col gap-1 text-sm">
@@ -280,8 +280,8 @@ export default function MetadataEditor({
         </div>
 
         {/* MusicBrainz-Kandidaten */}
-        <div className="border-t border-neutral-800 px-5 py-3">
-          <p className="mb-2 text-xs text-neutral-400">
+        <div className="border-t border-border px-5 py-3">
+          <p className="mb-2 text-xs text-fg-muted">
             {loading
               ? "Suche Vorschläge…"
               : suggestions?.candidates.length
@@ -293,18 +293,18 @@ export default function MetadataEditor({
               <button
                 key={i}
                 onClick={() => applyCandidate(c)}
-                className="flex items-center justify-between gap-3 rounded-lg border border-neutral-800 px-3 py-2 text-left text-sm hover:border-sky-600 hover:bg-sky-600/5"
+                className="flex items-center justify-between gap-3 rounded-lg border border-border px-3 py-2 text-left text-sm hover:border-accent-600 hover:bg-accent-600/5"
               >
                 <span className="truncate">
-                  <span className="text-neutral-100">{c.artist ?? "?"}</span>
-                  <span className="text-neutral-500"> – </span>
-                  <span className="text-neutral-100">{c.title ?? "?"}</span>
+                  <span className="text-fg">{c.artist ?? "?"}</span>
+                  <span className="text-fg-subtle"> – </span>
+                  <span className="text-fg">{c.title ?? "?"}</span>
                   {c.album && (
-                    <span className="text-neutral-500"> · {c.album}</span>
+                    <span className="text-fg-subtle"> · {c.album}</span>
                   )}
-                  {c.year && <span className="text-neutral-500"> ({c.year})</span>}
+                  {c.year && <span className="text-fg-subtle"> ({c.year})</span>}
                 </span>
-                <span className="shrink-0 rounded-full bg-neutral-800 px-2 py-0.5 text-xs text-neutral-400">
+                <span className="shrink-0 rounded-full bg-surface-2 px-2 py-0.5 text-xs text-fg-muted">
                   {c.score}%
                 </span>
               </button>
@@ -312,22 +312,22 @@ export default function MetadataEditor({
           </div>
         </div>
 
-        <footer className="flex items-center justify-end gap-3 border-t border-neutral-800 px-5 py-3">
+        <footer className="flex items-center justify-end gap-3 border-t border-border px-5 py-3">
           {!canSave && (
-            <span className="mr-auto text-xs text-rose-400">
+            <span className="mr-auto text-xs text-danger-500">
               Titel und Artist sind Pflichtfelder.
             </span>
           )}
           <button
             onClick={onClose}
-            className="rounded-lg border border-neutral-700 px-4 py-2 text-sm hover:border-neutral-500"
+            className="rounded-lg border border-border-strong px-4 py-2 text-sm hover:border-border-strong"
           >
             Abbrechen
           </button>
           <button
             onClick={handleSave}
             disabled={!canSave}
-            className="rounded-lg bg-emerald-600 px-4 py-2 text-sm font-medium hover:bg-emerald-500 disabled:opacity-40"
+            className="rounded-lg bg-accent-600 px-4 py-2 text-sm font-medium hover:bg-accent-500 disabled:opacity-40"
           >
             Bestätigen
           </button>

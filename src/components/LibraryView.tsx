@@ -526,7 +526,7 @@ export default function LibraryView({ settings, account, onOpenSettings }: Props
   const gearButton = (
     <button
       onClick={onOpenSettings}
-      className="shrink-0 rounded-lg border border-neutral-700 p-2 text-neutral-300 hover:border-sky-500 hover:text-sky-400"
+      className="shrink-0 rounded-lg border border-border-strong p-2 text-fg-muted hover:border-accent-500 hover:text-accent-400"
       title="Einstellungen"
       aria-label="Einstellungen"
     >
@@ -540,14 +540,14 @@ export default function LibraryView({ settings, account, onOpenSettings }: Props
       <button
         onClick={() => void rescan()}
         disabled={loading || converting || dedupeRunning}
-        className="rounded-lg border border-neutral-700 px-3 py-2 text-sm hover:border-sky-500 disabled:opacity-50"
+        className="rounded-lg border border-border-strong px-3 py-2 text-sm hover:border-accent-500 disabled:opacity-50"
       >
         {loading ? "Scanne…" : "Neu scannen"}
       </button>
       <button
         onClick={() => void runSync()}
         disabled={!account || syncing || loading}
-        className="rounded-lg border border-neutral-700 px-3 py-2 text-sm hover:border-teal-500 disabled:opacity-50"
+        className="rounded-lg border border-border-strong px-3 py-2 text-sm hover:border-accent-500 disabled:opacity-50"
         title={
           account
             ? "Library mit Bandcamp-Sammlung abgleichen"
@@ -559,7 +559,7 @@ export default function LibraryView({ settings, account, onOpenSettings }: Props
       <button
         onClick={() => void findDuplicates()}
         disabled={loading || converting || dedupeRunning || tracks.length < 2}
-        className="rounded-lg border border-neutral-700 px-3 py-2 text-sm hover:border-fuchsia-500 disabled:opacity-50"
+        className="rounded-lg border border-border-strong px-3 py-2 text-sm hover:border-warning-500 disabled:opacity-50"
         title="Doppelte Tracks über alle Formate finden"
       >
         {dedupeRunning ? "Suche Duplikate…" : "Duplikate suchen"}
@@ -569,14 +569,14 @@ export default function LibraryView({ settings, account, onOpenSettings }: Props
           <button
             onClick={() => setBulkOpen(true)}
             disabled={converting}
-            className="rounded-lg border border-neutral-700 px-3 py-2 text-sm hover:border-sky-500 disabled:opacity-50"
+            className="rounded-lg border border-border-strong px-3 py-2 text-sm hover:border-accent-500 disabled:opacity-50"
           >
             Metadaten bearbeiten ({selected.size})
           </button>
           <button
             onClick={convertSelected}
             disabled={converting}
-            className="rounded-lg bg-emerald-600 px-4 py-2 text-sm font-medium hover:bg-emerald-500 disabled:opacity-50"
+            className="rounded-lg bg-accent-600 px-4 py-2 text-sm font-medium hover:bg-accent-500 disabled:opacity-50"
           >
             {converting ? "Konvertiere…" : `Auswahl konvertieren (${selected.size})`}
           </button>
@@ -592,14 +592,14 @@ export default function LibraryView({ settings, account, onOpenSettings }: Props
       <>
         <AppHeader onTitleClick={scrollToTop} right={gearButton} />
         <main className="mx-auto max-w-6xl px-6 py-16">
-          <div className="flex flex-col items-center gap-3 rounded-xl border border-dashed border-neutral-800 bg-neutral-900/20 py-20 text-center text-neutral-500">
-            <p className="text-lg text-neutral-300">Kein Library-Ordner gewählt</p>
+          <div className="flex flex-col items-center gap-3 rounded-xl border border-dashed border-border bg-surface py-20 text-center text-fg-subtle">
+            <p className="text-lg text-fg-muted">Kein Library-Ordner gewählt</p>
             <p className="text-sm">
               Lege in den Einstellungen fest, wo deine Sammlung liegt.
             </p>
             <button
               onClick={onOpenSettings}
-              className="mt-2 rounded-lg bg-sky-600 px-4 py-2 text-sm font-medium hover:bg-sky-500"
+              className="mt-2 rounded-lg bg-accent-600 px-4 py-2 text-sm font-medium hover:bg-accent-500"
             >
               Einstellungen öffnen
             </button>
@@ -619,24 +619,24 @@ export default function LibraryView({ settings, account, onOpenSettings }: Props
           showBar ? "mb-4 max-h-24 opacity-100" : "mb-0 max-h-0 opacity-0"
         }`}
       >
-        <div className="rounded-lg border border-neutral-800 bg-neutral-900/40 px-4 py-3">
+        <div className="rounded-lg border border-border bg-surface px-4 py-3">
           <div className="mb-2 flex items-center gap-3 text-sm">
-            <span className="text-neutral-300">{progressBar.label}</span>
-            <span className="text-neutral-500">
+            <span className="text-fg-muted">{progressBar.label}</span>
+            <span className="text-fg-subtle">
               {progressBar.total > 0
                 ? `${progressBar.done} / ${progressBar.total}`
                 : ""}
             </span>
             <button
               onClick={progressBar.cancel}
-              className="ml-auto rounded-md border border-neutral-700 px-2 py-0.5 text-xs text-neutral-300 hover:border-red-500 hover:text-red-300"
+              className="ml-auto rounded-md border border-border-strong px-2 py-0.5 text-xs text-fg-muted hover:border-danger-500 hover:text-danger-500"
             >
               Abbrechen
             </button>
           </div>
-          <div className="h-2 w-full overflow-hidden rounded-full bg-neutral-800">
+          <div className="h-2 w-full overflow-hidden rounded-full bg-surface-2">
             <div
-              className="h-full rounded-full bg-sky-500 transition-all duration-300 ease-out"
+              className="h-full rounded-full bg-accent-500 transition-all duration-300 ease-out"
               style={{ width: `${progressBar.pct}%` }}
             />
           </div>
@@ -644,15 +644,15 @@ export default function LibraryView({ settings, account, onOpenSettings }: Props
       </div>
 
       {error && (
-        <div className="mb-4 rounded-lg border border-red-500/30 bg-red-500/10 px-4 py-2 text-sm text-red-300">
+        <div className="mb-4 rounded-lg border border-danger-500/30 bg-danger-500/10 px-4 py-2 text-sm text-danger-500">
           {error}
         </div>
       )}
 
       {/* Fehlt in Library */}
       {sync && sync.missing.length > 0 && (
-        <section className="mb-6 rounded-xl border border-teal-500/30 bg-teal-500/5 p-4">
-          <h2 className="mb-3 text-sm font-semibold text-teal-200">
+        <section className="mb-6 rounded-xl border border-accent-500/30 bg-accent-500/5 p-4">
+          <h2 className="mb-3 text-sm font-semibold text-accent-300">
             Fehlt in Library ({sync.missing.length})
           </h2>
           <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
@@ -661,7 +661,7 @@ export default function LibraryView({ settings, account, onOpenSettings }: Props
               return (
                 <div
                   key={item.key}
-                  className="flex items-center gap-3 rounded-lg border border-neutral-800 bg-neutral-900/40 p-2"
+                  className="flex items-center gap-3 rounded-lg border border-border bg-surface p-2"
                 >
                   {item.art_url ? (
                     <img
@@ -670,20 +670,20 @@ export default function LibraryView({ settings, account, onOpenSettings }: Props
                       alt=""
                     />
                   ) : (
-                    <div className="h-12 w-12 shrink-0 rounded bg-neutral-800" />
+                    <div className="h-12 w-12 shrink-0 rounded bg-surface-2" />
                   )}
                   <div className="min-w-0 flex-1">
-                    <p className="truncate text-sm text-neutral-100" title={item.title}>
+                    <p className="truncate text-sm text-fg" title={item.title}>
                       {item.title}
                     </p>
-                    <p className="truncate text-xs text-neutral-500">
+                    <p className="truncate text-xs text-fg-subtle">
                       {item.band_name}
                     </p>
                   </div>
                   <button
                     onClick={() => void downloadMissing(item)}
                     disabled={!item.download_page_url || state === "loading"}
-                    className="shrink-0 rounded-lg bg-teal-600/90 px-3 py-1.5 text-xs font-medium hover:bg-teal-500 disabled:opacity-40"
+                    className="shrink-0 rounded-lg bg-accent-600 px-3 py-1.5 text-xs font-medium hover:bg-accent-500 disabled:opacity-40"
                   >
                     {state === "loading"
                       ? "Lädt…"
@@ -705,8 +705,8 @@ export default function LibraryView({ settings, account, onOpenSettings }: Props
         <div
           className={`sticky top-16 z-20 -mx-6 mb-3 flex h-14 items-center gap-2 border-b px-6 transition-[box-shadow,background-color,border-color] duration-300 ${
             scrolled
-              ? "border-neutral-800 bg-neutral-950/90 shadow-lg shadow-black/30 backdrop-blur"
-              : "border-transparent bg-neutral-950"
+              ? "border-border bg-bg/90 shadow-lg shadow-black/30 backdrop-blur"
+              : "border-transparent bg-bg"
           }`}
         >
           <FilterChip
@@ -731,7 +731,7 @@ export default function LibraryView({ settings, account, onOpenSettings }: Props
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             placeholder="Suchen…"
-            className="ml-auto w-56 rounded-lg border border-neutral-700 bg-neutral-800 px-3 py-1.5 text-sm outline-none focus:border-sky-500"
+            className="ml-auto w-56 rounded-lg border border-border-strong bg-surface-2 px-3 py-1.5 text-sm outline-none focus:border-accent-500"
           />
         </div>
       )}
@@ -740,12 +740,12 @@ export default function LibraryView({ settings, account, onOpenSettings }: Props
       <section
         className={`rounded-xl border transition-colors ${
           dragging
-            ? "border-sky-500 bg-sky-500/5"
-            : "border-neutral-800 bg-neutral-900/20"
+            ? "border-accent-500 bg-accent-500/5"
+            : "border-border bg-surface"
         }`}
       >
         {tracks.length === 0 ? (
-          <div className="flex h-64 flex-col items-center justify-center gap-2 text-neutral-500">
+          <div className="flex h-64 flex-col items-center justify-center gap-2 text-fg-subtle">
             <p className="text-lg">
               {loading ? "Scanne Library…" : "Noch keine Musik in der Library"}
             </p>
@@ -756,19 +756,19 @@ export default function LibraryView({ settings, account, onOpenSettings }: Props
             )}
           </div>
         ) : visibleTracks.length === 0 ? (
-          <div className="flex h-40 flex-col items-center justify-center gap-2 text-neutral-500">
+          <div className="flex h-40 flex-col items-center justify-center gap-2 text-fg-subtle">
             <p className="text-sm">Keine Titel passen zum Filter.</p>
           </div>
         ) : (
           <table className="w-full text-sm">
-            <thead className="text-left text-neutral-400">
-              <tr className="[&>th]:sticky [&>th]:top-[7.5rem] [&>th]:z-10 [&>th]:border-b [&>th]:border-neutral-800 [&>th]:bg-neutral-950">
+            <thead className="text-left text-fg-muted">
+              <tr className="[&>th]:sticky [&>th]:top-[7.5rem] [&>th]:z-10 [&>th]:border-b [&>th]:border-border [&>th]:bg-bg">
                 <th className="w-10 px-4 py-3">
                   <input
                     type="checkbox"
                     checked={allVisibleSelected}
                     onChange={toggleSelectAll}
-                    className="h-4 w-4 rounded border-neutral-600 bg-neutral-800"
+                    className="h-4 w-4 rounded border-border-strong bg-surface-2"
                     aria-label="Alle auswählen"
                   />
                 </th>
@@ -792,7 +792,7 @@ export default function LibraryView({ settings, account, onOpenSettings }: Props
                 return (
                   <tr
                     key={t.id}
-                    className="border-b border-neutral-800/60 last:border-0 hover:bg-neutral-800/20"
+                    className="border-b border-border last:border-0 hover:bg-surface-2"
                   >
                     <td className="px-4 py-3">
                       <input
@@ -801,7 +801,7 @@ export default function LibraryView({ settings, account, onOpenSettings }: Props
                         onChange={() => {}}
                         onMouseDown={(e) => e.shiftKey && e.preventDefault()}
                         onClick={(e) => handleRowSelect(index, e.shiftKey)}
-                        className="h-4 w-4 rounded border-neutral-600 bg-neutral-800"
+                        className="h-4 w-4 rounded border-border-strong bg-surface-2"
                         aria-label={`${t.file_name} auswählen`}
                       />
                     </td>
@@ -809,45 +809,45 @@ export default function LibraryView({ settings, account, onOpenSettings }: Props
                       <CoverThumb path={t.path} hasCover={t.metadata.has_cover} />
                     </td>
                     <td
-                      className="max-w-xs truncate px-4 py-3 text-neutral-100"
+                      className="max-w-xs truncate px-4 py-3 text-fg"
                       title={t.path}
                     >
                       {md.title || t.file_name}
                     </td>
-                    <td className="max-w-[10rem] truncate px-4 py-3 text-neutral-300">
+                    <td className="max-w-[10rem] truncate px-4 py-3 text-fg-muted">
                       {md.artist || "–"}
                     </td>
-                    <td className="max-w-[10rem] truncate px-4 py-3 text-neutral-300">
+                    <td className="max-w-[10rem] truncate px-4 py-3 text-fg-muted">
                       {md.album || "–"}
                     </td>
-                    <td className="px-4 py-3 text-neutral-300">
+                    <td className="px-4 py-3 text-fg-muted">
                       {t.audio.codec.toUpperCase()}
-                      <span className="text-neutral-500">
+                      <span className="text-fg-subtle">
                         {" "}
                         · {formatSampleRate(t.audio.sample_rate)}
                       </span>
                     </td>
-                    <td className="px-4 py-3 text-neutral-300">
+                    <td className="px-4 py-3 text-fg-muted">
                       {formatDuration(t.audio.duration_secs)}
                     </td>
                     <td className="px-4 py-3">
                       {result ? (
                         result.success ? (
-                          <span className="text-emerald-400">✓ Fertig</span>
+                          <span className="text-success-500">✓ Fertig</span>
                         ) : (
-                          <span className="text-red-400" title={result.error ?? ""}>
+                          <span className="text-danger-500" title={result.error ?? ""}>
                             ✕ Fehler
                           </span>
                         )
                       ) : prog && converting ? (
                         <div className="flex items-center gap-2">
-                          <div className="h-1.5 w-24 overflow-hidden rounded-full bg-neutral-800">
+                          <div className="h-1.5 w-24 overflow-hidden rounded-full bg-surface-2">
                             <div
-                              className="h-full bg-sky-500 transition-all"
+                              className="h-full bg-accent-500 transition-all"
                               style={{ width: `${prog.percent}%` }}
                             />
                           </div>
-                          <span className="text-xs text-neutral-400">
+                          <span className="text-xs text-fg-muted">
                             {prog.percent}%
                           </span>
                         </div>
@@ -871,7 +871,7 @@ export default function LibraryView({ settings, account, onOpenSettings }: Props
                           <button
                             onClick={() => convertOne(t)}
                             disabled={converting}
-                            className="rounded-md bg-emerald-600/90 px-2 py-1 text-xs font-medium hover:bg-emerald-500 disabled:opacity-40"
+                            className="rounded-md bg-accent-600 px-2 py-1 text-xs font-medium hover:bg-accent-500 disabled:opacity-40"
                             title="In Zielformat konvertieren"
                           >
                             Konvertieren
@@ -880,7 +880,7 @@ export default function LibraryView({ settings, account, onOpenSettings }: Props
                         <button
                           onClick={() => setEditingId(t.id)}
                           disabled={converting}
-                          className="text-neutral-500 hover:text-sky-400 disabled:opacity-40"
+                          className="text-fg-subtle hover:text-accent-400 disabled:opacity-40"
                           title="Metadaten bearbeiten"
                         >
                           ✎
@@ -931,7 +931,7 @@ export default function LibraryView({ settings, account, onOpenSettings }: Props
       <button
         onClick={scrollToTop}
         aria-label="Nach oben"
-        className={`fixed bottom-6 right-6 z-40 flex h-11 w-11 items-center justify-center rounded-full border border-neutral-700 bg-neutral-900/90 text-neutral-200 shadow-lg shadow-black/40 backdrop-blur transition-all duration-300 hover:border-sky-500 hover:text-sky-400 ${
+        className={`fixed bottom-6 right-6 z-40 flex h-11 w-11 items-center justify-center rounded-full border border-border-strong bg-surface text-fg shadow-lg shadow-black/40 backdrop-blur transition-all duration-300 hover:border-accent-500 hover:text-accent-400 ${
           showTop
             ? "translate-y-0 opacity-100"
             : "pointer-events-none translate-y-4 opacity-0"
@@ -957,8 +957,8 @@ function FilterChip({
       onClick={onClick}
       className={`rounded-full px-3 py-1.5 text-sm ring-1 transition-colors ${
         active
-          ? "bg-sky-600/20 text-sky-200 ring-sky-500/40"
-          : "text-neutral-400 ring-neutral-700 hover:text-neutral-200 hover:ring-neutral-500"
+          ? "bg-accent-600/20 text-accent-200 ring-accent-500/40"
+          : "text-fg-muted ring-border hover:text-fg hover:ring-border-strong"
       }`}
     >
       {label}

@@ -53,12 +53,12 @@ export function trackBadges(
   if (t.compat.compatible) {
     badges.push({
       label: "Kompatibel",
-      className: "bg-emerald-500/15 text-emerald-300 ring-emerald-500/30",
+      className: "bg-success-500/15 text-success-500 ring-success-500/30",
     });
   } else {
     badges.push({
       label: "Konvertieren",
-      className: "bg-amber-500/15 text-amber-300 ring-amber-500/30",
+      className: "bg-warning-500/15 text-warning-500 ring-warning-500/30",
       title: t.compat.issues.map((i) => i.message).join("\n"),
     });
   }
@@ -66,7 +66,7 @@ export function trackBadges(
   if (t.compat.compatible && warnings.length) {
     badges.push({
       label: "Hinweis",
-      className: "bg-sky-500/15 text-sky-300 ring-sky-500/30",
+      className: "bg-accent-500/15 text-accent-300 ring-accent-500/30",
       title: warnings.map((i) => i.message).join("\n"),
     });
   }
@@ -74,18 +74,18 @@ export function trackBadges(
   if (edit && complete) {
     badges.push({
       label: "Metadaten ✓",
-      className: "bg-emerald-500/15 text-emerald-300 ring-emerald-500/30",
+      className: "bg-success-500/15 text-success-500 ring-success-500/30",
     });
   } else if (!complete) {
     badges.push({
       label: "Metadaten unvollständig",
-      className: "bg-fuchsia-500/15 text-fuchsia-300 ring-fuchsia-500/30",
+      className: "bg-warning-500/15 text-warning-500 ring-warning-500/30",
     });
   }
   if (fromBandcamp) {
     badges.push({
       label: "Bandcamp",
-      className: "bg-teal-500/15 text-teal-300 ring-teal-500/30",
+      className: "bg-accent-500/15 text-accent-300 ring-accent-500/30",
     });
   }
   return badges;

@@ -1,5 +1,6 @@
 import type { ReactNode } from "react";
 import { useScrolled } from "../lib/useScrolled";
+import logoUrl from "../assets/brand/rekord-lib-logo-horizontal-dark.svg";
 
 interface Props {
   /** Rechtsbündige Aktionen (primäre Buttons, Zahnrad, „Fertig" …). */
@@ -18,21 +19,21 @@ export default function AppHeader({ right, onTitleClick }: Props) {
     <header
       className={`sticky top-0 z-30 flex h-16 items-center justify-between gap-4 border-b px-6 transition-[box-shadow,background-color,border-color] duration-300 ${
         scrolled
-          ? "border-neutral-800 bg-neutral-950/80 shadow-lg shadow-black/40 backdrop-blur"
-          : "border-neutral-800/60 bg-neutral-900/60"
+          ? "border-border bg-bg/80 shadow-lg shadow-black/40 backdrop-blur"
+          : "border-border bg-surface"
       }`}
     >
       <button
         onClick={onTitleClick}
-        className="min-w-0 text-left"
+        className="flex min-w-0 items-center gap-3 text-left"
         title="Zur Library"
       >
-        <h1 className="truncate text-xl font-semibold tracking-tight">
-          rekord-lib
-          <span className="ml-2 hidden text-sm font-normal text-neutral-400 sm:inline">
-            CDJ/XDJ- &amp; Rekordbox-kompatible Library
-          </span>
-        </h1>
+        <img
+          src={logoUrl}
+          alt="rekord-lib"
+          className="h-7 w-auto shrink-0"
+          draggable={false}
+        />
       </button>
 
       <div className="flex shrink-0 items-center gap-2">{right}</div>
