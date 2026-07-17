@@ -327,13 +327,10 @@ export default function LibraryView({ settings, account, onOpenSettings }: Props
     [libraryDir, rescan],
   );
 
-  const toggleSelect = useCallback((id: string) => {
-    setSelected((prev) => {
-      const next = new Set(prev);
-      next.has(id) ? next.delete(id) : next.add(id);
-      return next;
-    });
-  }, []);
+  // Anker für die Shift-Bereichsauswahl (Index in visibleTracks) und die
+  // Auswahl zum Anker-Zeitpunkt (Basis, auf die der Shift-Bereich angewandt wird).
+  const anchorIndexRef = useRef<number | null>(null);
+  const baseSelectionRef = useRef<Set<string>>(new Set());
 
   // Ist ein Track (unter Berücksichtigung offener Edits) unvollständig?
   const isIncomplete = useCallback(
@@ -374,6 +371,39 @@ export default function LibraryView({ settings, account, onOpenSettings }: Props
       return next;
     });
   }, [visibleTracks]);
+
+  // Zeilenauswahl mit Shift-Bereichsauswahl (klassisch wie im Datei-Explorer).
+  const handleRowSelect = useCallback(
+    (index: number, shiftKey: boolean) => {
+      const id = visibleTracks[index]?.id;
+      if (!id) return;
+
+      if (shiftKey && anchorIndexRef.current !== null) {
+        // Bereich neu setzen: Basis + aktueller Anker-Bereich. Zeilen, die zu
+        // einem früheren (größeren) Bereich gehörten, fallen so wieder weg.
+        const start = Math.min(anchorIndexRef.current, index);
+        const end = Math.max(anchorIndexRef.current, index);
+        setSelected(() => {
+          const next = new Set(baseSelectionRef.current);
+          for (let i = start; i <= end; i++) {
+            const rid = visibleTracks[i]?.id;
+            if (rid) next.add(rid);
+          }
+          return next;
+        });
+      } else {
+        // Normaler Klick: einzeln togglen, Anker + Basis neu festlegen.
+        setSelected((prev) => {
+          const next = new Set(prev);
+          next.has(id) ? next.delete(id) : next.add(id);
+          baseSelectionRef.current = new Set(next);
+          return next;
+        });
+        anchorIndexRef.current = index;
+      }
+    },
+    [visibleTracks],
+  );
 
   const saveEdit = useCallback((id: string, edit: TrackEdit) => {
     setEdits((prev) => ({ ...prev, [id]: edit }));
@@ -752,7 +782,7 @@ export default function LibraryView({ settings, account, onOpenSettings }: Props
               </tr>
             </thead>
             <tbody>
-              {visibleTracks.map((t) => {
+              {visibleTracks.map((t, index) => {
                 const prog = progress[t.id];
                 const result = results[t.id];
                 const fromBandcamp = !!sync?.originById[t.id];
@@ -767,7 +797,9 @@ export default function LibraryView({ settings, account, onOpenSettings }: Props
                       <input
                         type="checkbox"
                         checked={selected.has(t.id)}
-                        onChange={() => toggleSelect(t.id)}
+                        onChange={() => {}}
+                        onMouseDown={(e) => e.shiftKey && e.preventDefault()}
+                        onClick={(e) => handleRowSelect(index, e.shiftKey)}
                         className="h-4 w-4 rounded border-neutral-600 bg-neutral-800"
                         aria-label={`${t.file_name} auswählen`}
                       />
