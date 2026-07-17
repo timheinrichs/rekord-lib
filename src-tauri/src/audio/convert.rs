@@ -132,14 +132,23 @@ fn build_args(source: &str, output: &str, opts: &ConvertOptions, source_rate: u3
     args
 }
 
+/// Ergebnis einer Konvertierung.
+pub struct Converted {
+    /// Endgültiger Zielpfad.
+    pub output_path: String,
+    /// Pfad, an dem die konvertierten Bytes aktuell liegen. Weicht bei
+    /// In-place-Konvertierung (Temp-Datei) von `output_path` ab; der Aufrufer
+    /// muss dann nach dem Finalisieren `written_path` → `output_path` verschieben.
+    pub written_path: String,
+}
+
 /// Konvertiert eine einzelne Datei und streamt den Fortschritt via Event.
-/// Gibt den Ausgabepfad zurück.
 pub async fn convert_file(
     app: &AppHandle,
     id: &str,
     source: &str,
     opts: &ConvertOptions,
-) -> AppResult<String> {
+) -> AppResult<Converted> {
     // Für Ziel-Samplerate und Fortschrittsberechnung erst analysieren.
     let info = probe::probe(app, source).await?;
     let out = output_path(source, opts)?;
@@ -149,7 +158,17 @@ pub async fn convert_file(
         std::fs::create_dir_all(parent).ok();
     }
 
-    let args = build_args(source, &out_str, opts, info.sample_rate);
+    // In-place-Konvertierung (Ziel == Quelle) würde ffmpeg die gerade gelesene
+    // Datei überschreiben. Daher in eine Temp-Datei schreiben und danach ersetzen.
+    let in_place = paths_equal(source, &out);
+    let write_target = if in_place {
+        temp_sibling(&out)
+    } else {
+        out.clone()
+    };
+    let write_str = write_target.to_string_lossy().to_string();
+
+    let args = build_args(source, &write_str, opts, info.sample_rate);
     let total_us = (info.duration_secs * 1_000_000.0).max(1.0);
 
     let (mut rx, _child) = app
@@ -192,14 +211,54 @@ pub async fn convert_file(
     match exit_code {
         Some(0) => {
             emit_progress(app, id, 100, "Fertig");
-            Ok(out_str)
+            Ok(Converted {
+                output_path: out_str,
+                written_path: write_str,
+            })
         }
-        other => Err(AppError::Convert(format!(
-            "ffmpeg exit {:?}: {}",
-            other,
-            stderr_tail.trim()
-        ))),
+        other => {
+            if in_place {
+                let _ = std::fs::remove_file(&write_target);
+            }
+            Err(AppError::Convert(format!(
+                "ffmpeg exit {:?}: {}",
+                other,
+                stderr_tail.trim()
+            )))
+        }
     }
+}
+
+/// Prüft, ob zwei Pfade auf dieselbe Datei zeigen.
+fn paths_equal(a: &str, b: &Path) -> bool {
+    let pa = Path::new(a);
+    if pa == b {
+        return true;
+    }
+    match (pa.canonicalize(), b.canonicalize()) {
+        (Ok(ca), Ok(cb)) => ca == cb,
+        _ => false,
+    }
+}
+
+/// Liefert einen freien Temp-Pfad neben dem Ziel (gleiche Endung für ffmpeg).
+fn temp_sibling(target: &Path) -> PathBuf {
+    let ext = target
+        .extension()
+        .and_then(|e| e.to_str())
+        .unwrap_or("tmp");
+    let stem = target
+        .file_stem()
+        .and_then(|s| s.to_str())
+        .unwrap_or("output");
+    let dir = target.parent().unwrap_or_else(|| Path::new("."));
+    for i in 0.. {
+        let candidate = dir.join(format!("{stem}.rekordtmp{i}.{ext}"));
+        if !candidate.exists() {
+            return candidate;
+        }
+    }
+    unreachable!()
 }
 
 /// Parst eine ffmpeg-progress-Zeile und berechnet den Prozentwert.

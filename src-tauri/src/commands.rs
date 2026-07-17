@@ -21,33 +21,76 @@ fn file_name(path: &str) -> String {
         .to_string()
 }
 
+/// Audio-Endungen, die beim Library-Scan berücksichtigt werden.
+const AUDIO_EXTENSIONS: [&str; 11] = [
+    "aiff", "aif", "wav", "flac", "alac", "m4a", "mp3", "aac", "ogg", "opus", "wma",
+];
+
+/// Analysiert eine einzelne Datei (Audio-Eigenschaften, Kompatibilität, Metadaten).
+/// Liefert `None`, wenn es keine (lesbare) Audiodatei ist.
+async fn analyze_path(app: &AppHandle, path: String) -> Option<TrackAnalysis> {
+    let audio = probe::probe(app, &path).await.ok()?;
+    let compat = compat::evaluate(&audio);
+    let metadata = read_metadata(&path).unwrap_or_default();
+    let metadata_incomplete = !metadata.is_complete();
+
+    Some(TrackAnalysis {
+        id: path.clone(),
+        file_name: file_name(&path),
+        path,
+        audio,
+        metadata,
+        compat,
+        metadata_incomplete,
+    })
+}
+
 /// Analysiert eine Liste von Dateien: Audio-Eigenschaften, CDJ-Kompatibilität
 /// und vorhandene Metadaten. Nicht lesbare/keine Audiodateien werden übersprungen.
 #[tauri::command]
 pub async fn analyze_files(app: AppHandle, paths: Vec<String>) -> AppResult<Vec<TrackAnalysis>> {
     let mut out = Vec::with_capacity(paths.len());
-
     for path in paths {
-        let audio = match probe::probe(&app, &path).await {
-            Ok(a) => a,
-            Err(_) => continue, // keine (lesbare) Audiodatei
-        };
-
-        let compat = compat::evaluate(&audio);
-        let metadata = read_metadata(&path).unwrap_or_default();
-        let metadata_incomplete = !metadata.is_complete();
-
-        out.push(TrackAnalysis {
-            id: path.clone(),
-            file_name: file_name(&path),
-            path,
-            audio,
-            metadata,
-            compat,
-            metadata_incomplete,
-        });
+        if let Some(track) = analyze_path(&app, path).await {
+            out.push(track);
+        }
     }
+    Ok(out)
+}
 
+/// Sammelt rekursiv alle Dateien mit Audio-Endung unter `dir`.
+fn collect_audio_files(dir: &std::path::Path, out: &mut Vec<String>) {
+    let entries = match std::fs::read_dir(dir) {
+        Ok(e) => e,
+        Err(_) => return, // nicht lesbare Ordner überspringen
+    };
+    for entry in entries.flatten() {
+        let path = entry.path();
+        if path.is_dir() {
+            collect_audio_files(&path, out);
+        } else if path
+            .extension()
+            .and_then(|e| e.to_str())
+            .map(|e| AUDIO_EXTENSIONS.contains(&e.to_lowercase().as_str()))
+            .unwrap_or(false)
+        {
+            out.push(path.to_string_lossy().to_string());
+        }
+    }
+}
+
+/// Scannt den Library-Ordner rekursiv und analysiert alle gefundenen Audiodateien.
+#[tauri::command]
+pub async fn scan_library(app: AppHandle, dir: String) -> AppResult<Vec<TrackAnalysis>> {
+    let mut paths = Vec::new();
+    collect_audio_files(std::path::Path::new(&dir), &mut paths);
+
+    let mut out = Vec::with_capacity(paths.len());
+    for path in paths {
+        if let Some(track) = analyze_path(&app, path).await {
+            out.push(track);
+        }
+    }
     Ok(out)
 }
 
@@ -86,7 +129,7 @@ pub async fn convert_tracks(
         let cover = job.cover.clone().unwrap_or_default();
 
         let result = match convert::convert_file(&app, &job.id, &job.path, &options).await {
-            Ok(output_path) => {
+            Ok(converted) => {
                 // Metadaten + Cover final via lofty schreiben.
                 let _ = app.emit(
                     "convert://progress",
@@ -96,21 +139,56 @@ pub async fn convert_tracks(
                         stage: "Metadaten".into(),
                     },
                 );
-                match write::finalize(&output_path, &job.path, &job.metadata, &cover).await {
-                    Ok(()) => ConvertResult {
-                        id: job.id,
-                        source_path: job.path,
-                        output_path: Some(output_path),
-                        success: true,
-                        error: None,
-                    },
-                    Err(e) => ConvertResult {
-                        id: job.id,
-                        source_path: job.path,
-                        output_path: Some(output_path),
-                        success: false,
-                        error: Some(format!("Konvertiert, aber Metadaten fehlgeschlagen: {e}")),
-                    },
+                // Cover aus der (bei In-place noch intakten) Quelle lesen, Tags in die
+                // geschriebene Datei schreiben, danach ggf. über die Quelle verschieben.
+                let finalized = write::finalize(
+                    &converted.written_path,
+                    &job.path,
+                    &job.metadata,
+                    &cover,
+                )
+                .await;
+
+                match finalized {
+                    Ok(()) => {
+                        let moved = if converted.written_path != converted.output_path {
+                            std::fs::rename(&converted.written_path, &converted.output_path)
+                                .map_err(|e| format!("Ersetzen fehlgeschlagen: {e}"))
+                        } else {
+                            Ok(())
+                        };
+                        match moved {
+                            Ok(()) => ConvertResult {
+                                id: job.id,
+                                source_path: job.path,
+                                output_path: Some(converted.output_path),
+                                success: true,
+                                error: None,
+                            },
+                            Err(msg) => {
+                                let _ = std::fs::remove_file(&converted.written_path);
+                                ConvertResult {
+                                    id: job.id,
+                                    source_path: job.path,
+                                    output_path: None,
+                                    success: false,
+                                    error: Some(msg),
+                                }
+                            }
+                        }
+                    }
+                    Err(e) => {
+                        if converted.written_path != converted.output_path {
+                            let _ = std::fs::remove_file(&converted.written_path);
+                        }
+                        ConvertResult {
+                            id: job.id,
+                            source_path: job.path,
+                            output_path: Some(converted.output_path),
+                            success: false,
+                            error: Some(format!("Konvertiert, aber Metadaten fehlgeschlagen: {e}")),
+                        }
+                    }
                 }
             }
             Err(e) => ConvertResult {
@@ -147,11 +225,22 @@ pub async fn bandcamp_connect(
     session::connect(&app, &state).await
 }
 
-/// Meldet von Bandcamp ab (verwirft die Session im Speicher).
+/// Meldet von Bandcamp ab (verwirft die Session im Speicher und im Store).
 #[tauri::command]
-pub async fn bandcamp_disconnect(state: State<'_, BandcampState>) -> AppResult<()> {
-    session::disconnect(&state);
+pub async fn bandcamp_disconnect(
+    app: AppHandle,
+    state: State<'_, BandcampState>,
+) -> AppResult<()> {
+    session::disconnect(&app, &state);
     Ok(())
+}
+
+/// Liefert das aktuell verbundene Konto (oder `None`, wenn keine Session besteht).
+#[tauri::command]
+pub async fn bandcamp_status(
+    state: State<'_, BandcampState>,
+) -> AppResult<Option<BandcampAccount>> {
+    Ok(session::status(&state))
 }
 
 /// Liefert die gekaufte Sammlung des verbundenen Kontos.

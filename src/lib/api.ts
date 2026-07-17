@@ -39,6 +39,11 @@ export function analyzeFiles(paths: string[]): Promise<TrackAnalysis[]> {
   return invoke<TrackAnalysis[]>("analyze_files", { paths });
 }
 
+/** Scannt den Library-Ordner rekursiv und analysiert alle Audiodateien. */
+export function scanLibrary(dir: string): Promise<TrackAnalysis[]> {
+  return invoke<TrackAnalysis[]>("scan_library", { dir });
+}
+
 /** Startet die Konvertierung. Fortschritt kommt über onConvertProgress. */
 export function convertTracks(
   jobs: ConvertJob[],
@@ -104,6 +109,11 @@ export function bandcampLogin(): Promise<void> {
 /** Übernimmt die Session nach dem Login und liefert das Konto. */
 export function bandcampConnect(): Promise<BandcampAccount> {
   return invoke<BandcampAccount>("bandcamp_connect");
+}
+
+/** Liefert das aktuell verbundene Konto (oder null, falls nicht verbunden). */
+export function bandcampStatus(): Promise<BandcampAccount | null> {
+  return invoke<BandcampAccount | null>("bandcamp_status");
 }
 
 /** Meldet von Bandcamp ab. */
