@@ -128,6 +128,7 @@ import '@fontsource/jetbrains-mono/700.css';
 - **Border:** Standard `border border-border` (Haarlinie). Kein doppelter Rahmen + Schatten auf derselben Fläche.
 - **Elevation:** dezent, `shadow-md` für Popover/Dialog, sonst flach. Tiefe entsteht über `surface`-Stufen, nicht über Schatten.
 - **Dichte:** kompakt (Power-User-Tool). Zeilenhöhe in Listen knapp, Padding `px-3 py-2` für Zeilen, `px-4 py-2.5` für Buttons.
+- **Icons:** Strich-Icons `stroke-width 2`, Glyph 18–20 px. Icon-only-Buttons in ein **mindestens 32 px großes Klickziel** setzen (`h-8 w-8`, zentriert), nie nur ein nacktes Glyph. Sehr kleine Deko-Icons (16 px) nur ohne Klickfunktion.
 - **Fenster:** dunkle Titelleiste; falls Custom-Titlebar, `bg-surface` + `border-b border-border`.
 
 ---

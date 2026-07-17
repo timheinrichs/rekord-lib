@@ -43,7 +43,7 @@ import BulkMetadataEditor, { type BulkPatch } from "./BulkMetadataEditor";
 import CoverThumb from "./CoverThumb";
 import DuplicatesModal from "./DuplicatesModal";
 import AppHeader from "./AppHeader";
-import { ArrowUpIcon, GearIcon } from "./icons";
+import { ArrowUpIcon, EditIcon, GearIcon } from "./icons";
 import { useScrolled } from "../lib/useScrolled";
 
 interface Props {
@@ -792,15 +792,22 @@ export default function LibraryView({ settings, account, onOpenSettings }: Props
                 return (
                   <tr
                     key={t.id}
-                    className="border-b border-border last:border-0 hover:bg-surface-2"
+                    onClick={() => setEditingId(t.id)}
+                    className="cursor-pointer border-b border-border last:border-0 hover:bg-surface-2"
                   >
-                    <td className="px-4 py-3">
+                    <td
+                      className="px-4 py-3"
+                      onClick={(e) => e.stopPropagation()}
+                    >
                       <input
                         type="checkbox"
                         checked={selected.has(t.id)}
                         onChange={() => {}}
                         onMouseDown={(e) => e.shiftKey && e.preventDefault()}
-                        onClick={(e) => handleRowSelect(index, e.shiftKey)}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleRowSelect(index, e.shiftKey);
+                        }}
                         className="h-4 w-4 rounded border-border-strong bg-surface-2"
                         aria-label={`${t.file_name} auswählen`}
                       />
@@ -865,8 +872,11 @@ export default function LibraryView({ settings, account, onOpenSettings }: Props
                         </div>
                       )}
                     </td>
-                    <td className="px-4 py-3 text-right">
-                      <div className="flex items-center justify-end gap-3">
+                    <td
+                      className="px-4 py-3 text-right"
+                      onClick={(e) => e.stopPropagation()}
+                    >
+                      <div className="flex items-center justify-end gap-2">
                         {!t.compat.compatible && (
                           <button
                             onClick={() => convertOne(t)}
@@ -880,10 +890,11 @@ export default function LibraryView({ settings, account, onOpenSettings }: Props
                         <button
                           onClick={() => setEditingId(t.id)}
                           disabled={converting}
-                          className="text-fg-subtle hover:text-accent-400 disabled:opacity-40"
+                          className="flex h-8 w-8 items-center justify-center rounded-md text-fg-subtle hover:bg-surface-2 hover:text-accent-400 disabled:opacity-40"
                           title="Metadaten bearbeiten"
+                          aria-label="Metadaten bearbeiten"
                         >
-                          ✎
+                          <EditIcon />
                         </button>
                       </div>
                     </td>
