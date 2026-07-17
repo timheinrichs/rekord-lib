@@ -42,6 +42,9 @@ import MetadataEditor from "./MetadataEditor";
 import BulkMetadataEditor, { type BulkPatch } from "./BulkMetadataEditor";
 import CoverThumb from "./CoverThumb";
 import DuplicatesModal from "./DuplicatesModal";
+import AppHeader from "./AppHeader";
+import { ArrowUpIcon, GearIcon } from "./icons";
+import { useScrolled } from "../lib/useScrolled";
 
 interface Props {
   settings: Settings;
@@ -435,11 +438,10 @@ export default function LibraryView({ settings, account, onOpenSettings }: Props
     void startDedupe(candidates);
   }, [tracks]);
 
-  const stats = useMemo(() => {
-    const needConvert = visibleTracks.filter((t) => !t.compat.compatible).length;
-    const incomplete = visibleTracks.filter(isIncomplete).length;
-    return { total: visibleTracks.length, needConvert, incomplete };
-  }, [visibleTracks, isIncomplete]);
+  // Sticky-„Andock"-Animation + Back-to-Top.
+  const scrolled = useScrolled(4);
+  const showTop = useScrolled(400);
+  const scrollToTop = () => window.scrollTo({ top: 0, behavior: "smooth" });
 
   // Eine Leiste für beide Hintergrund-Jobs (Scan & Duplikatsuche).
   const scanPct =
@@ -470,82 +472,97 @@ export default function LibraryView({ settings, account, onOpenSettings }: Props
         cancel: () => void cancelScan(),
       };
 
+  const gearButton = (
+    <button
+      onClick={onOpenSettings}
+      className="shrink-0 rounded-lg border border-neutral-700 p-2 text-neutral-300 hover:border-sky-500 hover:text-sky-400"
+      title="Einstellungen"
+      aria-label="Einstellungen"
+    >
+      <GearIcon />
+    </button>
+  );
+
+  // Primäre Aktionen für den Header.
+  const headerActions = (
+    <>
+      <button
+        onClick={() => void rescan()}
+        disabled={loading || converting || dedupeRunning}
+        className="rounded-lg border border-neutral-700 px-3 py-2 text-sm hover:border-sky-500 disabled:opacity-50"
+      >
+        {loading ? "Scanne…" : "Neu scannen"}
+      </button>
+      <button
+        onClick={() => void runSync()}
+        disabled={!account || syncing || loading}
+        className="rounded-lg border border-neutral-700 px-3 py-2 text-sm hover:border-teal-500 disabled:opacity-50"
+        title={
+          account
+            ? "Library mit Bandcamp-Sammlung abgleichen"
+            : "In den Einstellungen mit Bandcamp verbinden"
+        }
+      >
+        {syncing ? "Gleiche ab…" : "Mit Bandcamp abgleichen"}
+      </button>
+      <button
+        onClick={() => void findDuplicates()}
+        disabled={loading || converting || dedupeRunning || tracks.length < 2}
+        className="rounded-lg border border-neutral-700 px-3 py-2 text-sm hover:border-fuchsia-500 disabled:opacity-50"
+        title="Doppelte Tracks über alle Formate finden"
+      >
+        {dedupeRunning ? "Suche Duplikate…" : "Duplikate suchen"}
+      </button>
+      {selected.size > 0 && (
+        <>
+          <button
+            onClick={() => setBulkOpen(true)}
+            disabled={converting}
+            className="rounded-lg border border-neutral-700 px-3 py-2 text-sm hover:border-sky-500 disabled:opacity-50"
+          >
+            Metadaten bearbeiten ({selected.size})
+          </button>
+          <button
+            onClick={convertSelected}
+            disabled={converting}
+            className="rounded-lg bg-emerald-600 px-4 py-2 text-sm font-medium hover:bg-emerald-500 disabled:opacity-50"
+          >
+            {converting ? "Konvertiere…" : `Auswahl konvertieren (${selected.size})`}
+          </button>
+        </>
+      )}
+      {gearButton}
+    </>
+  );
+
   // ---- Empty states ----
   if (!libraryDir) {
     return (
-      <main className="mx-auto max-w-6xl px-6 py-16">
-        <div className="flex flex-col items-center gap-3 rounded-xl border border-dashed border-neutral-800 bg-neutral-900/20 py-20 text-center text-neutral-500">
-          <p className="text-lg text-neutral-300">Kein Library-Ordner gewählt</p>
-          <p className="text-sm">
-            Lege in den Einstellungen fest, wo deine Sammlung liegt.
-          </p>
-          <button
-            onClick={onOpenSettings}
-            className="mt-2 rounded-lg bg-sky-600 px-4 py-2 text-sm font-medium hover:bg-sky-500"
-          >
-            Einstellungen öffnen
-          </button>
-        </div>
-      </main>
+      <>
+        <AppHeader onTitleClick={scrollToTop} right={gearButton} />
+        <main className="mx-auto max-w-6xl px-6 py-16">
+          <div className="flex flex-col items-center gap-3 rounded-xl border border-dashed border-neutral-800 bg-neutral-900/20 py-20 text-center text-neutral-500">
+            <p className="text-lg text-neutral-300">Kein Library-Ordner gewählt</p>
+            <p className="text-sm">
+              Lege in den Einstellungen fest, wo deine Sammlung liegt.
+            </p>
+            <button
+              onClick={onOpenSettings}
+              className="mt-2 rounded-lg bg-sky-600 px-4 py-2 text-sm font-medium hover:bg-sky-500"
+            >
+              Einstellungen öffnen
+            </button>
+          </div>
+        </main>
+      </>
     );
   }
 
   return (
-    <main className="w-full px-6 py-6">
-      {/* Toolbar */}
-      <div className="mb-4 flex flex-wrap items-center gap-3">
-        <button
-          onClick={() => void rescan()}
-          disabled={loading || converting || dedupeRunning}
-          className="rounded-lg border border-neutral-700 px-3 py-2 text-sm hover:border-sky-500 disabled:opacity-50"
-        >
-          {loading ? "Scanne…" : "Neu scannen"}
-        </button>
-        <button
-          onClick={() => void runSync()}
-          disabled={!account || syncing || loading}
-          className="rounded-lg border border-neutral-700 px-3 py-2 text-sm hover:border-teal-500 disabled:opacity-50"
-          title={
-            account
-              ? "Library mit Bandcamp-Sammlung abgleichen"
-              : "In den Einstellungen mit Bandcamp verbinden"
-          }
-        >
-          {syncing ? "Gleiche ab…" : "Mit Bandcamp abgleichen"}
-        </button>
-        <button
-          onClick={() => void findDuplicates()}
-          disabled={loading || converting || dedupeRunning || tracks.length < 2}
-          className="rounded-lg border border-neutral-700 px-3 py-2 text-sm hover:border-fuchsia-500 disabled:opacity-50"
-          title="Doppelte Tracks über alle Formate finden"
-        >
-          {dedupeRunning ? "Suche Duplikate…" : "Duplikate suchen"}
-        </button>
-        {selected.size > 0 && (
-          <>
-            <button
-              onClick={() => setBulkOpen(true)}
-              disabled={converting}
-              className="rounded-lg border border-neutral-700 px-3 py-2 text-sm hover:border-sky-500 disabled:opacity-50"
-            >
-              Metadaten bearbeiten ({selected.size})
-            </button>
-            <button
-              onClick={convertSelected}
-              disabled={converting}
-              className="rounded-lg bg-emerald-600 px-4 py-2 text-sm font-medium hover:bg-emerald-500 disabled:opacity-50"
-            >
-              {converting ? "Konvertiere…" : `Auswahl konvertieren (${selected.size})`}
-            </button>
-          </>
-        )}
-        <div className="ml-auto text-sm text-neutral-400">
-          {stats.total} Titel · {stats.needConvert} zu konvertieren ·{" "}
-          {stats.incomplete} Metadaten unvollständig
-        </div>
-      </div>
-
-      {/* Fortschritt (Scan & Duplikatsuche): gleitet zwischen Buttons und Liste ein/aus. */}
+    <>
+      <AppHeader onTitleClick={scrollToTop} right={headerActions} />
+      <main className="w-full px-6 py-6">
+      {/* Fortschritt (Scan & Duplikatsuche): scrollt mit und verschwindet. */}
       <div
         className={`overflow-hidden transition-all duration-500 ease-out ${
           showBar ? "mb-4 max-h-24 opacity-100" : "mb-0 max-h-0 opacity-0"
@@ -632,9 +649,15 @@ export default function LibraryView({ settings, account, onOpenSettings }: Props
         </section>
       )}
 
-      {/* Filterleiste */}
+      {/* Filterleiste (sticky unter dem Header) */}
       {tracks.length > 0 && (
-        <div className="mb-3 flex flex-wrap items-center gap-2">
+        <div
+          className={`sticky top-16 z-20 -mx-6 mb-3 flex h-14 items-center gap-2 border-b px-6 transition-[box-shadow,background-color,border-color] duration-300 ${
+            scrolled
+              ? "border-neutral-800 bg-neutral-950/90 shadow-lg shadow-black/30 backdrop-blur"
+              : "border-transparent bg-neutral-950"
+          }`}
+        >
           <FilterChip
             active={filter === "all"}
             onClick={() => setFilter("all")}
@@ -664,7 +687,7 @@ export default function LibraryView({ settings, account, onOpenSettings }: Props
 
       {/* Track-Liste / Drop-Zone */}
       <section
-        className={`overflow-hidden rounded-xl border-2 border-dashed transition-colors ${
+        className={`rounded-xl border transition-colors ${
           dragging
             ? "border-sky-500 bg-sky-500/5"
             : "border-neutral-800 bg-neutral-900/20"
@@ -688,7 +711,7 @@ export default function LibraryView({ settings, account, onOpenSettings }: Props
         ) : (
           <table className="w-full text-sm">
             <thead className="text-left text-neutral-400">
-              <tr className="border-b border-neutral-800">
+              <tr className="[&>th]:sticky [&>th]:top-[7.5rem] [&>th]:z-10 [&>th]:border-b [&>th]:border-neutral-800 [&>th]:bg-neutral-950">
                 <th className="w-10 px-4 py-3">
                   <input
                     type="checkbox"
@@ -847,7 +870,21 @@ export default function LibraryView({ settings, account, onOpenSettings }: Props
           onDeleted={handleDuplicatesDeleted}
         />
       )}
-    </main>
+      </main>
+
+      {/* Back-to-Top */}
+      <button
+        onClick={scrollToTop}
+        aria-label="Nach oben"
+        className={`fixed bottom-6 right-6 z-40 flex h-11 w-11 items-center justify-center rounded-full border border-neutral-700 bg-neutral-900/90 text-neutral-200 shadow-lg shadow-black/40 backdrop-blur transition-all duration-300 hover:border-sky-500 hover:text-sky-400 ${
+          showTop
+            ? "translate-y-0 opacity-100"
+            : "pointer-events-none translate-y-4 opacity-0"
+        }`}
+      >
+        <ArrowUpIcon />
+      </button>
+    </>
   );
 }
 
