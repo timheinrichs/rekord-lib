@@ -111,13 +111,19 @@ export default function LibraryView({ settings, account, onOpenSettings }: Props
               .join("; ")}`,
           );
         }
-      } catch (e) {
-        setError(`Konvertierung fehlgeschlagen: ${e}`);
-      } finally {
+        // Progress stoppen -> "✓ Fertig" pro Zeile zeigen, kurz stehen lassen,
+        // dann (bei Bulk erst wenn alle fertig sind) die Liste aktualisieren.
         unlisten();
         setConverting(false);
+        await new Promise((resolve) => setTimeout(resolve, 1200));
         setSelected(new Set());
+        setProgress({});
+        setResults({});
         await rescan();
+      } catch (e) {
+        unlisten();
+        setConverting(false);
+        setError(`Konvertierung fehlgeschlagen: ${e}`);
       }
     },
     [settings, libraryDir, rescan],
@@ -508,6 +514,8 @@ export default function LibraryView({ settings, account, onOpenSettings }: Props
                 const prog = progress[t.id];
                 const result = results[t.id];
                 const fromBandcamp = !!sync?.originById[t.id];
+                // Bestätigte Edits sofort in der Liste anzeigen.
+                const md = edits[t.id]?.metadata ?? t.metadata;
                 return (
                   <tr
                     key={t.id}
@@ -529,13 +537,13 @@ export default function LibraryView({ settings, account, onOpenSettings }: Props
                       className="max-w-xs truncate px-4 py-3 text-neutral-100"
                       title={t.path}
                     >
-                      {t.metadata.title || t.file_name}
+                      {md.title || t.file_name}
                     </td>
                     <td className="max-w-[10rem] truncate px-4 py-3 text-neutral-300">
-                      {t.metadata.artist || "–"}
+                      {md.artist || "–"}
                     </td>
                     <td className="max-w-[10rem] truncate px-4 py-3 text-neutral-300">
-                      {t.metadata.album || "–"}
+                      {md.album || "–"}
                     </td>
                     <td className="px-4 py-3 text-neutral-300">
                       {t.audio.codec.toUpperCase()}

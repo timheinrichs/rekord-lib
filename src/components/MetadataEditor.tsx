@@ -60,9 +60,9 @@ function toMetadata(f: FormState, hasCover: boolean): TrackMetadata {
   };
 }
 
-const FIELDS: { key: keyof FormState; label: string }[] = [
-  { key: "title", label: "Titel" },
-  { key: "artist", label: "Artist" },
+const FIELDS: { key: keyof FormState; label: string; required?: boolean }[] = [
+  { key: "title", label: "Titel", required: true },
+  { key: "artist", label: "Artist", required: true },
   { key: "album", label: "Album" },
   { key: "album_artist", label: "Album-Artist" },
   { key: "genre", label: "Genre" },
@@ -156,7 +156,11 @@ export default function MetadataEditor({ track, initial, onClose, onSave }: Prop
     if (path) setCover({ kind: "file", path });
   };
 
+  // Titel & Artist sind Pflichtfelder.
+  const canSave = !!form.title.trim() && !!form.artist.trim();
+
   const handleSave = () => {
+    if (!canSave) return;
     const hasCover = cover.kind !== "none" && coverUrl != null;
     onSave({ metadata: toMetadata(form, hasCover), cover });
   };
@@ -181,17 +185,23 @@ export default function MetadataEditor({ track, initial, onClose, onSave }: Prop
         <div className="grid flex-1 grid-cols-1 gap-5 overflow-y-auto p-5 md:grid-cols-[1fr_220px]">
           {/* Felder */}
           <div className="flex flex-col gap-3">
-            {FIELDS.map(({ key, label }) => {
+            {FIELDS.map(({ key, label, required }) => {
               const guess = guesses[key];
               const showGuess = guess && guess !== form[key];
+              const missing = required && !form[key].trim();
               return (
                 <label key={key} className="flex flex-col gap-1 text-sm">
-                  <span className="text-neutral-400">{label}</span>
+                  <span className="text-neutral-400">
+                    {label}
+                    {required && <span className="ml-0.5 text-rose-400">*</span>}
+                  </span>
                   <div className="flex gap-2">
                     <input
                       value={form[key]}
                       onChange={(e) => set(key, e.target.value)}
-                      className="flex-1 rounded-lg border border-neutral-700 bg-neutral-800 px-3 py-2 outline-none focus:border-sky-500"
+                      className={`flex-1 rounded-lg border bg-neutral-800 px-3 py-2 outline-none focus:border-sky-500 ${
+                        missing ? "border-rose-500/60" : "border-neutral-700"
+                      }`}
                     />
                     {showGuess && (
                       <button
@@ -284,7 +294,12 @@ export default function MetadataEditor({ track, initial, onClose, onSave }: Prop
           </div>
         </div>
 
-        <footer className="flex justify-end gap-3 border-t border-neutral-800 px-5 py-3">
+        <footer className="flex items-center justify-end gap-3 border-t border-neutral-800 px-5 py-3">
+          {!canSave && (
+            <span className="mr-auto text-xs text-rose-400">
+              Titel und Artist sind Pflichtfelder.
+            </span>
+          )}
           <button
             onClick={onClose}
             className="rounded-lg border border-neutral-700 px-4 py-2 text-sm hover:border-neutral-500"
@@ -293,7 +308,8 @@ export default function MetadataEditor({ track, initial, onClose, onSave }: Prop
           </button>
           <button
             onClick={handleSave}
-            className="rounded-lg bg-emerald-600 px-4 py-2 text-sm font-medium hover:bg-emerald-500"
+            disabled={!canSave}
+            className="rounded-lg bg-emerald-600 px-4 py-2 text-sm font-medium hover:bg-emerald-500 disabled:opacity-40"
           >
             Bestätigen
           </button>

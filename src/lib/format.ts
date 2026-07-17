@@ -1,10 +1,18 @@
 import type { TrackAnalysis, TrackEdit } from "../types";
 
-/** Sind die Pflichtfelder (Titel/Artist/Album + Cover) gesetzt? */
+/**
+ * Sind alle für Rekordbox relevanten Textfelder gesetzt?
+ * (Titel, Artist, Album, Album-Artist, Genre, Jahr)
+ */
 export function editComplete(edit: TrackEdit): boolean {
   const m = edit.metadata;
   return (
-    !!m.title?.trim() && !!m.artist?.trim() && !!m.album?.trim() && m.has_cover
+    !!m.title?.trim() &&
+    !!m.artist?.trim() &&
+    !!m.album?.trim() &&
+    !!m.album_artist?.trim() &&
+    !!m.genre?.trim() &&
+    !!m.year?.trim()
   );
 }
 

@@ -71,12 +71,18 @@ pub struct TrackMetadata {
 }
 
 impl TrackMetadata {
-    /// Sind die für Rekordbox wichtigsten Felder gesetzt?
+    /// Sind alle für Rekordbox relevanten Textfelder gesetzt?
+    /// (Titel, Artist, Album, Album-Artist, Genre, Jahr)
     pub fn is_complete(&self) -> bool {
         fn filled(v: &Option<String>) -> bool {
             v.as_ref().map(|s| !s.trim().is_empty()).unwrap_or(false)
         }
-        filled(&self.title) && filled(&self.artist) && filled(&self.album) && self.has_cover
+        filled(&self.title)
+            && filled(&self.artist)
+            && filled(&self.album)
+            && filled(&self.album_artist)
+            && filled(&self.genre)
+            && filled(&self.year)
     }
 }
 
