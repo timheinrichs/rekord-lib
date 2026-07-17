@@ -16,6 +16,8 @@ import type {
 interface Props {
   track: TrackAnalysis;
   initial?: TrackEdit;
+  /** Vorhandene Werte je Feld als Auswahl-Vorschläge. */
+  fieldOptions?: Record<string, string[]>;
   onClose: () => void;
   onSave: (edit: TrackEdit) => void;
 }
@@ -70,7 +72,13 @@ const FIELDS: { key: keyof FormState; label: string; required?: boolean }[] = [
   { key: "track_number", label: "Track-Nr." },
 ];
 
-export default function MetadataEditor({ track, initial, onClose, onSave }: Props) {
+export default function MetadataEditor({
+  track,
+  initial,
+  fieldOptions,
+  onClose,
+  onSave,
+}: Props) {
   const [suggestions, setSuggestions] = useState<MetadataSuggestions | null>(null);
   const [loading, setLoading] = useState(true);
   const [form, setForm] = useState<FormState>(
@@ -189,6 +197,8 @@ export default function MetadataEditor({ track, initial, onClose, onSave }: Prop
               const guess = guesses[key];
               const showGuess = guess && guess !== form[key];
               const missing = required && !form[key].trim();
+              const opts = fieldOptions?.[key] ?? [];
+              const listId = opts.length ? `edit-dl-${key}` : undefined;
               return (
                 <label key={key} className="flex flex-col gap-1 text-sm">
                   <span className="text-neutral-400">
@@ -198,11 +208,19 @@ export default function MetadataEditor({ track, initial, onClose, onSave }: Prop
                   <div className="flex gap-2">
                     <input
                       value={form[key]}
+                      list={listId}
                       onChange={(e) => set(key, e.target.value)}
                       className={`flex-1 rounded-lg border bg-neutral-800 px-3 py-2 outline-none focus:border-sky-500 ${
                         missing ? "border-rose-500/60" : "border-neutral-700"
                       }`}
                     />
+                    {listId && (
+                      <datalist id={listId}>
+                        {opts.map((o) => (
+                          <option key={o} value={o} />
+                        ))}
+                      </datalist>
+                    )}
                     {showGuess && (
                       <button
                         onClick={() => set(key, guess!)}

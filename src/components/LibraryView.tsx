@@ -438,6 +438,26 @@ export default function LibraryView({ settings, account, onOpenSettings }: Props
     void startDedupe(candidates);
   }, [tracks]);
 
+  // Vorhandene Werte je Feld als Auswahl-Vorschläge (aus Tracks + Edits).
+  const fieldOptions = useMemo(() => {
+    const collect = (get: (m: TrackAnalysis["metadata"]) => string | null) => {
+      const set = new Set<string>();
+      for (const t of tracks) {
+        const md = edits[t.id]?.metadata ?? t.metadata;
+        const v = get(md);
+        if (v && v.trim()) set.add(v.trim());
+      }
+      return Array.from(set).sort((a, b) => a.localeCompare(b));
+    };
+    return {
+      artist: collect((m) => m.artist),
+      album: collect((m) => m.album),
+      album_artist: collect((m) => m.album_artist),
+      genre: collect((m) => m.genre),
+      year: collect((m) => m.year),
+    } as Record<string, string[]>;
+  }, [tracks, edits]);
+
   // Sticky-„Andock"-Animation + Back-to-Top.
   const scrolled = useScrolled(4);
   const showTop = useScrolled(400);
@@ -850,6 +870,7 @@ export default function LibraryView({ settings, account, onOpenSettings }: Props
             <MetadataEditor
               track={track}
               initial={edits[editingId]}
+              fieldOptions={fieldOptions}
               onClose={() => setEditingId(null)}
               onSave={(edit) => saveEdit(editingId, edit)}
             />
@@ -859,6 +880,7 @@ export default function LibraryView({ settings, account, onOpenSettings }: Props
       {bulkOpen && (
         <BulkMetadataEditor
           count={selected.size}
+          suggestions={fieldOptions}
           onClose={() => setBulkOpen(false)}
           onApply={applyBulk}
         />

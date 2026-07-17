@@ -8,6 +8,8 @@ export type BulkPatch = Partial<
 
 interface Props {
   count: number;
+  /** Vorhandene Werte je Feld als Auswahl-Vorschläge. */
+  suggestions?: Record<string, string[]>;
   onClose: () => void;
   onApply: (patch: BulkPatch) => void;
 }
@@ -26,7 +28,12 @@ const FIELDS: { key: FieldKey; label: string }[] = [
  * Setzt ausgewählte Metadaten-Felder für mehrere Tracks gleichzeitig.
  * Nur angehakte Felder werden übernommen – leerer Wert löscht das Feld.
  */
-export default function BulkMetadataEditor({ count, onClose, onApply }: Props) {
+export default function BulkMetadataEditor({
+  count,
+  suggestions,
+  onClose,
+  onApply,
+}: Props) {
   const [enabled, setEnabled] = useState<Record<FieldKey, boolean>>({
     album: false,
     album_artist: false,
@@ -74,31 +81,45 @@ export default function BulkMetadataEditor({ count, onClose, onApply }: Props) {
             Häkchen setzen, um ein Feld für alle ausgewählten Titel zu
             überschreiben. Leeres Feld entfernt den Wert.
           </p>
-          {FIELDS.map(({ key, label }) => (
-            <div key={key} className="flex items-center gap-3">
-              <label className="flex w-32 shrink-0 items-center gap-2 text-sm">
+          {FIELDS.map(({ key, label }) => {
+            const opts = suggestions?.[key] ?? [];
+            const listId = opts.length ? `bulk-dl-${key}` : undefined;
+            return (
+              <div key={key} className="flex items-center gap-3">
+                <label className="flex w-32 shrink-0 items-center gap-2 text-sm">
+                  <input
+                    type="checkbox"
+                    checked={enabled[key]}
+                    onChange={(e) =>
+                      setEnabled((s) => ({ ...s, [key]: e.target.checked }))
+                    }
+                    className="h-4 w-4 rounded border-neutral-600 bg-neutral-800"
+                  />
+                  <span
+                    className={enabled[key] ? "text-neutral-200" : "text-neutral-500"}
+                  >
+                    {label}
+                  </span>
+                </label>
                 <input
-                  type="checkbox"
-                  checked={enabled[key]}
+                  value={values[key]}
+                  disabled={!enabled[key]}
+                  list={listId}
                   onChange={(e) =>
-                    setEnabled((s) => ({ ...s, [key]: e.target.checked }))
+                    setValues((s) => ({ ...s, [key]: e.target.value }))
                   }
-                  className="h-4 w-4 rounded border-neutral-600 bg-neutral-800"
+                  className="flex-1 rounded-lg border border-neutral-700 bg-neutral-800 px-3 py-2 text-sm outline-none focus:border-sky-500 disabled:opacity-40"
                 />
-                <span className={enabled[key] ? "text-neutral-200" : "text-neutral-500"}>
-                  {label}
-                </span>
-              </label>
-              <input
-                value={values[key]}
-                disabled={!enabled[key]}
-                onChange={(e) =>
-                  setValues((s) => ({ ...s, [key]: e.target.value }))
-                }
-                className="flex-1 rounded-lg border border-neutral-700 bg-neutral-800 px-3 py-2 text-sm outline-none focus:border-sky-500 disabled:opacity-40"
-              />
-            </div>
-          ))}
+                {listId && (
+                  <datalist id={listId}>
+                    {opts.map((o) => (
+                      <option key={o} value={o} />
+                    ))}
+                  </datalist>
+                )}
+              </div>
+            );
+          })}
         </div>
 
         <footer className="flex justify-end gap-3 border-t border-neutral-800 px-5 py-3">
