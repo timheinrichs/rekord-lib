@@ -20,11 +20,74 @@ pub fn read_cover_bytes(path: &str) -> Option<Vec<u8>> {
     Some(pic.data().to_vec())
 }
 
+/// Bekannte Cover-Dateinamen (ohne Endung) und Bild-Endungen für Sidecar-Cover.
+const COVER_NAMES: &[&str] = &["cover", "folder", "front", "album", "artwork", "art", "albumart"];
+const COVER_EXTS: &[&str] = &["jpg", "jpeg", "png", "webp"];
+
+/// Sucht ein Cover-Bild im selben Ordner wie die Audiodatei (z. B. cover.jpg).
+/// Viele Sammlungen legen das Album-Cover als separate Datei ab statt es
+/// einzubetten.
+pub fn find_sidecar_cover(source: &str) -> Option<Vec<u8>> {
+    let dir = std::path::Path::new(source).parent()?;
+    let mut images: Vec<std::path::PathBuf> = std::fs::read_dir(dir)
+        .ok()?
+        .flatten()
+        .map(|e| e.path())
+        .filter(|p| {
+            p.is_file()
+                && p.extension()
+                    .and_then(|s| s.to_str())
+                    .map(|e| COVER_EXTS.contains(&e.to_lowercase().as_str()))
+                    .unwrap_or(false)
+        })
+        .collect();
+    if images.is_empty() {
+        return None;
+    }
+    images.sort();
+    // Bevorzugt bekannte Cover-Dateinamen, sonst das erste Bild im Ordner.
+    let pick = images
+        .iter()
+        .find(|p| {
+            let stem = p
+                .file_stem()
+                .and_then(|s| s.to_str())
+                .unwrap_or("")
+                .to_lowercase();
+            COVER_NAMES.iter().any(|n| stem == *n || stem.contains(n))
+        })
+        .or_else(|| images.first())?;
+    std::fs::read(pick).ok()
+}
+
+/// Eingebettetes Cover, sonst ein Cover-Bild aus dem Ordner.
+pub fn read_cover_or_sidecar(source: &str) -> Option<Vec<u8>> {
+    read_cover_bytes(source).or_else(|| find_sidecar_cover(source))
+}
+
+/// Prüft günstig (ohne Datei zu lesen), ob im Ordner ein Cover-Bild liegt.
+pub fn has_sidecar_cover(source: &str) -> bool {
+    let Some(dir) = std::path::Path::new(source).parent() else {
+        return false;
+    };
+    let Ok(entries) = std::fs::read_dir(dir) else {
+        return false;
+    };
+    entries.flatten().any(|e| {
+        let p = e.path();
+        p.is_file()
+            && p.extension()
+                .and_then(|s| s.to_str())
+                .map(|ext| COVER_EXTS.contains(&ext.to_lowercase().as_str()))
+                .unwrap_or(false)
+    })
+}
+
 /// Ermittelt die Cover-Bytes gemäß gewählter Quelle (noch unverarbeitet).
 pub async fn resolve_cover(source: &str, cover: &CoverInput) -> AppResult<Option<Vec<u8>>> {
     match cover {
         CoverInput::None => Ok(None),
-        CoverInput::Keep => Ok(read_cover_bytes(source)),
+        CoverInput::Keep => Ok(read_cover_or_sidecar(source)),
         CoverInput::File { path } => {
             let bytes = std::fs::read(path)?;
             Ok(Some(bytes))

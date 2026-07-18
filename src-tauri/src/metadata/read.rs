@@ -23,6 +23,12 @@ pub fn read_metadata(path: &str) -> AppResult<TrackMetadata> {
         md.has_cover = !tag.pictures().is_empty();
     }
 
+    // Kein eingebettetes Cover? Dann zählt auch ein Cover-Bild im Ordner
+    // (wird beim Konvertieren automatisch eingebettet).
+    if !md.has_cover {
+        md.has_cover = crate::metadata::write::has_sidecar_cover(path);
+    }
+
     Ok(md)
 }
 

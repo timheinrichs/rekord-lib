@@ -233,7 +233,7 @@ pub async fn cover_preview(source: String, cover: CoverInput) -> AppResult<Optio
 /// Anzeige in der Track-Liste. `None`, wenn die Datei kein Cover enthält.
 #[tauri::command]
 pub async fn cover_thumbnail(path: String) -> AppResult<Option<String>> {
-    match write::read_cover_bytes(&path) {
+    match write::read_cover_or_sidecar(&path) {
         Some(bytes) => {
             let jpeg = artwork::thumbnail(&bytes, 96)?;
             let b64 = base64::engine::general_purpose::STANDARD.encode(&jpeg);
