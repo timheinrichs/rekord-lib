@@ -760,9 +760,10 @@ export default function LibraryView({ settings, account, onOpenSettings }: Props
             <p className="text-sm">Keine Titel passen zum Filter.</p>
           </div>
         ) : (
-          <table className="w-full text-sm">
+          <div className="overflow-x-auto">
+          <table className="w-full min-w-[60rem] text-sm">
             <thead className="text-left text-fg-muted">
-              <tr className="[&>th]:sticky [&>th]:top-[7.5rem] [&>th]:z-10 [&>th]:border-b [&>th]:border-border [&>th]:bg-bg">
+              <tr className="border-b border-border">
                 <th className="w-10 px-4 py-3">
                   <input
                     type="checkbox"
@@ -774,12 +775,12 @@ export default function LibraryView({ settings, account, onOpenSettings }: Props
                 </th>
                 <th className="w-14 px-4 py-3"></th>
                 <th className="px-4 py-3 font-medium">Titel</th>
-                <th className="px-4 py-3 font-medium">Artist</th>
-                <th className="px-4 py-3 font-medium">Album</th>
-                <th className="px-4 py-3 font-medium">Format</th>
-                <th className="px-4 py-3 font-medium">Länge</th>
-                <th className="px-4 py-3 font-medium">Status</th>
-                <th className="px-4 py-3 font-medium"></th>
+                <th className="w-40 px-4 py-3 font-medium">Artist</th>
+                <th className="w-40 px-4 py-3 font-medium">Album</th>
+                <th className="w-44 px-4 py-3 font-medium">Format</th>
+                <th className="w-20 px-4 py-3 font-medium">Länge</th>
+                <th className="w-56 px-4 py-3 font-medium">Status</th>
+                <th className="w-28 px-4 py-3 font-medium"></th>
               </tr>
             </thead>
             <tbody>
@@ -827,14 +828,14 @@ export default function LibraryView({ settings, account, onOpenSettings }: Props
                     <td className="max-w-[10rem] truncate px-4 py-3 text-fg-muted">
                       {md.album || "–"}
                     </td>
-                    <td className="px-4 py-3 text-fg-muted">
+                    <td className="whitespace-nowrap px-4 py-3 text-fg-muted">
                       {t.audio.codec.toUpperCase()}
                       <span className="text-fg-subtle">
                         {" "}
                         · {formatSampleRate(t.audio.sample_rate)}
                       </span>
                     </td>
-                    <td className="px-4 py-3 text-fg-muted">
+                    <td className="whitespace-nowrap px-4 py-3 text-fg-muted">
                       {formatDuration(t.audio.duration_secs)}
                     </td>
                     <td className="px-4 py-3">
@@ -903,6 +904,7 @@ export default function LibraryView({ settings, account, onOpenSettings }: Props
               })}
             </tbody>
           </table>
+          </div>
         )}
       </section>
 
