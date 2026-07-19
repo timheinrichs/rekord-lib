@@ -286,13 +286,22 @@ pub async fn convert_tracks(
                             Ok(())
                         };
                         match moved {
-                            Ok(()) => ConvertResult {
-                                id: job.id,
-                                source_path: job.path,
-                                output_path: Some(converted.output_path),
-                                success: true,
-                                error: None,
-                            },
+                            Ok(()) => {
+                                // Original löschen, wenn gewünscht und die Ausgabe
+                                // eine andere Datei ist (z. B. Formatwechsel).
+                                if options.replace_source
+                                    && converted.output_path != job.path
+                                {
+                                    let _ = std::fs::remove_file(&job.path);
+                                }
+                                ConvertResult {
+                                    id: job.id,
+                                    source_path: job.path,
+                                    output_path: Some(converted.output_path),
+                                    success: true,
+                                    error: None,
+                                }
+                            }
                             Err(msg) => {
                                 let _ = std::fs::remove_file(&converted.written_path);
                                 ConvertResult {
@@ -491,13 +500,14 @@ pub async fn bandcamp_collection(
 /// Die Dateien können anschließend über `analyze_files` in die Pipeline.
 #[tauri::command]
 pub async fn bandcamp_download(
+    app: AppHandle,
     state: State<'_, BandcampState>,
     key: String,
     page_url: String,
     dest_dir: String,
 ) -> AppResult<BandcampDownloadResult> {
     let session = session::current(&state)?;
-    match download::download(&session, &page_url, &dest_dir).await {
+    match download::download(&app, &session, &key, &page_url, &dest_dir).await {
         Ok(files) => Ok(BandcampDownloadResult {
             key,
             files,

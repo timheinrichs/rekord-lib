@@ -7,6 +7,7 @@ import {
   cancelScan,
   convertTracks,
   dedupeStatus,
+  onBandcampProgress,
   onConvertProgress,
   onDedupeDone,
   onDedupeProgress,
@@ -19,6 +20,7 @@ import {
 import { loadLibrary, saveLibrary } from "../lib/library";
 import {
   editComplete,
+  formatBytes,
   formatDuration,
   formatSampleRate,
   trackBadges,
@@ -28,6 +30,7 @@ import type { Settings } from "../lib/settings";
 import type {
   BandcampAccount,
   BandcampItem,
+  BandcampProgress,
   ConvertJob,
   ConvertOptions,
   ConvertProgress,
@@ -43,7 +46,7 @@ import BulkMetadataEditor, { type BulkPatch } from "./BulkMetadataEditor";
 import CoverThumb from "./CoverThumb";
 import DuplicatesModal from "./DuplicatesModal";
 import AppHeader from "./AppHeader";
-import { ArrowUpIcon, EditIcon, GearIcon } from "./icons";
+import { ArrowUpIcon, DownloadIcon, EditIcon, GearIcon } from "./icons";
 import { useScrolled } from "../lib/useScrolled";
 
 interface Props {
@@ -55,6 +58,17 @@ interface Props {
 type DlState = "idle" | "loading" | "done" | "error";
 
 type Filter = "all" | "convert" | "incomplete";
+
+interface DownloadEntry {
+  key: string;
+  title: string;
+  band: string;
+  state: "loading" | "done" | "error";
+  downloaded: number;
+  total: number;
+  stage: string;
+  error?: string;
+}
 
 export default function LibraryView({ settings, account, onOpenSettings }: Props) {
   const [tracks, setTracks] = useState<TrackAnalysis[]>([]);
@@ -75,7 +89,10 @@ export default function LibraryView({ settings, account, onOpenSettings }: Props
   const [search, setSearch] = useState("");
   const [sync, setSync] = useState<SyncResult | null>(null);
   const [syncing, setSyncing] = useState(false);
+  const [missingDismissed, setMissingDismissed] = useState(false);
   const [dl, setDl] = useState<Record<string, DlState>>({});
+  const [downloads, setDownloads] = useState<Record<string, DownloadEntry>>({});
+  const [downloadsOpen, setDownloadsOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const libraryDir = settings.library_dir;
@@ -135,6 +152,29 @@ export default function LibraryView({ settings, account, onOpenSettings }: Props
     };
   }, []);
 
+  // Persistenter Bandcamp-Download-Fortschritt (für das Downloads-Overlay).
+  useEffect(() => {
+    let unProg: (() => void) | undefined;
+    void (async () => {
+      unProg = await onBandcampProgress((p: BandcampProgress) => {
+        setDownloads((prev) => {
+          const entry = prev[p.key];
+          if (!entry) return prev;
+          return {
+            ...prev,
+            [p.key]: {
+              ...entry,
+              downloaded: p.downloaded,
+              total: p.total,
+              stage: p.stage,
+            },
+          };
+        });
+      });
+    })();
+    return () => unProg?.();
+  }, []);
+
   // Beim Start / Ordnerwechsel: zwischengespeicherte Liste sofort anzeigen,
   // dann an einen laufenden Scan andocken oder einen neuen (Hintergrund-)Scan
   // starten. Die Liste bleibt dabei sichtbar.
@@ -177,9 +217,12 @@ export default function LibraryView({ settings, account, onOpenSettings }: Props
     void saveLibrary({ library_dir: libraryDir, tracks, edits });
   }, [libraryDir, tracks, edits]);
 
-  // Konvertierungsaufträge ausführen (Ausgabe in die Library).
+  // Konvertierungsaufträge ausführen.
+  // - "library": Quelle liegt schon in der Library -> Ausgabe in denselben
+  //   Ordner (output_dir=null) und Original nach Formatwechsel löschen.
+  // - "import": externe Datei -> in die Library kopieren, Original behalten.
   const runConvert = useCallback(
-    async (jobs: ConvertJob[]) => {
+    async (jobs: ConvertJob[], mode: "library" | "import" = "library") => {
       if (!jobs.length) return;
       setConverting(true);
       setProgress({});
@@ -192,8 +235,9 @@ export default function LibraryView({ settings, account, onOpenSettings }: Props
         const options: ConvertOptions = {
           format: settings.format,
           bit_depth: settings.bit_depth,
-          output_dir: libraryDir,
+          output_dir: mode === "import" ? libraryDir : null,
           sanitize_filenames: settings.sanitize_filenames,
+          replace_source: mode === "library",
         };
         const res = await convertTracks(jobs, options);
         const map: Record<string, ConvertResult> = {};
@@ -262,7 +306,7 @@ export default function LibraryView({ settings, account, onOpenSettings }: Props
         metadata: null,
         cover: null,
       }));
-      await runConvert(jobs);
+      await runConvert(jobs, "import");
     },
     [libraryDir, runConvert],
   );
@@ -295,6 +339,7 @@ export default function LibraryView({ settings, account, onOpenSettings }: Props
     try {
       const items = await bandcampCollection();
       setSync(syncCollection(tracks, items));
+      setMissingDismissed(false);
     } catch (e) {
       setError(`Abgleich fehlgeschlagen: ${e}`);
     } finally {
@@ -306,6 +351,23 @@ export default function LibraryView({ settings, account, onOpenSettings }: Props
     async (item: BandcampItem) => {
       if (!item.download_page_url || !libraryDir) return;
       setDl((s) => ({ ...s, [item.key]: "loading" }));
+      setDownloads((s) => ({
+        ...s,
+        [item.key]: {
+          key: item.key,
+          title: item.title,
+          band: item.band_name,
+          state: "loading",
+          downloaded: 0,
+          total: 0,
+          stage: "Lädt",
+        },
+      }));
+      setDownloadsOpen(true);
+      const finish = (patch: Partial<DownloadEntry>) =>
+        setDownloads((s) =>
+          s[item.key] ? { ...s, [item.key]: { ...s[item.key], ...patch } } : s,
+        );
       try {
         const res = await bandcampDownload(
           item.key,
@@ -314,13 +376,16 @@ export default function LibraryView({ settings, account, onOpenSettings }: Props
         );
         if (res.success) {
           setDl((s) => ({ ...s, [item.key]: "done" }));
+          finish({ state: "done", stage: "Fertig" });
           await rescan();
         } else {
           setDl((s) => ({ ...s, [item.key]: "error" }));
+          finish({ state: "error", error: res.error ?? "Download fehlgeschlagen" });
           setError(res.error ?? "Download fehlgeschlagen");
         }
       } catch (e) {
         setDl((s) => ({ ...s, [item.key]: "error" }));
+        finish({ state: "error", error: String(e) });
         setError(String(e));
       }
     },
@@ -523,6 +588,106 @@ export default function LibraryView({ settings, account, onOpenSettings }: Props
         cancel: () => void cancelScan(),
       };
 
+  // Downloads-Overlay (Bandcamp) – Chrome-artiges Icon mit Fortschritt.
+  const downloadList = Object.values(downloads);
+  const activeDownloads = downloadList.filter((d) => d.state === "loading").length;
+  const clearFinishedDownloads = () =>
+    setDownloads((s) =>
+      Object.fromEntries(
+        Object.entries(s).filter(([, d]) => d.state === "loading"),
+      ),
+    );
+
+  const downloadsButton = downloadList.length > 0 && (
+    <div className="relative shrink-0">
+      <button
+        onClick={() => setDownloadsOpen((o) => !o)}
+        className="relative flex items-center justify-center rounded-lg border border-border-strong p-2 text-fg-muted hover:border-accent-500 hover:text-accent-400"
+        title="Downloads"
+        aria-label="Downloads"
+      >
+        <DownloadIcon />
+        {activeDownloads > 0 && (
+          <span className="absolute -right-1 -top-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-accent-600 px-1 text-[10px] font-medium text-white">
+            {activeDownloads}
+          </span>
+        )}
+      </button>
+      {downloadsOpen && (
+        <div className="absolute right-0 top-full z-40 mt-2 w-80 overflow-hidden rounded-lg border border-border bg-surface shadow-lg shadow-black/40">
+          <div className="flex items-center justify-between border-b border-border px-3 py-2">
+            <span className="text-xs font-medium text-fg-muted">Downloads</span>
+            <div className="flex items-center gap-2">
+              {downloadList.some((d) => d.state !== "loading") && (
+                <button
+                  onClick={clearFinishedDownloads}
+                  className="text-xs text-fg-subtle hover:text-fg"
+                >
+                  Aufräumen
+                </button>
+              )}
+              <button
+                onClick={() => setDownloadsOpen(false)}
+                className="text-fg-subtle hover:text-fg"
+                aria-label="Schließen"
+              >
+                ✕
+              </button>
+            </div>
+          </div>
+          <div className="max-h-80 overflow-y-auto">
+            {downloadList.map((d) => {
+              const pct =
+                d.total > 0 ? Math.round((d.downloaded / d.total) * 100) : 0;
+              return (
+                <div key={d.key} className="border-b border-border/60 px-3 py-2 last:border-0">
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="truncate text-sm text-fg" title={d.title}>
+                      {d.title}
+                    </span>
+                    <span className="shrink-0 text-xs text-fg-subtle">
+                      {d.state === "done"
+                        ? "✓ Fertig"
+                        : d.state === "error"
+                          ? "Fehler"
+                          : d.total > 0
+                            ? `${pct}%`
+                            : d.stage}
+                    </span>
+                  </div>
+                  {d.band && (
+                    <p className="truncate text-xs text-fg-subtle">{d.band}</p>
+                  )}
+                  {d.state === "loading" && (
+                    <div className="mt-1.5 h-1.5 w-full overflow-hidden rounded-full bg-surface-2">
+                      <div
+                        className={`h-full rounded-full bg-accent-500 transition-all duration-300 ${
+                          d.total > 0 ? "" : "animate-pulse w-1/3"
+                        }`}
+                        style={d.total > 0 ? { width: `${pct}%` } : undefined}
+                      />
+                    </div>
+                  )}
+                  {d.state === "loading" && d.total > 0 && (
+                    <p className="mt-1 text-[11px] text-fg-subtle">
+                      {formatBytes(d.downloaded)} / {formatBytes(d.total)} ·{" "}
+                      {d.stage}
+                    </p>
+                  )}
+                  {d.state === "error" && d.error && (
+                    <p className="mt-1 truncate text-[11px] text-danger-500" title={d.error}>
+                      {d.error}
+                    </p>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+
   const gearButton = (
     <button
       onClick={onOpenSettings}
@@ -582,6 +747,7 @@ export default function LibraryView({ settings, account, onOpenSettings }: Props
           </button>
         </>
       )}
+      {downloadsButton}
       {gearButton}
     </>
   );
@@ -650,11 +816,21 @@ export default function LibraryView({ settings, account, onOpenSettings }: Props
       )}
 
       {/* Fehlt in Library */}
-      {sync && sync.missing.length > 0 && (
+      {sync && sync.missing.length > 0 && !missingDismissed && (
         <section className="mb-6 rounded-xl border border-accent-500/30 bg-accent-500/5 p-4">
-          <h2 className="mb-3 text-sm font-semibold text-accent-300">
-            Fehlt in Library ({sync.missing.length})
-          </h2>
+          <div className="mb-3 flex items-center justify-between">
+            <h2 className="text-sm font-semibold text-accent-300">
+              Fehlt in Library ({sync.missing.length})
+            </h2>
+            <button
+              onClick={() => setMissingDismissed(true)}
+              className="flex h-7 w-7 items-center justify-center rounded-md text-fg-subtle hover:bg-surface-2 hover:text-fg"
+              title="Schließen"
+              aria-label="Schließen"
+            >
+              ✕
+            </button>
+          </div>
           <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
             {sync.missing.map((item) => {
               const state = dl[item.key] ?? "idle";

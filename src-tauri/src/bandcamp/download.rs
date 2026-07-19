@@ -1,11 +1,62 @@
 use std::io::Cursor;
 use std::path::{Path, PathBuf};
 
+use serde::Serialize;
 use serde_json::Value;
+use tauri::{AppHandle, Emitter};
 
 use crate::bandcamp::session::Session;
 use crate::error::{AppError, AppResult};
 use crate::metadata::net;
+
+/// Fortschritt eines Bandcamp-Downloads (an das Frontend gestreamt).
+#[derive(Clone, Serialize)]
+struct BandcampProgress {
+    key: String,
+    downloaded: u64,
+    total: u64,
+    stage: String,
+}
+
+fn emit_progress(app: &AppHandle, key: &str, downloaded: u64, total: u64, stage: &str) {
+    let _ = app.emit(
+        "bandcamp://progress",
+        BandcampProgress {
+            key: key.to_string(),
+            downloaded,
+            total,
+            stage: stage.to_string(),
+        },
+    );
+}
+
+/// Liest den Response-Body gestreamt in einen Vec und meldet dabei den
+/// Fortschritt (throttled, ~alle 256 KB).
+async fn stream_collect(
+    mut resp: reqwest::Response,
+    app: &AppHandle,
+    key: &str,
+    stage: &str,
+) -> AppResult<Vec<u8>> {
+    let total = resp.content_length().unwrap_or(0);
+    let mut buf: Vec<u8> = Vec::with_capacity(total.min(64 * 1024 * 1024) as usize);
+    let mut last_emit: u64 = 0;
+    emit_progress(app, key, 0, total, stage);
+    while let Some(chunk) = resp
+        .chunk()
+        .await
+        .map_err(|e| AppError::Bandcamp(format!("Download-Stream: {e}")))?
+    {
+        buf.extend_from_slice(&chunk);
+        let dl = buf.len() as u64;
+        if dl - last_emit >= 256 * 1024 {
+            last_emit = dl;
+            emit_progress(app, key, dl, total, stage);
+        }
+    }
+    emit_progress(app, key, buf.len() as u64, total, stage);
+    Ok(buf)
+}
 
 /// Bevorzugte Download-Formate (verlustfrei zuerst); das Ergebnis wird ohnehin
 /// noch in das CDJ-Zielformat konvertiert.
@@ -16,7 +67,9 @@ const AUDIO_EXTS: [&str; 7] = ["flac", "aiff", "aif", "wav", "mp3", "m4a", "aac"
 
 /// Lädt ein gekauftes Item herunter und liefert die (ggf. entpackten) Dateipfade.
 pub async fn download(
+    app: &AppHandle,
     session: &Session,
+    key: &str,
     page_url: &str,
     dest_dir: &str,
 ) -> AppResult<Vec<String>> {
@@ -75,16 +128,19 @@ pub async fn download(
         .unwrap_or(false);
 
     // 3+4. Datei-Bytes holen (die .vrs=1-Anfrage liefert die Datei entweder
-    // direkt oder als JSON mit der echten download_url).
-    let bytes = fetch_download_bytes(&client, session, &url).await?;
+    // direkt oder als JSON mit der echten download_url) – gestreamt mit Fortschritt.
+    let bytes = fetch_download_bytes(&client, session, key, &url, app).await?;
 
     std::fs::create_dir_all(dest_dir)?;
     let safe_title = sanitize(title);
 
     // 5. Album-ZIP entpacken, Einzeltrack direkt speichern.
+    let done = bytes.len() as u64;
     if is_album || looks_like_zip(&bytes) {
+        emit_progress(app, key, done, done, "Entpackt");
         extract_zip(&bytes, Path::new(dest_dir), &safe_title)
     } else {
+        emit_progress(app, key, done, done, "Speichert");
         let ext = extension_for_format(fmt);
         let out = Path::new(dest_dir).join(format!("{safe_title}.{ext}"));
         std::fs::write(&out, &bytes)?;
@@ -116,7 +172,9 @@ fn extract_blob(html: &str) -> AppResult<Value> {
 async fn fetch_download_bytes(
     client: &reqwest::Client,
     session: &Session,
+    key: &str,
     url: &str,
+    app: &AppHandle,
 ) -> AppResult<Vec<u8>> {
     let probe_url = if url.contains('?') {
         format!("{url}&.vrs=1")
@@ -133,21 +191,18 @@ async fn fetch_download_bytes(
         .map_err(|e| AppError::Bandcamp(format!("statdownload: {e}")))?;
 
     let status = resp.status();
+    if !status.is_success() {
+        return Err(AppError::Bandcamp(format!("statdownload HTTP {status}")));
+    }
     let ct = resp
         .headers()
         .get(reqwest::header::CONTENT_TYPE)
         .and_then(|v| v.to_str().ok())
         .unwrap_or("")
         .to_string();
-    let bytes = resp
-        .bytes()
-        .await
-        .map_err(|e| AppError::Bandcamp(e.to_string()))?
-        .to_vec();
 
-    if !status.is_success() {
-        return Err(AppError::Bandcamp(format!("statdownload HTTP {status}")));
-    }
+    // Body gestreamt einlesen (bei Direkt-Datei ist das bereits der große Download).
+    let bytes = stream_collect(resp, app, key, "Lädt").await?;
 
     // Direkt eine Datei (ZIP/Audio)? Dann Bytes sofort verwenden.
     let is_json = ct.contains("json") || bytes.first() == Some(&b'{');
@@ -155,7 +210,7 @@ async fn fetch_download_bytes(
         return Ok(bytes);
     }
 
-    // JSON-Variante: echte download_url extrahieren und laden.
+    // JSON-Variante: echte download_url extrahieren und die Datei gestreamt laden.
     let json: Value = serde_json::from_slice(&bytes)
         .map_err(|e| AppError::Bandcamp(format!("statdownload JSON: {e}")))?;
     let dl = json
@@ -170,16 +225,17 @@ async fn fetch_download_bytes(
             ))
         })?;
 
-    let file = client
+    let file_resp = client
         .get(dl)
         .header("Cookie", &session.cookie_header)
         .send()
         .await
-        .map_err(|e| AppError::Bandcamp(format!("Datei-Download: {e}")))?
-        .bytes()
-        .await
-        .map_err(|e| AppError::Bandcamp(e.to_string()))?;
-    Ok(file.to_vec())
+        .map_err(|e| AppError::Bandcamp(format!("Datei-Download: {e}")))?;
+    let status = file_resp.status();
+    if !status.is_success() {
+        return Err(AppError::Bandcamp(format!("Datei-Download HTTP {status}")));
+    }
+    stream_collect(file_resp, app, key, "Lädt").await
 }
 
 fn looks_like_zip(bytes: &[u8]) -> bool {

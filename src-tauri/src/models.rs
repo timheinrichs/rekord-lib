@@ -135,6 +135,11 @@ pub struct ConvertOptions {
     /// Sonderzeichen im Dateinamen bereinigen.
     #[serde(default)]
     pub sanitize_filenames: bool,
+    /// Quelldatei nach erfolgreicher Konvertierung löschen, wenn sich der
+    /// Ausgabepfad unterscheidet (z. B. Formatwechsel). Nur für Library-
+    /// Konvertierungen – nicht für importierte (externe) Dateien.
+    #[serde(default)]
+    pub replace_source: bool,
 }
 
 fn default_bit_depth() -> u32 {

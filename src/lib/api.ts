@@ -4,6 +4,7 @@ import { open } from "@tauri-apps/plugin-dialog";
 import type {
   BandcampAccount,
   BandcampItem,
+  BandcampProgress,
   ConvertJob,
   ConvertOptions,
   ConvertProgress,
@@ -210,4 +211,11 @@ export function bandcampDownload(
     pageUrl,
     destDir,
   });
+}
+
+/** Abonniert Fortschritts-Events der Bandcamp-Downloads. */
+export function onBandcampProgress(
+  cb: (p: BandcampProgress) => void,
+): Promise<UnlistenFn> {
+  return listen<BandcampProgress>("bandcamp://progress", (e) => cb(e.payload));
 }

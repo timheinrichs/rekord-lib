@@ -51,6 +51,7 @@ export interface ConvertOptions {
   bit_depth: number;
   output_dir: string | null;
   sanitize_filenames: boolean;
+  replace_source: boolean;
 }
 
 export type CoverInput =
@@ -144,6 +145,13 @@ export interface DedupeProgress {
   total: number;
   stage: string;
   running: boolean;
+}
+
+export interface BandcampProgress {
+  key: string;
+  downloaded: number;
+  total: number;
+  stage: string;
 }
 
 export interface DedupeStatus {
