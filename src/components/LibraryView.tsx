@@ -1,4 +1,11 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ReactNode,
+} from "react";
 import { getCurrentWebview } from "@tauri-apps/api/webview";
 import {
   bandcampCollection,
@@ -7,6 +14,7 @@ import {
   cancelScan,
   convertTracks,
   dedupeStatus,
+  deleteFiles,
   onBandcampProgress,
   onConvertProgress,
   onDedupeDone,
@@ -18,6 +26,7 @@ import {
   startScan,
 } from "../lib/api";
 import { loadLibrary, saveLibrary } from "../lib/library";
+import { loadDuplicates, saveDuplicates } from "../lib/duplicates";
 import {
   editComplete,
   formatBytes,
@@ -37,6 +46,7 @@ import type {
   ConvertResult,
   CoverInput,
   DedupeProgress,
+  DuplicateGroup,
   ScanProgress,
   TrackAnalysis,
   TrackEdit,
@@ -46,7 +56,7 @@ import BulkMetadataEditor, { type BulkPatch } from "./BulkMetadataEditor";
 import CoverThumb from "./CoverThumb";
 import DuplicatesModal from "./DuplicatesModal";
 import AppHeader from "./AppHeader";
-import { ArrowUpIcon, DownloadIcon, EditIcon, GearIcon } from "./icons";
+import { ArrowUpIcon, ChevronIcon, DownloadIcon, EditIcon, GearIcon } from "./icons";
 import { useScrolled } from "../lib/useScrolled";
 
 interface Props {
@@ -70,6 +80,31 @@ interface DownloadEntry {
   error?: string;
 }
 
+/** Entfernt nicht mehr gültige Dateien aus Duplikat-Gruppen, verwirft Gruppen
+ *  mit < 2 Dateien und korrigiert die Behalten-Wahl. Referenzstabil, wenn
+ *  nichts geändert wurde. */
+function pruneGroups(
+  groups: DuplicateGroup[],
+  isValid: (path: string) => boolean,
+): DuplicateGroup[] {
+  let changed = false;
+  const out: DuplicateGroup[] = [];
+  for (const g of groups) {
+    const files = g.files.filter((f) => isValid(f.path));
+    if (files.length !== g.files.length) changed = true;
+    if (files.length < 2) {
+      changed = true;
+      continue;
+    }
+    const keep_id = files.some((f) => f.id === g.keep_id)
+      ? g.keep_id
+      : files[0].id;
+    if (keep_id !== g.keep_id) changed = true;
+    out.push({ ...g, files, keep_id });
+  }
+  return changed ? out : groups;
+}
+
 export default function LibraryView({ settings, account, onOpenSettings }: Props) {
   const [tracks, setTracks] = useState<TrackAnalysis[]>([]);
   const [loading, setLoading] = useState(false);
@@ -78,6 +113,7 @@ export default function LibraryView({ settings, account, onOpenSettings }: Props
   const [dupOpen, setDupOpen] = useState(false);
   const [dedupeProgress, setDedupeProgress] = useState<DedupeProgress | null>(null);
   const [dedupeRunning, setDedupeRunning] = useState(false);
+  const [dupGroups, setDupGroups] = useState<DuplicateGroup[]>([]);
   const [dragging, setDragging] = useState(false);
   const [progress, setProgress] = useState<Record<string, ConvertProgress>>({});
   const [results, setResults] = useState<Record<string, ConvertResult>>({});
@@ -87,6 +123,8 @@ export default function LibraryView({ settings, account, onOpenSettings }: Props
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [filter, setFilter] = useState<Filter>("all");
   const [search, setSearch] = useState("");
+  const [groupByAlbum, setGroupByAlbum] = useState(true);
+  const [expandedAlbums, setExpandedAlbums] = useState<Set<string>>(new Set());
   const [sync, setSync] = useState<SyncResult | null>(null);
   const [syncing, setSyncing] = useState(false);
   const [missingDismissed, setMissingDismissed] = useState(false);
@@ -122,7 +160,15 @@ export default function LibraryView({ settings, account, onOpenSettings }: Props
       });
       unDone = await onScanDone((d) => {
         setLoading(false);
-        if (!d.cancelled) setTracks(d.tracks);
+        if (d.cancelled) return;
+        setTracks(d.tracks);
+        // Persistierte Duplikate gegen die aktuellen Dateien bereinigen.
+        const valid = new Set(d.tracks.map((t) => t.path));
+        setDupGroups((prev) => {
+          const pruned = pruneGroups(prev, (p) => valid.has(p));
+          if (pruned !== prev) void saveDuplicates(pruned);
+          return pruned;
+        });
       });
     })();
     return () => {
@@ -142,8 +188,12 @@ export default function LibraryView({ settings, account, onOpenSettings }: Props
       });
       unDone = await onDedupeDone((d) => {
         setDedupeRunning(false);
-        // Bei Erfolg (auch ohne Treffer) die Ergebnisse anzeigen.
-        if (!d.cancelled) setDupOpen(true);
+        // Bei Erfolg Ergebnisse persistent übernehmen und anzeigen.
+        if (!d.cancelled) {
+          setDupGroups(d.groups);
+          void saveDuplicates(d.groups);
+          setDupOpen(true);
+        }
       });
     })();
     return () => {
@@ -187,6 +237,8 @@ export default function LibraryView({ settings, account, onOpenSettings }: Props
         setTracks(cache.tracks);
         setEdits(cache.edits ?? {});
       }
+      const dups = await loadDuplicates();
+      if (active && dups.length) setDupGroups(dups);
       // Ab jetzt darf persistiert werden (Cache wurde berücksichtigt).
       hydratedRef.current = true;
       if (!active || !libraryDir) return;
@@ -423,6 +475,85 @@ export default function LibraryView({ settings, account, onOpenSettings }: Props
     });
   }, [tracks, filter, search, isIncomplete]);
 
+  // Album-Schlüssel eines Tracks (Album-Tag, sonst Ordnername).
+  const albumOf = useCallback(
+    (t: TrackAnalysis): string => {
+      const md = edits[t.id]?.metadata ?? t.metadata;
+      if (md.album?.trim()) return md.album.trim();
+      const parts = t.path.split("/");
+      return parts[parts.length - 2] || "(Kein Album)";
+    },
+    [edits],
+  );
+
+  // Gruppierung nach Album (>= 2 Tracks = Gruppe, sonst Einzelzeile).
+  type AlbumItem =
+    | { type: "group"; key: string; tracks: TrackAnalysis[] }
+    | { type: "track"; track: TrackAnalysis };
+  const albumItems = useMemo<AlbumItem[] | null>(() => {
+    if (!groupByAlbum) return null;
+    const map = new Map<string, TrackAnalysis[]>();
+    for (const t of visibleTracks) {
+      const key = albumOf(t);
+      const list = map.get(key);
+      if (list) list.push(t);
+      else map.set(key, [t]);
+    }
+    const items: AlbumItem[] = [];
+    for (const [key, tr] of map) {
+      if (tr.length >= 2) items.push({ type: "group", key, tracks: tr });
+      else items.push({ type: "track", track: tr[0] });
+    }
+    return items;
+  }, [groupByAlbum, visibleTracks, albumOf]);
+
+  // Flache Render-Reihenfolge (inkl. eingeklappter) für die Shift-Auswahl.
+  const renderOrder = useMemo(() => {
+    if (!albumItems) return visibleTracks;
+    const arr: TrackAnalysis[] = [];
+    for (const it of albumItems) {
+      if (it.type === "group") arr.push(...it.tracks);
+      else arr.push(it.track);
+    }
+    return arr;
+  }, [albumItems, visibleTracks]);
+
+  const allGroupKeys = useMemo(
+    () =>
+      (albumItems ?? [])
+        .filter((it): it is Extract<AlbumItem, { type: "group" }> => it.type === "group")
+        .map((it) => it.key),
+    [albumItems],
+  );
+
+  const toggleAlbum = useCallback((key: string) => {
+    setExpandedAlbums((prev) => {
+      const next = new Set(prev);
+      next.has(key) ? next.delete(key) : next.add(key);
+      return next;
+    });
+  }, []);
+
+  const toggleAllAlbums = useCallback(() => {
+    setExpandedAlbums((prev) =>
+      prev.size >= allGroupKeys.length && allGroupKeys.length > 0
+        ? new Set()
+        : new Set(allGroupKeys),
+    );
+  }, [allGroupKeys]);
+
+  // Alle Tracks einer Album-Gruppe (de)selektieren.
+  const toggleAlbumSelect = useCallback((tracksInAlbum: TrackAnalysis[]) => {
+    setSelected((prev) => {
+      const ids = tracksInAlbum.map((t) => t.id);
+      const allSel = ids.every((id) => prev.has(id));
+      const next = new Set(prev);
+      if (allSel) ids.forEach((id) => next.delete(id));
+      else ids.forEach((id) => next.add(id));
+      return next;
+    });
+  }, []);
+
   const allVisibleSelected =
     visibleTracks.length > 0 && visibleTracks.every((t) => selected.has(t.id));
 
@@ -440,7 +571,7 @@ export default function LibraryView({ settings, account, onOpenSettings }: Props
   // Zeilenauswahl mit Shift-Bereichsauswahl (klassisch wie im Datei-Explorer).
   const handleRowSelect = useCallback(
     (index: number, shiftKey: boolean) => {
-      const id = visibleTracks[index]?.id;
+      const id = renderOrder[index]?.id;
       if (!id) return;
 
       if (shiftKey && anchorIndexRef.current !== null) {
@@ -451,7 +582,7 @@ export default function LibraryView({ settings, account, onOpenSettings }: Props
         setSelected(() => {
           const next = new Set(baseSelectionRef.current);
           for (let i = start; i <= end; i++) {
-            const rid = visibleTracks[i]?.id;
+            const rid = renderOrder[i]?.id;
             if (rid) next.add(rid);
           }
           return next;
@@ -467,7 +598,7 @@ export default function LibraryView({ settings, account, onOpenSettings }: Props
         anchorIndexRef.current = index;
       }
     },
-    [visibleTracks],
+    [renderOrder],
   );
 
   const saveEdit = useCallback((id: string, edit: TrackEdit) => {
@@ -495,44 +626,73 @@ export default function LibraryView({ settings, account, onOpenSettings }: Props
     [tracks, selected],
   );
 
-  // Nach dem Verschieben von Duplikaten in den Papierkorb.
-  const handleDuplicatesDeleted = useCallback(
-    (paths: string[]) => {
-      const gone = new Set(paths);
+  // Duplikate: einzelne/mehrere Dateien in den Papierkorb verschieben und
+  // Gruppen/Library live aktualisieren (Modal bleibt offen).
+  const handleDeleteDuplicateFiles = useCallback(async (paths: string[]) => {
+    const results = await deleteFiles(paths);
+    const gone = new Set(results.filter((r) => r.success).map((r) => r.path));
+    if (gone.size) {
       setTracks((prev) => prev.filter((t) => !gone.has(t.path)));
       setSelected((prev) => {
         const next = new Set(prev);
-        paths.forEach((p) => next.delete(p));
+        gone.forEach((p) => next.delete(p));
         return next;
       });
-      setDupOpen(false);
-      void rescan();
-    },
-    [rescan],
+      setDupGroups((prev) => {
+        const pruned = pruneGroups(prev, (p) => !gone.has(p));
+        void saveDuplicates(pruned);
+        return pruned;
+      });
+    }
+    const failed = results.filter((r) => !r.success);
+    if (failed.length) {
+      throw new Error(
+        failed.map((f) => f.error).filter(Boolean).join("; ") || "unbekannt",
+      );
+    }
+  }, []);
+
+  // Gruppe verwerfen („kein Duplikat") – persistent.
+  const dismissDuplicateGroup = useCallback((id: string) => {
+    setDupGroups((prev) => {
+      const next = prev.filter((g) => g.id !== id);
+      void saveDuplicates(next);
+      return next;
+    });
+  }, []);
+
+  const buildDupCandidates = useCallback(
+    () =>
+      tracks.map((t) => ({
+        id: t.id,
+        path: t.path,
+        name: edits[t.id]?.metadata.title || t.metadata.title || t.file_name,
+        codec: t.audio.codec,
+        container: t.audio.container,
+        sample_rate: t.audio.sample_rate,
+        bits_per_sample: t.audio.bits_per_sample,
+        lossless: t.audio.lossless,
+        duration_secs: t.audio.duration_secs,
+        compatible: t.compat.compatible,
+      })),
+    [tracks, edits],
   );
 
-  // Duplikatsuche starten (läuft im Hintergrund, Fortschritt in der Scan-Leiste).
-  const findDuplicates = useCallback(async () => {
+  // Neuen Suchlauf starten (aus Header oder Modal „Erneut suchen").
+  const startDuplicateScan = useCallback(async () => {
     const status = await dedupeStatus();
-    if (status.running) return; // läuft bereits – Leiste zeigt Fortschritt
-    if (status.has_result) {
-      setDupOpen(true); // fertiges Ergebnis direkt zeigen
+    if (status.running) return;
+    void startDedupe(buildDupCandidates());
+  }, [buildDupCandidates]);
+
+  // Header-Button: vorhandene Ergebnisse zeigen, sonst neue Suche starten.
+  const findDuplicates = useCallback(async () => {
+    if (dupGroups.length > 0) {
+      setDupOpen(true);
       return;
     }
-    const candidates = tracks.map((t) => ({
-      id: t.id,
-      path: t.path,
-      name: edits[t.id]?.metadata.title || t.metadata.title || t.file_name,
-      codec: t.audio.codec,
-      container: t.audio.container,
-      sample_rate: t.audio.sample_rate,
-      bits_per_sample: t.audio.bits_per_sample,
-      lossless: t.audio.lossless,
-      duration_secs: t.audio.duration_secs,
-      compatible: t.compat.compatible,
-    }));
-    void startDedupe(candidates);
-  }, [tracks, edits]);
+    await startDuplicateScan();
+  }, [dupGroups.length, startDuplicateScan]);
 
   // Vorhandene Werte je Feld als Auswahl-Vorschläge (aus Tracks + Edits).
   const fieldOptions = useMemo(() => {
@@ -723,11 +883,20 @@ export default function LibraryView({ settings, account, onOpenSettings }: Props
       </button>
       <button
         onClick={() => void findDuplicates()}
-        disabled={loading || converting || dedupeRunning || tracks.length < 2}
-        className="rounded-lg border border-border-strong px-3 py-2 text-sm hover:border-warning-500 disabled:opacity-50"
+        disabled={
+          loading ||
+          converting ||
+          dedupeRunning ||
+          (dupGroups.length === 0 && tracks.length < 2)
+        }
+        className="rounded-lg border border-border-strong px-3 py-2 text-sm hover:border-accent-500 disabled:opacity-50"
         title="Doppelte Tracks über alle Formate finden"
       >
-        {dedupeRunning ? "Suche Duplikate…" : "Duplikate suchen"}
+        {dedupeRunning
+          ? "Suche Duplikate…"
+          : dupGroups.length > 0
+            ? `Duplikate (${dupGroups.length})`
+            : "Duplikate suchen"}
       </button>
       {selected.size > 0 && (
         <>
@@ -902,13 +1071,30 @@ export default function LibraryView({ settings, account, onOpenSettings }: Props
             onClick={() => setFilter("incomplete")}
             label={`Metadaten unvollständig (${tracks.filter(isIncomplete).length})`}
           />
-          <input
-            type="search"
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            placeholder="Suchen…"
-            className="ml-auto w-56 rounded-lg border border-border-strong bg-surface-2 px-3 py-1.5 text-sm outline-none focus:border-accent-500"
-          />
+          <div className="ml-auto flex items-center gap-2">
+            <FilterChip
+              active={groupByAlbum}
+              onClick={() => setGroupByAlbum((v) => !v)}
+              label="Nach Album"
+            />
+            {groupByAlbum && allGroupKeys.length > 0 && (
+              <button
+                onClick={toggleAllAlbums}
+                className="whitespace-nowrap rounded-full px-3 py-1.5 text-sm text-fg-muted ring-1 ring-border-strong transition-colors hover:text-fg hover:ring-border-strong"
+              >
+                {expandedAlbums.size >= allGroupKeys.length
+                  ? "Alle einklappen"
+                  : "Alle ausklappen"}
+              </button>
+            )}
+            <input
+              type="search"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="Suchen…"
+              className="w-56 rounded-lg border border-border-strong bg-surface-2 px-3 py-1.5 text-sm outline-none focus:border-accent-500"
+            />
+          </div>
         </div>
       )}
 
@@ -960,7 +1146,8 @@ export default function LibraryView({ settings, account, onOpenSettings }: Props
               </tr>
             </thead>
             <tbody>
-              {visibleTracks.map((t, index) => {
+              {(() => {
+                const renderTrackRow = (t: TrackAnalysis, index: number) => {
                 const prog = progress[t.id];
                 const result = results[t.id];
                 const fromBandcamp = !!sync?.originById[t.id];
@@ -1077,7 +1264,86 @@ export default function LibraryView({ settings, account, onOpenSettings }: Props
                     </td>
                   </tr>
                 );
-              })}
+                };
+
+                const rows: ReactNode[] = [];
+                if (albumItems) {
+                  let idx = 0;
+                  for (const it of albumItems) {
+                    if (it.type === "track") {
+                      rows.push(renderTrackRow(it.track, idx));
+                      idx++;
+                      continue;
+                    }
+                    const expanded = expandedAlbums.has(it.key);
+                    const gTracks = it.tracks;
+                    const allSel = gTracks.every((t) => selected.has(t.id));
+                    const someSel =
+                      !allSel && gTracks.some((t) => selected.has(t.id));
+                    const cover = gTracks[0];
+                    const needConvert = gTracks.filter(
+                      (t) => !t.compat.compatible,
+                    ).length;
+                    rows.push(
+                      <tr
+                        key={`g-${it.key}`}
+                        onClick={() => toggleAlbum(it.key)}
+                        className="cursor-pointer border-b border-border bg-surface-2/40 hover:bg-surface-2"
+                      >
+                        <td
+                          className="px-4 py-2.5"
+                          onClick={(e) => e.stopPropagation()}
+                        >
+                          <input
+                            type="checkbox"
+                            checked={allSel}
+                            ref={(el) => {
+                              if (el) el.indeterminate = someSel;
+                            }}
+                            onChange={() => toggleAlbumSelect(gTracks)}
+                            className="h-4 w-4 rounded border-border-strong bg-surface-2"
+                            aria-label={`${it.key} auswählen`}
+                          />
+                        </td>
+                        <td className="px-4 py-2.5">
+                          <CoverThumb
+                            path={cover.path}
+                            hasCover={cover.metadata.has_cover}
+                          />
+                        </td>
+                        <td colSpan={6} className="px-4 py-2.5">
+                          <div className="flex items-center gap-2">
+                            <span className="text-fg-subtle">
+                              <ChevronIcon open={expanded} />
+                            </span>
+                            <span className="truncate font-medium text-fg">
+                              {it.key}
+                            </span>
+                            <span className="whitespace-nowrap text-xs text-fg-subtle">
+                              {gTracks.length} Titel
+                              {needConvert ? ` · ${needConvert} zu konvertieren` : ""}
+                            </span>
+                          </div>
+                        </td>
+                        <td className="px-4 py-2.5"></td>
+                      </tr>,
+                    );
+                    if (expanded) {
+                      gTracks.forEach((t) => {
+                        rows.push(renderTrackRow(t, idx));
+                        idx++;
+                      });
+                    } else {
+                      idx += gTracks.length;
+                    }
+                  }
+                } else {
+                  visibleTracks.forEach((t, i) =>
+                    rows.push(renderTrackRow(t, i)),
+                  );
+                }
+                return rows;
+              })()}
             </tbody>
           </table>
           </div>
@@ -1110,8 +1376,12 @@ export default function LibraryView({ settings, account, onOpenSettings }: Props
 
       {dupOpen && (
         <DuplicatesModal
+          groups={dupGroups}
+          scanning={dedupeRunning}
           onClose={() => setDupOpen(false)}
-          onDeleted={handleDuplicatesDeleted}
+          onDeleteFiles={handleDeleteDuplicateFiles}
+          onDismissGroup={dismissDuplicateGroup}
+          onRescan={() => void startDuplicateScan()}
         />
       )}
       </main>

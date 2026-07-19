@@ -1,41 +1,45 @@
-import { useEffect, useMemo, useState } from "react";
-import { dedupeResult, deleteFiles } from "../lib/api";
+import { useMemo, useState } from "react";
 import { formatBytes, formatDuration, formatSampleRate } from "../lib/format";
 import type { DuplicateFile, DuplicateGroup } from "../types";
+import { TrashIcon } from "./icons";
 
 interface Props {
+  groups: DuplicateGroup[];
+  scanning: boolean;
   onClose: () => void;
-  onDeleted: (paths: string[]) => void;
+  /** Dateien in den Papierkorb verschieben (Parent aktualisiert Gruppen/Library). */
+  onDeleteFiles: (paths: string[]) => Promise<void>;
+  /** Gruppe als „kein Duplikat" verwerfen. */
+  onDismissGroup: (id: string) => void;
+  /** Neuen Suchlauf starten. */
+  onRescan: () => void;
 }
 
-export default function DuplicatesModal({ onClose, onDeleted }: Props) {
-  const [loading, setLoading] = useState(true);
-  const [groups, setGroups] = useState<DuplicateGroup[]>([]);
-  const [keepById, setKeepById] = useState<Record<string, string>>({});
-  const [deleting, setDeleting] = useState(false);
+export default function DuplicatesModal({
+  groups,
+  scanning,
+  onClose,
+  onDeleteFiles,
+  onDismissGroup,
+  onRescan,
+}: Props) {
+  // Welche Datei je Gruppe behalten wird (UI-Auswahl, sonst Vorschlag).
+  const [keepOverride, setKeepOverride] = useState<Record<string, string>>({});
+  const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // Ergebnis der (bereits gelaufenen) Suche laden.
-  useEffect(() => {
-    let active = true;
-    void (async () => {
-      const result = (await dedupeResult()) ?? [];
-      if (!active) return;
-      setGroups(result);
-      setKeepById(Object.fromEntries(result.map((g) => [g.id, g.keep_id])));
-      setLoading(false);
-    })();
-    return () => {
-      active = false;
-    };
-  }, []);
+  const keepFor = (g: DuplicateGroup): string => {
+    const chosen = keepOverride[g.id];
+    if (chosen && g.files.some((f) => f.id === chosen)) return chosen;
+    if (g.files.some((f) => f.id === g.keep_id)) return g.keep_id;
+    return g.files[0]?.id ?? "";
+  };
 
-  // Alle nicht-behaltenen Dateien sind zum Löschen vorgemerkt.
   const toDelete = useMemo(() => {
     const paths: string[] = [];
     let bytes = 0;
     for (const g of groups) {
-      const keep = keepById[g.id];
+      const keep = keepFor(g);
       for (const f of g.files) {
         if (f.id !== keep) {
           paths.push(f.path);
@@ -44,34 +48,19 @@ export default function DuplicatesModal({ onClose, onDeleted }: Props) {
       }
     }
     return { paths, bytes };
-  }, [groups, keepById]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [groups, keepOverride]);
 
-  // Eine Gruppe als „kein Duplikat" verwerfen (nur aus der Ansicht entfernen).
-  const dismissGroup = (id: string) => {
-    setGroups((gs) => gs.filter((g) => g.id !== id));
-  };
-
-  const handleDelete = async () => {
-    if (!toDelete.paths.length) return;
-    setDeleting(true);
+  const runDelete = async (paths: string[]) => {
+    if (!paths.length || busy) return;
+    setBusy(true);
     setError(null);
     try {
-      const results = await deleteFiles(toDelete.paths);
-      const failed = results.filter((r) => !r.success);
-      const deleted = results.filter((r) => r.success).map((r) => r.path);
-      if (failed.length) {
-        setError(
-          `${failed.length} Datei(en) konnten nicht gelöscht werden: ${failed
-            .map((f) => f.error)
-            .filter(Boolean)
-            .join("; ")}`,
-        );
-      }
-      onDeleted(deleted);
+      await onDeleteFiles(paths);
     } catch (e) {
       setError(`Löschen fehlgeschlagen: ${e}`);
     } finally {
-      setDeleting(false);
+      setBusy(false);
     }
   };
 
@@ -81,118 +70,119 @@ export default function DuplicatesModal({ onClose, onDeleted }: Props) {
         <header className="flex items-center justify-between border-b border-border px-5 py-3">
           <h2 className="text-sm font-medium">
             Duplikate
-            {!loading && groups.length > 0 && (
+            {groups.length > 0 && (
               <span className="ml-2 text-fg-subtle">
                 {groups.length} Gruppe{groups.length === 1 ? "" : "n"}
               </span>
             )}
           </h2>
-          <button
-            onClick={onClose}
-            className="text-fg-muted hover:text-fg"
-          >
-            ✕
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={onRescan}
+              disabled={scanning}
+              className="rounded-md border border-border-strong px-2.5 py-1 text-xs text-fg-muted hover:border-accent-500 hover:text-accent-400 disabled:opacity-40"
+            >
+              {scanning ? "Sucht…" : "Erneut suchen"}
+            </button>
+            <button onClick={onClose} className="text-fg-muted hover:text-fg" aria-label="Schließen">
+              ✕
+            </button>
+          </div>
         </header>
 
         <div className="flex-1 overflow-y-auto p-5">
-          {loading ? (
-            <p className="py-16 text-center text-sm text-fg-muted">Lädt…</p>
-          ) : groups.length === 0 ? (
+          {groups.length === 0 ? (
             <div className="flex flex-col items-center gap-2 py-16 text-center text-fg-muted">
-              <p className="text-lg text-fg">Keine Duplikate gefunden</p>
-              <p className="text-sm">
-                Alle Tracks in der Library sind eindeutig.
+              <p className="text-lg text-fg">
+                {scanning ? "Suche läuft…" : "Keine Duplikate gefunden"}
               </p>
+              {!scanning && (
+                <p className="text-sm">Alle Tracks in der Library sind eindeutig.</p>
+              )}
             </div>
           ) : (
             <div className="flex flex-col gap-4">
               <p className="text-xs text-fg-subtle">
-                Wähle pro Gruppe die Datei, die du behalten möchtest. Alle
-                anderen werden in den Papierkorb verschoben. Vorausgewählt ist
-                die höchste Qualität.
+                Wähle pro Gruppe die Datei, die du behalten möchtest. Andere kannst
+                du einzeln oder gesammelt in den Papierkorb verschieben.
               </p>
-              {groups.map((g) => (
-                <div
-                  key={g.id}
-                  className="overflow-hidden rounded-xl border border-border"
-                >
-                  <div className="flex items-center justify-between border-b border-border bg-surface px-4 py-2">
-                    <span className="text-xs text-fg-subtle">
-                      {g.files.length} Dateien
-                    </span>
-                    <button
-                      onClick={() => dismissGroup(g.id)}
-                      title="Diese Gruppe ist kein Duplikat – aus der Liste entfernen"
-                      className="rounded-md border border-border-strong px-2 py-1 text-xs text-fg-muted hover:border-warning-500 hover:text-warning-500"
-                    >
-                      Kein Duplikat
-                    </button>
-                  </div>
-                  {g.files.map((f) => {
-                    const keep = keepById[g.id] === f.id;
-                    return (
-                      <label
-                        key={f.id}
-                        className={`flex cursor-pointer items-center gap-3 border-b border-border px-4 py-3 last:border-0 ${
-                          keep ? "bg-success-500/5" : "hover:bg-surface-2"
-                        }`}
+              {groups.map((g) => {
+                const keep = keepFor(g);
+                return (
+                  <div key={g.id} className="overflow-hidden rounded-xl border border-border">
+                    <div className="flex items-center justify-between border-b border-border bg-surface px-4 py-2">
+                      <span className="text-xs text-fg-subtle">{g.files.length} Dateien</span>
+                      <button
+                        onClick={() => onDismissGroup(g.id)}
+                        title="Diese Gruppe ist kein Duplikat – aus der Liste entfernen"
+                        className="rounded-md border border-border-strong px-2 py-1 text-xs text-fg-muted hover:border-warning-500 hover:text-warning-500"
                       >
-                        <input
-                          type="radio"
-                          name={`keep-${g.id}`}
-                          checked={keep}
-                          onChange={() =>
-                            setKeepById((s) => ({ ...s, [g.id]: f.id }))
-                          }
-                          className="h-4 w-4 shrink-0"
-                        />
-                        <div className="min-w-0 flex-1">
-                          <p
-                            className={`truncate text-sm ${
-                              keep ? "text-fg" : "text-fg-muted"
-                            }`}
-                            title={f.path}
-                          >
-                            {f.file_name}
-                          </p>
-                          <p className="truncate text-xs text-fg-subtle">
-                            {f.codec.toUpperCase()} ·{" "}
-                            {formatSampleRate(f.sample_rate)}
-                            {f.bits_per_sample > 0 &&
-                              ` · ${f.bits_per_sample} bit`}{" "}
-                            · {formatDuration(f.duration_secs)} ·{" "}
-                            {formatBytes(f.size_bytes)}
-                          </p>
-                        </div>
-                        <div className="flex shrink-0 items-center gap-2">
+                        Kein Duplikat
+                      </button>
+                    </div>
+                    {g.files.map((f) => {
+                      const isKeep = keep === f.id;
+                      return (
+                        <div
+                          key={f.id}
+                          className={`flex items-center gap-3 border-b border-border/60 px-4 py-3 last:border-0 ${
+                            isKeep ? "bg-success-500/5" : ""
+                          }`}
+                        >
+                          <input
+                            type="radio"
+                            name={`keep-${g.id}`}
+                            checked={isKeep}
+                            onChange={() =>
+                              setKeepOverride((s) => ({ ...s, [g.id]: f.id }))
+                            }
+                            className="h-4 w-4 shrink-0"
+                            aria-label="Behalten"
+                          />
+                          <div className="min-w-0 flex-1">
+                            <p
+                              className={`truncate text-sm ${isKeep ? "text-fg" : "text-fg-muted"}`}
+                              title={f.path}
+                            >
+                              {f.file_name}
+                            </p>
+                            <p className="truncate text-xs text-fg-subtle">
+                              {f.codec.toUpperCase()} · {formatSampleRate(f.sample_rate)}
+                              {f.bits_per_sample > 0 && ` · ${f.bits_per_sample} bit`} ·{" "}
+                              {formatDuration(f.duration_secs)} · {formatBytes(f.size_bytes)}
+                            </p>
+                          </div>
                           <QualityBadge f={f} />
-                          {keep ? (
+                          {isKeep ? (
                             <span className="rounded-full bg-success-500/15 px-2 py-0.5 text-xs text-success-500 ring-1 ring-success-500/30">
                               Behalten
                             </span>
                           ) : (
-                            <span className="rounded-full bg-danger-500/15 px-2 py-0.5 text-xs text-danger-500 ring-1 ring-danger-500/30">
-                              Löschen
-                            </span>
+                            <button
+                              onClick={() => void runDelete([f.path])}
+                              disabled={busy}
+                              title="Diese Datei in den Papierkorb verschieben"
+                              aria-label="In den Papierkorb"
+                              className="flex h-8 w-8 items-center justify-center rounded-md text-fg-subtle hover:bg-surface-2 hover:text-danger-500 disabled:opacity-40"
+                            >
+                              <TrashIcon />
+                            </button>
                           )}
                         </div>
-                      </label>
-                    );
-                  })}
-                </div>
-              ))}
+                      );
+                    })}
+                  </div>
+                );
+              })}
             </div>
           )}
         </div>
 
-        {!loading && groups.length > 0 && (
+        {groups.length > 0 && (
           <footer className="flex items-center gap-3 border-t border-border px-5 py-3">
             <div className="mr-auto text-sm text-fg-muted">
-              {toDelete.paths.length} Datei(en) löschen ·{" "}
-              <span className="text-success-500">
-                {formatBytes(toDelete.bytes)} frei
-              </span>
+              {toDelete.paths.length} Datei(en) ·{" "}
+              <span className="text-success-500">{formatBytes(toDelete.bytes)} frei</span>
             </div>
             {error && (
               <span className="max-w-sm truncate text-xs text-danger-500" title={error}>
@@ -206,13 +196,11 @@ export default function DuplicatesModal({ onClose, onDeleted }: Props) {
               Schließen
             </button>
             <button
-              onClick={handleDelete}
-              disabled={deleting || toDelete.paths.length === 0}
-              className="rounded-lg bg-danger-500 px-4 py-2 text-sm font-medium hover:bg-danger-500/90 disabled:opacity-40"
+              onClick={() => void runDelete(toDelete.paths)}
+              disabled={busy || toDelete.paths.length === 0}
+              className="rounded-lg bg-danger-500 px-4 py-2 text-sm font-medium text-white hover:bg-danger-500/90 disabled:opacity-40"
             >
-              {deleting
-                ? "Verschiebe…"
-                : `In den Papierkorb (${toDelete.paths.length})`}
+              {busy ? "Verschiebe…" : `Alle nicht-behaltenen (${toDelete.paths.length})`}
             </button>
           </footer>
         )}
