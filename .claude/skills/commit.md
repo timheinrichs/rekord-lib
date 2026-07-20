@@ -38,4 +38,3 @@ feat(auth): add password reset functionality
 - Implement email verification flow
 - Add password reset endpoint
 ```
- bitte

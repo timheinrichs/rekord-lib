@@ -1,115 +1,115 @@
 # rekord-lib — Styleguide
 
-Visuelle Identität und UI-Konventionen für die Desktop-App (Tauri + React +
-Tailwind). Diese Datei ist bewusst so geschrieben, dass sie an **Claude Code**
-übergeben werden kann: Sie enthält konkrete Tokens, Klassen-Rezepte und Regeln.
+Visual identity and UI conventions for the desktop app (Tauri + React +
+Tailwind). This file is deliberately written so that it can be handed to
+**Claude Code**: it contains concrete tokens, class recipes, and rules.
 
-> Kurzfassung für Claude Code: Nutze `tokens.css` (Tailwind v4) als einzige
-> Quelle der Wahrheit. Dark-Mode ist Default. Akzentfarbe ist Violett
-> (`accent-*`). Logo-/Display-Text in `font-mono` (JetBrains Mono), Fließtext
-> in `font-sans` (Inter). Status-Farben sind an App-Zustände gekoppelt (siehe
-> unten). Keine Neon-/Gradient-Effekte.
+> Short version for Claude Code: Use `tokens.css` (Tailwind v4) as the single
+> source of truth. Dark mode is the default. The accent color is violet
+> (`accent-*`). Logo/display text in `font-mono` (JetBrains Mono), body text
+> in `font-sans` (Inter). Status colors are tied to app states (see
+> below). No neon/gradient effects.
 
 ---
 
-## 1. Marke in einem Satz
+## 1. Brand in one sentence
 
-`rekord-lib` bereitet Audiodateien so auf, dass sie fehlerfrei auf Pioneer
-CDJ/XDJ laufen. Der Ton der Marke ist **technisch, präzise, ruhig** — ein
-Werkzeug für DJs, kein verspieltes Consumer-Produkt. Das spiegelt sich in
-Monospace-Typo, dunkler Oberfläche und einem einzigen kräftigen Akzent.
+`rekord-lib` prepares audio files so that they run without errors on Pioneer
+CDJ/XDJ. The brand's tone is **technical, precise, calm** — a
+tool for DJs, not a playful consumer product. This is reflected in
+monospace type, a dark surface, and a single strong accent.
 
 ---
 
 ## 2. Logo
 
-### Aufbau
-Eckige Klammern `[ ]` (= Code-Library, das `-lib`) umschließen eine
-Wellenform aus vier Balken (= Audio). Zweifarbig: `rekord` in Vorder­grund­farbe,
-`-lib` und die Wellenform im Akzent-Violett.
+### Structure
+Square brackets `[ ]` (= code library, the `-lib`) enclose a
+waveform of four bars (= audio). Two-tone: `rekord` in the foreground color,
+`-lib` and the waveform in accent violet.
 
-### Dateien (`/logo`)
-| Datei | Einsatz |
+### Files (`/logo`)
+| File | Use |
 |---|---|
-| `rekord-lib-mark.svg` | Nur Mark, farbig, transparent |
-| `rekord-lib-mark-mono.svg` | Mark einfarbig (`currentColor`) — erbt Textfarbe |
-| `rekord-lib-logo-horizontal.svg` | Wortmarke, helle Hintergründe |
-| `rekord-lib-logo-horizontal-dark.svg` | Wortmarke, dunkle Hintergründe |
-| `rekord-lib-logo-stacked.svg` / `-dark.svg` | Gestapelt (quadratische Flächen) |
-| `rekord-lib-app-icon.svg` | Squircle-App-Icon (Quelle aller Raster-Icons) |
-| `/logo/png/*` | Vorgerenderte PNGs für README/Docs |
+| `rekord-lib-mark.svg` | Mark only, colored, transparent |
+| `rekord-lib-mark-mono.svg` | Mark single-color (`currentColor`) — inherits text color |
+| `rekord-lib-logo-horizontal.svg` | Wordmark, light backgrounds |
+| `rekord-lib-logo-horizontal-dark.svg` | Wordmark, dark backgrounds |
+| `rekord-lib-logo-stacked.svg` / `-dark.svg` | Stacked (square surfaces) |
+| `rekord-lib-app-icon.svg` | Squircle app icon (source of all raster icons) |
+| `/logo/png/*` | Pre-rendered PNGs for README/docs |
 
-Die Wortmarke ist in Pfade konvertiert — die SVGs rendern überall identisch,
-auch ohne installierte Schrift.
+The wordmark is converted to paths — the SVGs render identically everywhere,
+even without the font installed.
 
-### Regeln
-- **Schutzraum:** mindestens die Höhe eines Klammer-Fußes (≈ 1/6 der Markhöhe) rundum frei halten.
-- **Mindestgröße:** Mark ab 24 px, Wortmarke ab 120 px Breite.
-- **Farbwahl:** auf hellen Flächen die Standardvariante, auf dunklen die `-dark`-Variante.
-- **Nicht:** verzerren, Farben tauschen, Effekte/Schatten hinzufügen, Klammern und Wellenform trennen.
-- Für sehr kleine UI (16–20 px, z. B. Menubar) `rekord-lib-mark-mono.svg` verwenden; die Wellenform verschmilzt dort optisch, was akzeptabel ist.
+### Rules
+- **Clear space:** keep at least the height of a bracket foot (≈ 1/6 of the mark height) clear all around.
+- **Minimum size:** mark from 24 px, wordmark from 120 px wide.
+- **Color choice:** on light surfaces the standard variant, on dark surfaces the `-dark` variant.
+- **Don't:** distort, swap colors, add effects/shadows, or separate the brackets and waveform.
+- For very small UI (16–20 px, e.g. menubar) use `rekord-lib-mark-mono.svg`; the waveform visually merges there, which is acceptable.
 
 ---
 
-## 3. Farben
+## 3. Colors
 
-Ramps sind in `tokens.css` als Tailwind-Utilities verfügbar
+Ramps are available in `tokens.css` as Tailwind utilities
 (`bg-accent-500`, `text-graphite-300`, …).
 
-### Akzent — Violett (Marke)
-`accent-500 #6A5FD6` ist die Basis. Primäre Aktionen: `accent-600`, Hover
-`accent-500`. Auf Dunkel für Text/Icons eher `accent-300/400` (Kontrast).
+### Accent — violet (brand)
+`accent-500 #6A5FD6` is the base. Primary actions: `accent-600`, hover
+`accent-500`. On dark, use `accent-300/400` for text/icons (contrast).
 
-### Graphite — Neutraltöne (dark-first)
-`graphite-900 #100F14` App-Hintergrund → `graphite-0 #FFFFFF`. Kühl abgestimmt
-auf das Violett.
+### Graphite — neutrals (dark-first)
+`graphite-900 #100F14` app background → `graphite-0 #FFFFFF`. Cool-tuned
+to match the violet.
 
-### Semantische Oberflächen-Tokens (theme-abhängig)
-Nicht die Ramps direkt für Flächen/Text nehmen, sondern diese Tokens — sie
-schalten automatisch zwischen Dark/Light:
+### Semantic surface tokens (theme-dependent)
+Don't use the ramps directly for surfaces/text; use these tokens instead — they
+switch automatically between dark/light:
 
-| Utility | Bedeutung |
+| Utility | Meaning |
 |---|---|
-| `bg-bg` | App-Hintergrund |
-| `bg-surface` | Panels, Cards |
-| `bg-surface-2` | erhöhte Fläche (Menü, Popover, aktive Zeile) |
-| `border-border` / `border-border-strong` | Trennlinien |
-| `text-fg` | primärer Text |
-| `text-fg-muted` | sekundärer Text |
-| `text-fg-subtle` | Hinweise, Platzhalter |
+| `bg-bg` | app background |
+| `bg-surface` | panels, cards |
+| `bg-surface-2` | raised surface (menu, popover, active row) |
+| `border-border` / `border-border-strong` | dividers |
+| `text-fg` | primary text |
+| `text-fg-muted` | secondary text |
+| `text-fg-subtle` | hints, placeholders |
 
-### Status — an App-Zustände gekoppelt
-Das ist der wichtigste Teil für diese App. Farbe kodiert **Kompatibilität**:
+### Status — tied to app states
+This is the most important part for this app. Color encodes **compatibility**:
 
-| Zustand | Farbe | Beispiel-UI |
+| State | Color | Example UI |
 |---|---|---|
-| **kompatibel / bereit** | `success` (grün) | „Läuft auf CDJ", Häkchen |
-| **Konvertierung nötig / Hinweis** | `warning` (amber) | „>48 kHz → wird resampled", FLAC/ALAC nur NXS2/3000 |
-| **inkompatibel / Fehler-Risiko** | `danger` (rot) | „E-8305-Risiko", „kein PCM" |
-| **Marke / Aktion / Fortschritt** | `accent` (violett) | Konvertieren-Button, Waveform, Progress |
+| **compatible / ready** | `success` (green) | "Runs on CDJ", checkmark |
+| **conversion needed / warning** | `warning` (amber) | ">48 kHz → will be resampled", FLAC/ALAC only NXS2/3000 |
+| **incompatible / error risk** | `danger` (red) | "E-8305 risk", "not PCM" |
+| **brand / action / progress** | `accent` (violet) | convert button, waveform, progress |
 
-Flächen jeweils mit `bg-*`/`fg-*`-Paar (in tokens.css): z. B. Warn-Pill
+Surfaces each use a `bg-*`/`fg-*` pair (in tokens.css): e.g. warning pill
 `background: var(--bg-warning); color: var(--fg-warning)`.
 
 ---
 
-## 4. Typografie
+## 4. Typography
 
-| Rolle | Font | Einsatz |
+| Role | Font | Use |
 |---|---|---|
-| Display / Logo / Labels / Daten | **JetBrains Mono** (`font-mono`) | Dateinamen, kHz/bit, Format-Tags, Zahlen, Buttons |
-| Fließtext / UI-Beschreibung | **Inter** (`font-sans`) | Erklärungen, Dialoge, Hilfetexte |
+| Display / logo / labels / data | **JetBrains Mono** (`font-mono`) | filenames, kHz/bit, format tags, numbers, buttons |
+| Body text / UI description | **Inter** (`font-sans`) | explanations, dialogs, help text |
 
-Monospace ist bewusst prominent — es passt zum Werkzeug-Charakter und lässt
-technische Werte (`44.1 kHz`, `24-bit`, `AIFF`) sauber ausrichten. Nicht für
-lange Fließtexte verwenden.
+Monospace is deliberately prominent — it suits the tool character and lets
+technical values (`44.1 kHz`, `24-bit`, `AIFF`) align cleanly. Don't use it for
+long body text.
 
-**Skala** (Tailwind-Defaults): Titel `text-xl`/`text-2xl` (500), Body
-`text-sm`/`text-base` (400), Meta `text-xs` (`text-fg-subtle`). Zwei Gewichte:
-400 regular, 500 medium. Kein 600/700 in der UI. **Sentence case** überall,
-kein Title Case, kein ALL CAPS.
+**Scale** (Tailwind defaults): titles `text-xl`/`text-2xl` (500), body
+`text-sm`/`text-base` (400), meta `text-xs` (`text-fg-subtle`). Two weights:
+400 regular, 500 medium. No 600/700 in the UI. **Sentence case** everywhere,
+no Title Case, no ALL CAPS.
 
-Schriften einbinden (empfohlen):
+Include the fonts (recommended):
 ```
 npm i @fontsource/inter @fontsource/jetbrains-mono
 ```
@@ -122,34 +122,34 @@ import '@fontsource/jetbrains-mono/700.css';
 
 ---
 
-## 5. Form & Layout
+## 5. Shape & layout
 
-- **Radius:** Controls `rounded-md` (8 px), Cards `rounded-lg` (12 px), Pills `rounded-full`. Einseitige Border-Akzente (nur `border-l`) → `rounded-none`.
-- **Border:** Standard `border border-border` (Haarlinie). Kein doppelter Rahmen + Schatten auf derselben Fläche.
-- **Elevation:** dezent, `shadow-md` für Popover/Dialog, sonst flach. Tiefe entsteht über `surface`-Stufen, nicht über Schatten.
-- **Dichte:** kompakt (Power-User-Tool). Zeilenhöhe in Listen knapp, Padding `px-3 py-2` für Zeilen, `px-4 py-2.5` für Buttons.
-- **Icons:** Strich-Icons `stroke-width 2`, Glyph 18–20 px. Icon-only-Buttons in ein **mindestens 32 px großes Klickziel** setzen (`h-8 w-8`, zentriert), nie nur ein nacktes Glyph. Sehr kleine Deko-Icons (16 px) nur ohne Klickfunktion.
-- **Fenster:** dunkle Titelleiste; falls Custom-Titlebar, `bg-surface` + `border-b border-border`.
+- **Radius:** controls `rounded-md` (8 px), cards `rounded-lg` (12 px), pills `rounded-full`. One-sided border accents (only `border-l`) → `rounded-none`.
+- **Border:** default `border border-border` (hairline). No double frame + shadow on the same surface.
+- **Elevation:** subtle, `shadow-md` for popover/dialog, otherwise flat. Depth comes from `surface` levels, not from shadows.
+- **Density:** compact (power-user tool). Tight line height in lists, padding `px-3 py-2` for rows, `px-4 py-2.5` for buttons.
+- **Icons:** stroke icons `stroke-width 2`, glyph 18–20 px. Place icon-only buttons in a **click target of at least 32 px** (`h-8 w-8`, centered), never just a bare glyph. Very small decorative icons (16 px) only without a click function.
+- **Window:** dark title bar; if using a custom title bar, `bg-surface` + `border-b border-border`.
 
 ---
 
-## 6. Komponenten-Rezepte (Tailwind)
+## 6. Component recipes (Tailwind)
 
-Primär-Button
+Primary button
 ```html
 <button class="font-mono text-sm rounded-md px-4 py-2.5 bg-accent-600 hover:bg-accent-500 text-white transition-colors">
-  Konvertieren
+  Convert
 </button>
 ```
 
-Sekundär-Button
+Secondary button
 ```html
 <button class="font-mono text-sm rounded-md px-4 py-2.5 bg-surface-2 hover:bg-graphite-700 text-fg border border-border transition-colors">
-  Abbrechen
+  Cancel
 </button>
 ```
 
-Status-Pill (Beispiel: Warnung)
+Status pill (example: warning)
 ```html
 <span class="font-mono text-xs rounded-full px-2.5 py-1"
       style="background:var(--bg-warning);color:var(--fg-warning)">
@@ -157,7 +157,7 @@ Status-Pill (Beispiel: Warnung)
 </span>
 ```
 
-Track-Zeile (Liste)
+Track row (list)
 ```html
 <div class="flex items-center gap-3 px-3 py-2 rounded-md hover:bg-surface-2">
   <span class="font-mono text-sm text-fg truncate">artist – title.wav</span>
@@ -167,11 +167,11 @@ Track-Zeile (Liste)
 </div>
 ```
 
-Drop-Zone
+Drop zone
 ```html
 <div class="rounded-lg border-2 border-dashed border-border-strong bg-surface
             p-10 text-center text-fg-muted font-sans">
-  Dateien hierher ziehen oder <span class="text-accent-400">auswählen</span>
+  Drag files here or <span class="text-accent-400">select</span>
 </div>
 ```
 
@@ -180,28 +180,28 @@ Card
 <section class="rounded-lg border border-border bg-surface p-5 shadow-md">…</section>
 ```
 
-Waveform (Canvas/SVG): Balken in `accent-500`, Grundlinie/Raster in
-`graphite-700`. Farben aus `theme.ts` (`accent[500]`) beziehen, damit UI und
-Waveform konsistent bleiben.
+Waveform (canvas/SVG): bars in `accent-500`, baseline/grid in
+`graphite-700`. Source colors from `theme.ts` (`accent[500]`) so that UI and
+waveform stay consistent.
 
 ---
 
 ## 7. Dark / Light
 
-Dark ist Default. Umschalten über das Attribut am `<html>`:
+Dark is the default. Toggle via the attribute on `<html>`:
 ```html
-<html data-theme="dark">   <!-- oder "light" -->
+<html data-theme="dark">   <!-- or "light" -->
 ```
-Alle semantischen Tokens (`bg`, `surface`, `fg`, …) und Status-Flächen
-schalten automatisch. Ramps (`accent-*`, `graphite-*`) sind fix — deshalb für
-Flächen/Text die semantischen Tokens verwenden, nicht die Ramps.
+All semantic tokens (`bg`, `surface`, `fg`, …) and status surfaces
+switch automatically. Ramps (`accent-*`, `graphite-*`) are fixed — so use the
+semantic tokens for surfaces/text, not the ramps.
 
 ---
 
 ## 8. Do / Don't
 
-**Do:** dunkle ruhige Fläche, ein Akzent, Monospace für Daten, Status-Farbe =
-Kompatibilität, viel Kontrast bei kleinem Text.
+**Do:** dark calm surface, one accent, monospace for data, status color =
+compatibility, plenty of contrast on small text.
 
-**Don't:** mehrere Akzentfarben mischen, Gradients/Glow, Status-Farben
-dekorativ (nur semantisch!) einsetzen, Fließtext in Monospace, Title Case.
+**Don't:** mix multiple accent colors, gradients/glow, use status colors
+decoratively (semantic only!), body text in monospace, Title Case.

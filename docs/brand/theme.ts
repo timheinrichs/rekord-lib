@@ -1,6 +1,6 @@
-/** rekord-lib — Design-Tokens als TS-Objekt.
- *  Nützlich außerhalb von Tailwind, z. B. für Canvas-Waveform-Rendering,
- *  Chart-Farben oder das Tauri-Window-Theming.
+/** rekord-lib — design tokens as a TS object.
+ *  Useful outside of Tailwind, e.g. for canvas waveform rendering,
+ *  chart colors, or Tauri window theming.
  */
 export const accent = {
   50: '#EEEDFC', 100: '#DAD7F8', 200: '#BCB6F1', 300: '#9C93E9',
@@ -16,13 +16,13 @@ export const graphite = {
 } as const;
 
 export const status = {
-  success: '#22B27A',  // kompatibel / bereit
-  warning: '#F5A623',  // Konvertierung nötig / FLAC-Hinweis
-  danger:  '#E5484D',  // inkompatibel / E-8305-Risiko
+  success: '#22B27A',  // compatible / ready
+  warning: '#F5A623',  // conversion needed / FLAC warning
+  danger:  '#E5484D',  // incompatible / E-8305 risk
   info:    '#3B82F6',
 } as const;
 
-/** Theme-abhängige, semantische Farben. */
+/** Theme-dependent, semantic colors. */
 export const theme = {
   dark: {
     bg: '#100F14', surface: '#17161D', surface2: '#201F28',

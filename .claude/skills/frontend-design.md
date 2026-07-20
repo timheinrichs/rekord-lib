@@ -1,14 +1,14 @@
 # Frontend Design
 
-> **rekord-lib hat bereits eine feste Marke.** Für dieses Projekt gilt der
-> Styleguide als verbindlich — **nicht** eine neue Identität erfinden.
-> Quelle der Wahrheit: `src/styles/tokens.css` und
-> [`docs/brand/STYLEGUIDE.md`](../../docs/brand/STYLEGUIDE.md) (Zusammenfassung
-> in `CLAUDE.md`). Farben nur über Tokens (`bg-bg`/`bg-surface`/`text-fg`/
-> `border-border`, `accent-*`, `success`/`warning`/`danger`), Mono für
-> Daten/Labels/Buttons, Dark als Default, ein Akzent, keine Gradients/Glow.
-> Die folgenden allgemeinen Design-Prinzipien nur für Neues nutzen, das der
-> Styleguide nicht abdeckt — und dann konsistent mit den Tokens.
+> **rekord-lib already has a fixed brand.** For this project the styleguide is
+> authoritative — do **not** invent a new identity. Source of truth:
+> `src/styles/tokens.css` and
+> [`docs/brand/STYLEGUIDE.md`](../../docs/brand/STYLEGUIDE.md) (summary in
+> `CLAUDE.md`). Colors only via tokens (`bg-bg`/`bg-surface`/`text-fg`/
+> `border-border`, `accent-*`, `success`/`warning`/`danger`), mono for
+> data/labels/buttons, dark as the default, a single accent, no gradients/glow.
+> Use the general design principles below only for new things the styleguide
+> does not cover — and then consistently with the tokens.
 
 Approach this as the design lead at a small studio known for giving every client a visual identity that could not be mistaken for anyone else's. This client has already rejected proposals that felt templated, and is paying for a distinctive point of view: make deliberate, opinionated choices about palette, typography, and layout that are specific to this brief, and take one real aesthetic risk you can justify.
 
