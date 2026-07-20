@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 
-/// Zielformat der Konvertierung. Default ist AIFF (universell CDJ-kompatibel).
+/// Target format of the conversion. Default is AIFF (universally CDJ-compatible).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum TargetFormat {
@@ -19,7 +19,7 @@ impl Default for TargetFormat {
 }
 
 impl TargetFormat {
-    /// Dateiendung des Zielcontainers.
+    /// File extension of the target container.
     pub fn extension(&self) -> &'static str {
         match self {
             TargetFormat::Aiff => "aiff",
@@ -31,33 +31,33 @@ impl TargetFormat {
         }
     }
 
-    /// PCM-basierte Formate akzeptieren eine wählbare Bit-Tiefe.
-    #[allow(dead_code)] // wird in Phase 2 (Metadaten/Cover) genutzt
+    /// PCM-based formats accept a selectable bit depth.
+    #[allow(dead_code)] // used in phase 2 (metadata/cover)
     pub fn is_pcm(&self) -> bool {
         matches!(self, TargetFormat::Aiff | TargetFormat::Wav)
     }
 
-    /// Läuft dieses Format nur auf neueren Playern (CDJ-3000/NXS2)?
-    #[allow(dead_code)] // wird in Phase 2 genutzt
+    /// Does this format only run on newer players (CDJ-3000/NXS2)?
+    #[allow(dead_code)] // used in phase 2
     pub fn newer_players_only(&self) -> bool {
         matches!(self, TargetFormat::Flac | TargetFormat::Alac)
     }
 }
 
-/// Technische Audio-Eigenschaften aus ffprobe.
+/// Technical audio properties from ffprobe.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AudioInfo {
     pub container: String,
     pub codec: String,
     pub sample_rate: u32,
-    /// Bit-Tiefe bei PCM; 0 wenn unbekannt/verlustbehaftet.
+    /// Bit depth for PCM; 0 if unknown/lossy.
     pub bits_per_sample: u32,
     pub channels: u32,
     pub duration_secs: f64,
     pub lossless: bool,
 }
 
-/// Aus der Datei ausgelesene Metadaten.
+/// Metadata read from the file.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct TrackMetadata {
     pub title: Option<String>,
@@ -71,8 +71,8 @@ pub struct TrackMetadata {
 }
 
 impl TrackMetadata {
-    /// Sind alle für Rekordbox relevanten Textfelder gesetzt?
-    /// (Titel, Artist, Album, Album-Artist, Genre, Jahr)
+    /// Are all text fields relevant for Rekordbox set?
+    /// (title, artist, album, album artist, genre, year)
     pub fn is_complete(&self) -> bool {
         fn filled(v: &Option<String>) -> bool {
             v.as_ref().map(|s| !s.trim().is_empty()).unwrap_or(false)
@@ -93,7 +93,7 @@ pub enum Severity {
     Warning,
 }
 
-/// Ein einzelnes Kompatibilitätsproblem der Quelldatei.
+/// A single compatibility issue with the source file.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CompatIssue {
     pub code: String,
@@ -101,15 +101,15 @@ pub struct CompatIssue {
     pub severity: Severity,
 }
 
-/// Kompatibilitätsbericht: ist die Datei bereits auf allen CDJ/XDJ lauffähig?
+/// Compatibility report: does the file already run on all CDJ/XDJ?
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CompatReport {
-    /// true = ohne Konvertierung auf allen Playern lauffähig.
+    /// true = runs on all players without conversion.
     pub compatible: bool,
     pub issues: Vec<CompatIssue>,
 }
 
-/// Gesamtergebnis der Analyse einer Datei.
+/// Overall result of analyzing a file.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TrackAnalysis {
     pub id: String,
@@ -118,26 +118,26 @@ pub struct TrackAnalysis {
     pub audio: AudioInfo,
     pub metadata: TrackMetadata,
     pub compat: CompatReport,
-    /// true wenn Pflicht-Metadaten fehlen und Vorschläge sinnvoll wären.
+    /// true if required metadata is missing and suggestions would be useful.
     pub metadata_incomplete: bool,
 }
 
-/// Optionen für einen Konvertierungslauf.
+/// Options for a conversion run.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ConvertOptions {
     pub format: TargetFormat,
-    /// 16 oder 24 (nur relevant für PCM/FLAC/ALAC).
+    /// 16 or 24 (only relevant for PCM/FLAC/ALAC).
     #[serde(default = "default_bit_depth")]
     pub bit_depth: u32,
-    /// Zielordner; wenn leer, wird neben die Quelldatei geschrieben.
+    /// Target folder; if empty, the output is written next to the source file.
     #[serde(default)]
     pub output_dir: Option<String>,
-    /// Sonderzeichen im Dateinamen bereinigen.
+    /// Sanitize special characters in the file name.
     #[serde(default)]
     pub sanitize_filenames: bool,
-    /// Quelldatei nach erfolgreicher Konvertierung löschen, wenn sich der
-    /// Ausgabepfad unterscheidet (z. B. Formatwechsel). Nur für Library-
-    /// Konvertierungen – nicht für importierte (externe) Dateien.
+    /// Delete the source file after a successful conversion when the output
+    /// path differs (e.g. format change). Only for library conversions -
+    /// not for imported (external) files.
     #[serde(default)]
     pub replace_source: bool,
 }
@@ -146,17 +146,17 @@ fn default_bit_depth() -> u32 {
     16
 }
 
-/// Herkunft des einzubettenden Covers.
+/// Source of the cover to embed.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "lowercase")]
 pub enum CoverInput {
-    /// Vorhandenes Cover der Quelldatei beibehalten.
+    /// Keep the existing cover of the source file.
     Keep,
-    /// Kein Cover einbetten.
+    /// Do not embed a cover.
     None,
-    /// Cover von der Cover Art Archive über eine MusicBrainz-Release-ID.
+    /// Cover from the Cover Art Archive via a MusicBrainz release ID.
     Musicbrainz { release_id: String },
-    /// Cover aus einer lokalen Bilddatei.
+    /// Cover from a local image file.
     File { path: String },
 }
 
@@ -166,20 +166,20 @@ impl Default for CoverInput {
     }
 }
 
-/// Ein einzelner Konvertierungsauftrag (kann bestätigte Metadaten enthalten).
+/// A single conversion job (may contain confirmed metadata).
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ConvertJob {
     pub id: String,
     pub path: String,
-    /// Vom Nutzer bestätigte Metadaten (Phase 2); None = bestehende beibehalten.
+    /// Metadata confirmed by the user (phase 2); None = keep existing.
     #[serde(default)]
     pub metadata: Option<TrackMetadata>,
-    /// Cover-Quelle; None wird wie `Keep` behandelt.
+    /// Cover source; None is treated like `Keep`.
     #[serde(default)]
     pub cover: Option<CoverInput>,
 }
 
-/// Ein Kandidat aus der MusicBrainz-Suche.
+/// A candidate from the MusicBrainz search.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct MbCandidate {
     pub title: Option<String>,
@@ -188,25 +188,25 @@ pub struct MbCandidate {
     pub year: Option<String>,
     pub genre: Option<String>,
     pub track_number: Option<u32>,
-    /// MusicBrainz-Release-ID für den Cover-Abruf.
+    /// MusicBrainz release ID for the cover fetch.
     pub release_id: Option<String>,
-    /// MusicBrainz-Score 0..100.
+    /// MusicBrainz score 0..100.
     pub score: u32,
 }
 
-/// Vorschläge für die Metadaten einer Datei zur manuellen Bestätigung.
+/// Suggestions for a file's metadata for manual confirmation.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct MetadataSuggestions {
     pub id: String,
-    /// Aktuell in der Datei vorhandene Tags.
+    /// Tags currently present in the file.
     pub current: TrackMetadata,
-    /// Aus Dateiname/Ordner abgeleitete Vermutung.
+    /// Guess derived from the file name/folder.
     pub filename_guess: TrackMetadata,
-    /// Treffer aus der MusicBrainz-Datenbank (kann leer sein).
+    /// Matches from the MusicBrainz database (may be empty).
     pub candidates: Vec<MbCandidate>,
 }
 
-/// Ergebnis pro konvertierter Datei.
+/// Result per converted file.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ConvertResult {
     pub id: String,
@@ -216,12 +216,12 @@ pub struct ConvertResult {
     pub error: Option<String>,
 }
 
-/// Schlanke Projektion eines Tracks als Kandidat für die Duplikatsuche.
+/// Lean projection of a track as a candidate for the duplicate search.
 #[derive(Debug, Clone, Deserialize)]
 pub struct DupCandidate {
     pub id: String,
     pub path: String,
-    /// Anzeigename (Titel oder Dateiname) für die Namensähnlichkeit.
+    /// Display name (title or file name) for the name similarity check.
     pub name: String,
     pub codec: String,
     pub container: String,
@@ -232,7 +232,7 @@ pub struct DupCandidate {
     pub compatible: bool,
 }
 
-/// Eine Datei innerhalb einer Duplikat-Gruppe, inkl. Qualitäts-/Größeninfos.
+/// A file within a duplicate group, including quality/size info.
 #[derive(Debug, Clone, Serialize)]
 pub struct DuplicateFile {
     pub id: String,
@@ -248,17 +248,17 @@ pub struct DuplicateFile {
     pub size_bytes: u64,
 }
 
-/// Eine Gruppe erkannter Duplikate (derselbe Track in mehreren Dateien).
+/// A group of detected duplicates (the same track across multiple files).
 #[derive(Debug, Clone, Serialize)]
 pub struct DuplicateGroup {
-    /// Stabile Gruppen-ID (kleinster Pfad der Gruppe).
+    /// Stable group ID (the smallest path in the group).
     pub id: String,
     pub files: Vec<DuplicateFile>,
-    /// Vorschlag, welche Datei behalten werden soll (höchste Qualität).
+    /// Suggestion for which file to keep (highest quality).
     pub keep_id: String,
 }
 
-/// Ergebnis eines Löschvorgangs pro Datei.
+/// Result of a delete operation per file.
 #[derive(Debug, Clone, Serialize)]
 pub struct DeleteResult {
     pub path: String,
@@ -266,33 +266,33 @@ pub struct DeleteResult {
     pub error: Option<String>,
 }
 
-/// Verbundenes Bandcamp-Konto.
+/// Connected Bandcamp account.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct BandcampAccount {
     pub username: String,
     pub fan_id: i64,
 }
 
-/// Ein Eintrag aus der Bandcamp-Sammlung (gekauftes Album/Track).
+/// An entry from the Bandcamp collection (purchased album/track).
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct BandcampItem {
-    /// Eindeutiger Schlüssel (sale_item_type + sale_item_id), z. B. "p12345".
+    /// Unique key (sale_item_type + sale_item_id), e.g. "p12345".
     pub key: String,
     pub title: String,
     pub band_name: String,
-    /// "album" oder "track".
+    /// "album" or "track".
     pub item_type: String,
-    /// Thumbnail-URL (bcbits) oder None.
+    /// Thumbnail URL (bcbits) or None.
     pub art_url: Option<String>,
-    /// Download-Seite (aus redownload_urls); None wenn (noch) nicht ladbar.
+    /// Download page (from redownload_urls); None if not (yet) downloadable.
     pub download_page_url: Option<String>,
 }
 
-/// Ergebnis eines Bandcamp-Downloads.
+/// Result of a Bandcamp download.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct BandcampDownloadResult {
     pub key: String,
-    /// Heruntergeladene (und ggf. entpackte) Audiodateien.
+    /// Downloaded (and possibly extracted) audio files.
     pub files: Vec<String>,
     pub success: bool,
     pub error: Option<String>,

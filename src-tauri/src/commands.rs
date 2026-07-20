@@ -17,7 +17,7 @@ use crate::models::{
     TrackAnalysis,
 };
 
-/// Fortschritt des Library-Scans (an das Frontend gestreamt).
+/// Progress of the library scan (streamed to the frontend).
 #[derive(Debug, Clone, serde::Serialize)]
 struct ScanProgress {
     generation: u64,
@@ -26,7 +26,7 @@ struct ScanProgress {
     running: bool,
 }
 
-/// Abschluss-Event des Scans; liefert das Ergebnis.
+/// Completion event of the scan; delivers the result.
 #[derive(Debug, Clone, serde::Serialize)]
 struct ScanDone {
     generation: u64,
@@ -34,7 +34,7 @@ struct ScanDone {
     tracks: Vec<TrackAnalysis>,
 }
 
-/// Aktueller Scan-Status (zum Wieder-Andocken nach Reload).
+/// Current scan status (for reattaching after a reload).
 #[derive(Debug, Clone, serde::Serialize)]
 pub struct ScanStatus {
     running: bool,
@@ -51,13 +51,13 @@ fn file_name(path: &str) -> String {
         .to_string()
 }
 
-/// Audio-Endungen, die beim Library-Scan berücksichtigt werden.
+/// Audio extensions considered during the library scan.
 const AUDIO_EXTENSIONS: [&str; 11] = [
     "aiff", "aif", "wav", "flac", "alac", "m4a", "mp3", "aac", "ogg", "opus", "wma",
 ];
 
-/// Analysiert eine einzelne Datei (Audio-Eigenschaften, Kompatibilität, Metadaten).
-/// Liefert `None`, wenn es keine (lesbare) Audiodatei ist.
+/// Analyzes a single file (audio properties, compatibility, metadata).
+/// Returns `None` if it is not a (readable) audio file.
 async fn analyze_path(app: &AppHandle, path: String) -> Option<TrackAnalysis> {
     let audio = probe::probe(app, &path).await.ok()?;
     let compat = compat::evaluate(&audio);
@@ -75,8 +75,8 @@ async fn analyze_path(app: &AppHandle, path: String) -> Option<TrackAnalysis> {
     })
 }
 
-/// Analysiert eine Liste von Dateien: Audio-Eigenschaften, CDJ-Kompatibilität
-/// und vorhandene Metadaten. Nicht lesbare/keine Audiodateien werden übersprungen.
+/// Analyzes a list of files: audio properties, CDJ compatibility
+/// and existing metadata. Unreadable/non-audio files are skipped.
 #[tauri::command]
 pub async fn analyze_files(app: AppHandle, paths: Vec<String>) -> AppResult<Vec<TrackAnalysis>> {
     let mut out = Vec::with_capacity(paths.len());
@@ -88,11 +88,11 @@ pub async fn analyze_files(app: AppHandle, paths: Vec<String>) -> AppResult<Vec<
     Ok(out)
 }
 
-/// Sammelt rekursiv alle Dateien mit Audio-Endung unter `dir`.
+/// Recursively collects all files with an audio extension under `dir`.
 fn collect_audio_files(dir: &std::path::Path, out: &mut Vec<String>) {
     let entries = match std::fs::read_dir(dir) {
         Ok(e) => e,
-        Err(_) => return, // nicht lesbare Ordner überspringen
+        Err(_) => return, // skip unreadable folders
     };
     for entry in entries.flatten() {
         let path = entry.path();
@@ -109,12 +109,12 @@ fn collect_audio_files(dir: &std::path::Path, out: &mut Vec<String>) {
     }
 }
 
-/// Startet einen Library-Scan als Hintergrund-Singleton. Läuft bereits einer,
-/// passiert nichts (Rückgabe `false`) – der laufende Prozess bleibt bestehen.
-/// Ergebnis kommt via `scan://done`, Fortschritt via `scan://progress`.
+/// Starts a library scan as a background singleton. If one is already running,
+/// nothing happens (returns `false`) - the running process stays in place.
+/// The result arrives via `scan://done`, progress via `scan://progress`.
 #[tauri::command]
 pub fn start_scan(app: AppHandle, state: State<'_, ScanState>, dir: String) -> bool {
-    // Single-flight: nur starten, wenn nicht bereits ein Scan läuft.
+    // Single-flight: only start if a scan is not already running.
     if state.running.swap(true, Ordering::SeqCst) {
         return false;
     }
@@ -123,8 +123,8 @@ pub fn start_scan(app: AppHandle, state: State<'_, ScanState>, dir: String) -> b
     state.total.store(0, Ordering::SeqCst);
     let generation = state.generation.fetch_add(1, Ordering::SeqCst) + 1;
 
-    // Ein frischer Scan bedeutet: die Library hat sich (evtl.) geändert –
-    // ein zwischengespeichertes Duplikat-Ergebnis ist damit ungültig.
+    // A fresh scan means: the library has (possibly) changed -
+    // so a cached duplicate result is now invalid.
     if let Ok(mut r) = app.state::<DedupeState>().result.lock() {
         *r = None;
     }
@@ -189,7 +189,7 @@ pub fn start_scan(app: AppHandle, state: State<'_, ScanState>, dir: String) -> b
     true
 }
 
-/// Aktueller Scan-Status (zum Andocken an einen laufenden Scan nach Reload).
+/// Current scan status (for attaching to a running scan after a reload).
 #[tauri::command]
 pub fn scan_status(state: State<'_, ScanState>) -> ScanStatus {
     ScanStatus {
@@ -200,7 +200,7 @@ pub fn scan_status(state: State<'_, ScanState>) -> ScanStatus {
     }
 }
 
-/// Bricht einen laufenden Scan ab (der Task beendet sich beim nächsten Schritt).
+/// Cancels a running scan (the task terminates at the next step).
 #[tauri::command]
 pub fn cancel_scan(state: State<'_, ScanState>) {
     if state.running.load(Ordering::SeqCst) {
@@ -208,14 +208,14 @@ pub fn cancel_scan(state: State<'_, ScanState>) {
     }
 }
 
-/// Liefert Metadaten-Vorschläge (vorhandene Tags, Dateiname-Vermutung,
-/// MusicBrainz-Kandidaten) zur manuellen Bestätigung.
+/// Returns metadata suggestions (existing tags, file name guess,
+/// MusicBrainz candidates) for manual confirmation.
 #[tauri::command]
 pub async fn suggest_metadata(path: String) -> AppResult<MetadataSuggestions> {
     suggest::suggest(&path).await
 }
 
-/// Liefert eine Cover-Vorschau als data:-URL (bereits auf ≤800px/<100KB gebracht).
+/// Returns a cover preview as a data: URL (already resized to <=800px/<100KB).
 #[tauri::command]
 pub async fn cover_preview(source: String, cover: CoverInput) -> AppResult<Option<String>> {
     let raw = write::resolve_cover(&source, &cover).await?;
@@ -229,8 +229,8 @@ pub async fn cover_preview(source: String, cover: CoverInput) -> AppResult<Optio
     }
 }
 
-/// Liefert ein kleines eingebettetes Cover-Thumbnail als data:-URL für die
-/// Anzeige in der Track-Liste. `None`, wenn die Datei kein Cover enthält.
+/// Returns a small embedded cover thumbnail as a data: URL for display
+/// in the track list. `None` if the file does not contain a cover.
 #[tauri::command]
 pub async fn cover_thumbnail(path: String) -> AppResult<Option<String>> {
     match write::read_cover_or_sidecar(&path) {
@@ -243,8 +243,8 @@ pub async fn cover_thumbnail(path: String) -> AppResult<Option<String>> {
     }
 }
 
-/// Konvertiert die übergebenen Aufträge in das gewählte Zielformat und schreibt
-/// anschließend bestätigte Metadaten + Cover. Fortschritt via `convert://progress`.
+/// Converts the given jobs to the selected target format and then writes
+/// confirmed metadata + cover. Progress via `convert://progress`.
 #[tauri::command]
 pub async fn convert_tracks(
     app: AppHandle,
@@ -258,17 +258,17 @@ pub async fn convert_tracks(
 
         let result = match convert::convert_file(&app, &job.id, &job.path, &options).await {
             Ok(converted) => {
-                // Metadaten + Cover final via lofty schreiben.
+                // Write metadata + cover finally via lofty.
                 let _ = app.emit(
                     "convert://progress",
                     ConvertProgress {
                         id: job.id.clone(),
                         percent: 100,
-                        stage: "Metadaten".into(),
+                        stage: "Metadata".into(),
                     },
                 );
-                // Cover aus der (bei In-place noch intakten) Quelle lesen, Tags in die
-                // geschriebene Datei schreiben, danach ggf. über die Quelle verschieben.
+                // Read the cover from the source (still intact for in-place), write tags
+                // into the written file, then move it over the source if needed.
                 let finalized = write::finalize(
                     &converted.written_path,
                     &job.path,
@@ -281,14 +281,14 @@ pub async fn convert_tracks(
                     Ok(()) => {
                         let moved = if converted.written_path != converted.output_path {
                             std::fs::rename(&converted.written_path, &converted.output_path)
-                                .map_err(|e| format!("Ersetzen fehlgeschlagen: {e}"))
+                                .map_err(|e| format!("Replacement failed: {e}"))
                         } else {
                             Ok(())
                         };
                         match moved {
                             Ok(()) => {
-                                // Original löschen, wenn gewünscht und die Ausgabe
-                                // eine andere Datei ist (z. B. Formatwechsel).
+                                // Delete the original if requested and the output
+                                // is a different file (e.g. format change).
                                 if options.replace_source
                                     && converted.output_path != job.path
                                 {
@@ -323,7 +323,7 @@ pub async fn convert_tracks(
                             source_path: job.path,
                             output_path: Some(converted.output_path),
                             success: false,
-                            error: Some(format!("Konvertiert, aber Metadaten fehlgeschlagen: {e}")),
+                            error: Some(format!("Converted, but metadata failed: {e}")),
                         }
                     }
                 }
@@ -343,7 +343,7 @@ pub async fn convert_tracks(
     Ok(results)
 }
 
-/// Abschluss-Event der Duplikatsuche.
+/// Completion event of the duplicate search.
 #[derive(Debug, Clone, serde::Serialize)]
 struct DedupeDone {
     generation: u64,
@@ -351,7 +351,7 @@ struct DedupeDone {
     groups: Vec<DuplicateGroup>,
 }
 
-/// Aktueller Dedupe-Status (zum Andocken/erneuten Öffnen).
+/// Current dedupe status (for attaching/reopening).
 #[derive(Debug, Clone, serde::Serialize)]
 pub struct DedupeStatus {
     running: bool,
@@ -362,9 +362,9 @@ pub struct DedupeStatus {
     has_result: bool,
 }
 
-/// Startet die Duplikatsuche als Hintergrund-Singleton. Läuft bereits eine,
-/// passiert nichts (`false`) – der laufende Prozess bleibt bestehen.
-/// Ergebnis via `dedupe://done`, Fortschritt via `dedupe://progress`.
+/// Starts the duplicate search as a background singleton. If one is already
+/// running, nothing happens (`false`) - the running process stays in place.
+/// The result arrives via `dedupe://done`, progress via `dedupe://progress`.
 #[tauri::command]
 pub fn start_dedupe(
     app: AppHandle,
@@ -378,7 +378,7 @@ pub fn start_dedupe(
     state.done.store(0, Ordering::SeqCst);
     state.total.store(0, Ordering::SeqCst);
     if let Ok(mut s) = state.stage.lock() {
-        *s = "Analysiere".to_string();
+        *s = "Analyzing".to_string();
     }
     *state.result.lock().unwrap() = None;
     let generation = state.generation.fetch_add(1, Ordering::SeqCst) + 1;
@@ -403,7 +403,7 @@ pub fn start_dedupe(
     true
 }
 
-/// Aktueller Dedupe-Status (running + Fortschritt + ob ein Ergebnis vorliegt).
+/// Current dedupe status (running + progress + whether a result is available).
 #[tauri::command]
 pub fn dedupe_status(state: State<'_, DedupeState>) -> DedupeStatus {
     DedupeStatus {
@@ -416,13 +416,13 @@ pub fn dedupe_status(state: State<'_, DedupeState>) -> DedupeStatus {
     }
 }
 
-/// Liefert das Ergebnis des letzten abgeschlossenen Laufs (falls vorhanden).
+/// Returns the result of the last completed run (if available).
 #[tauri::command]
 pub fn dedupe_result(state: State<'_, DedupeState>) -> Option<Vec<DuplicateGroup>> {
     state.result.lock().ok().and_then(|r| r.clone())
 }
 
-/// Bricht eine laufende Duplikatsuche ab.
+/// Cancels a running duplicate search.
 #[tauri::command]
 pub fn cancel_dedupe(state: State<'_, DedupeState>) {
     if state.running.load(Ordering::SeqCst) {
@@ -430,7 +430,7 @@ pub fn cancel_dedupe(state: State<'_, DedupeState>) {
     }
 }
 
-/// Verschiebt die angegebenen Dateien in den Papierkorb (umkehrbar).
+/// Moves the given files to the trash (reversible).
 #[tauri::command]
 pub async fn delete_files(paths: Vec<String>) -> Vec<DeleteResult> {
     paths
@@ -454,13 +454,13 @@ pub async fn delete_files(paths: Vec<String>) -> Vec<DeleteResult> {
 // Bandcamp (Phase 3)
 // ---------------------------------------------------------------------------
 
-/// Öffnet das Bandcamp-Login-Fenster.
+/// Opens the Bandcamp login window.
 #[tauri::command]
 pub async fn bandcamp_login(app: AppHandle) -> AppResult<()> {
     session::open_login(&app)
 }
 
-/// Übernimmt die Session nach dem Login und liefert das verbundene Konto.
+/// Takes over the session after login and returns the connected account.
 #[tauri::command]
 pub async fn bandcamp_connect(
     app: AppHandle,
@@ -469,7 +469,7 @@ pub async fn bandcamp_connect(
     session::connect(&app, &state).await
 }
 
-/// Meldet von Bandcamp ab (verwirft die Session im Speicher und im Store).
+/// Logs out from Bandcamp (discards the session in memory and in the store).
 #[tauri::command]
 pub async fn bandcamp_disconnect(
     app: AppHandle,
@@ -479,7 +479,7 @@ pub async fn bandcamp_disconnect(
     Ok(())
 }
 
-/// Liefert das aktuell verbundene Konto (oder `None`, wenn keine Session besteht).
+/// Returns the currently connected account (or `None` if no session exists).
 #[tauri::command]
 pub async fn bandcamp_status(
     state: State<'_, BandcampState>,
@@ -487,7 +487,7 @@ pub async fn bandcamp_status(
     Ok(session::status(&state))
 }
 
-/// Liefert die gekaufte Sammlung des verbundenen Kontos.
+/// Returns the purchased collection of the connected account.
 #[tauri::command]
 pub async fn bandcamp_collection(
     state: State<'_, BandcampState>,
@@ -496,8 +496,8 @@ pub async fn bandcamp_collection(
     collection::list(&session).await
 }
 
-/// Lädt ein gekauftes Item herunter (verlustfrei) und liefert die Dateipfade.
-/// Die Dateien können anschließend über `analyze_files` in die Pipeline.
+/// Downloads a purchased item (lossless) and returns the file paths.
+/// The files can then be fed into the pipeline via `analyze_files`.
 #[tauri::command]
 pub async fn bandcamp_download(
     app: AppHandle,

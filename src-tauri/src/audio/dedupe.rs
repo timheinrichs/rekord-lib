@@ -9,35 +9,35 @@ use crate::audio::fingerprint;
 use crate::jobs::DedupeState;
 use crate::models::{DupCandidate, DuplicateFile, DuplicateGroup};
 
-// Kriterien für einen Duplikat-Match. Gemessen an echten Daten:
-// - dieselbe Aufnahme: Score ~3.3, Abdeckung ~1.0
-// - verschiedene Tracks: meist kein Segment; schwache Zufalls-Teilmatches
-//   (z. B. gleicher Beat) haben niedrige Abdeckung (~0.1). Genau diese haben
-//   über Union-Find fremde Tracks zu Riesengruppen verkettet.
-/// Score-Obergrenze eines Match-Segments (0 = identisch).
+// Criteria for a duplicate match. Measured against real data:
+// - the same recording: score ~3.3, coverage ~1.0
+// - different tracks: usually no segment; weak random partial matches
+//   (e.g. the same beat) have low coverage (~0.1). Exactly those chained
+//   unrelated tracks into huge groups via union-find.
+/// Upper score bound of a match segment (0 = identical).
 const AUDIO_SCORE_MAX: f64 = 5.0;
-/// Mindest-Abdeckung: Anteil des kürzeren Fingerabdrucks, den das Segment abdeckt.
+/// Minimum coverage: fraction of the shorter fingerprint that the segment covers.
 const COVERAGE_MIN: f64 = 0.7;
-/// Namensähnlichkeit (Wort-Overlap 0..1), ab der Name+Länge allein ein Duplikat
-/// ergeben (kein Fingerprint nötig) – z. B. gleicher Name, anderes Format.
+/// Name similarity (word overlap 0..1) above which name+length alone make a
+/// duplicate (no fingerprint needed) - e.g. same name, different format.
 const NAME_HIGH: f64 = 0.85;
-/// Namensähnlichkeit, die ein Audio-Match zusätzlich bestätigen muss.
+/// Name similarity that must additionally confirm an audio match.
 const NAME_MIN: f64 = 0.5;
-/// Nahezu identisches Audio gilt auch ohne Namensähnlichkeit als Duplikat.
+/// Nearly identical audio counts as a duplicate even without name similarity.
 const IDENTICAL_SCORE: f64 = 3.0;
 const IDENTICAL_COVERAGE: f64 = 0.9;
-/// Dateiendungs-Tokens, die bei der Namensähnlichkeit ignoriert werden.
+/// File extension tokens ignored during the name similarity check.
 const EXT_TOKENS: &[&str] = &[
     "aiff", "aif", "wav", "flac", "alac", "m4a", "mp3", "aac", "ogg", "opus", "wma",
 ];
-/// Toleranz der Spieldauer (Sekunden) für die Vorgruppierung. Duplikate haben
-/// (auch über Formate hinweg) nahezu identische Länge – eng halten spart massiv
-/// Fingerprints in großen Libraries.
+/// Play duration tolerance (seconds) for the pre-grouping. Duplicates have
+/// (even across formats) nearly identical length - keeping this tight saves a
+/// massive number of fingerprints in large libraries.
 const DURATION_TOLERANCE: f64 = 1.0;
-/// Wie viele Dateien parallel fingerprintet werden (je ein ffmpeg-Prozess).
+/// How many files are fingerprinted in parallel (one ffmpeg process each).
 const FP_CONCURRENCY: usize = 8;
 
-/// Fortschritt der Duplikatsuche (an das Frontend gestreamt).
+/// Progress of the duplicate search (streamed to the frontend).
 #[derive(Clone, Serialize)]
 pub struct DedupeProgress {
     pub generation: u64,
@@ -48,7 +48,7 @@ pub struct DedupeProgress {
 }
 
 fn emit(app: &AppHandle, generation: u64, done: usize, total: usize, stage: &str, running: bool) {
-    // Fortschritt auch im geteilten State spiegeln (für Reattach nach Reload).
+    // Also mirror the progress in the shared state (for reattach after reload).
     let state = app.state::<DedupeState>();
     state.done.store(done, Ordering::SeqCst);
     state.total.store(total, Ordering::SeqCst);
@@ -67,7 +67,7 @@ fn emit(app: &AppHandle, generation: u64, done: usize, total: usize, stage: &str
     );
 }
 
-/// Bestes Match-Segment als (Score, Abdeckung 0..1 des kürzeren Fingerabdrucks).
+/// Best match segment as (score, coverage 0..1 of the shorter fingerprint).
 fn best_match(fp1: &[u32], fp2: &[u32], config: &Configuration) -> Option<(f64, f64)> {
     let segments = match_fingerprints(fp1, fp2, config).ok()?;
     let min_len = fp1.len().min(fp2.len()).max(1) as f64;
@@ -79,8 +79,8 @@ fn best_match(fp1: &[u32], fp2: &[u32], config: &Configuration) -> Option<(f64, 
 
 type Tokens = std::collections::HashSet<String>;
 
-/// Wort-Tokens eines Namens (klein, ohne 1-Zeichen-, reine-Zahlen- und
-/// Dateiendungs-Tokens). So sind "Song.aiff" und "Song.wav" namensgleich.
+/// Word tokens of a name (lowercase, without single-character, pure-number and
+/// file-extension tokens). This makes "Song.aiff" and "Song.wav" name-equal.
 fn name_tokens(name: &str) -> Tokens {
     name.to_lowercase()
         .split(|c: char| !c.is_alphanumeric())
@@ -93,10 +93,10 @@ fn name_tokens(name: &str) -> Tokens {
         .collect()
 }
 
-/// Jaccard-Ähnlichkeit zweier Token-Mengen (Schnitt/Vereinigung, 0..1).
-/// Bewusst nicht der Overlap-Koeffizient: sonst gilt eine Teilmenge (z. B.
-/// "Version I", dessen "I" als 1-Zeichen-Token wegfällt) als 100%-Treffer und
-/// verkettet verschiedene Versionen fälschlich.
+/// Jaccard similarity of two token sets (intersection/union, 0..1).
+/// Deliberately not the overlap coefficient: otherwise a subset (e.g.
+/// "Version I", whose "I" is dropped as a single-character token) would count as
+/// a 100% match and wrongly chain different versions together.
 fn token_overlap(a: &Tokens, b: &Tokens) -> f64 {
     let union = a.union(b).count();
     if union == 0 {
@@ -105,9 +105,9 @@ fn token_overlap(a: &Tokens, b: &Tokens) -> f64 {
     a.intersection(b).count() as f64 / union as f64
 }
 
-/// Gelten zwei Dateien anhand des Audios als derselbe Track? Starker Match
-/// (Score + Abdeckung) UND ähnlicher Name – oder nahezu identisches Audio
-/// (dann reicht der Audio-Match allein, auch bei anderem Namen).
+/// Do two files count as the same track based on the audio? A strong match
+/// (score + coverage) AND a similar name - or nearly identical audio
+/// (then the audio match alone suffices, even with a different name).
 fn audio_duplicate(
     fp1: &[u32],
     fp2: &[u32],
@@ -125,11 +125,11 @@ fn audio_duplicate(
     identical || token_overlap(tok1, tok2) >= NAME_MIN
 }
 
-// --- Union-Find zum Zusammenfassen zusammenhängender Duplikate ---
+// --- Union-find for merging connected duplicates ---
 
 fn uf_find(parent: &mut [usize], mut x: usize) -> usize {
     while parent[x] != x {
-        parent[x] = parent[parent[x]]; // Pfadverkürzung
+        parent[x] = parent[parent[x]]; // path compression
         x = parent[x];
     }
     x
@@ -143,14 +143,14 @@ fn uf_union(parent: &mut [usize], a: usize, b: usize) {
     }
 }
 
-/// Höchste Qualität zuerst: verlustfrei > verlustbehaftet, dann Samplerate,
-/// Bit-Tiefe und Dateigröße.
+/// Highest quality first: lossless > lossy, then sample rate,
+/// bit depth and file size.
 fn quality_key(f: &DuplicateFile) -> (bool, u32, u32, u64) {
     (f.lossless, f.sample_rate, f.bits_per_sample, f.size_bytes)
 }
 
-/// Sucht Duplikate über alle Formate/Dateinamen: erst nach Länge vorgruppieren,
-/// dann per akustischem Fingerabdruck bestätigen.
+/// Searches for duplicates across all formats/file names: first pre-group by
+/// length, then confirm via acoustic fingerprint.
 pub async fn find_duplicates(
     app: &AppHandle,
     candidates: Vec<DupCandidate>,
@@ -161,7 +161,7 @@ pub async fn find_duplicates(
         return (vec![], false);
     }
 
-    // Nach Dauer sortierte Reihenfolge.
+    // Order sorted by duration.
     let mut order: Vec<usize> = (0..n).collect();
     order.sort_by(|&a, &b| {
         candidates[a]
@@ -169,17 +169,17 @@ pub async fn find_duplicates(
             .total_cmp(&candidates[b].duration_secs)
     });
 
-    // Wort-Tokens je Datei (für Namensähnlichkeit).
+    // Word tokens per file (for name similarity).
     let tokens: Vec<Tokens> = candidates.iter().map(|c| name_tokens(&c.name)).collect();
 
-    // Kandidaten-Paare mit ähnlicher Länge (im nach Dauer sortierten Fenster).
+    // Candidate pairs with similar length (within the duration-sorted window).
     let mut pairs: Vec<(usize, usize)> = Vec::new();
     for oi in 0..n {
         let i = order[oi];
         for oj in (oi + 1)..n {
             let j = order[oj];
             if candidates[j].duration_secs - candidates[i].duration_secs > DURATION_TOLERANCE {
-                break; // sortiert -> ab hier alle zu weit entfernt
+                break; // sorted -> everything from here on is too far apart
             }
             pairs.push((i, j));
         }
@@ -187,9 +187,9 @@ pub async fn find_duplicates(
 
     let mut parent: Vec<usize> = (0..n).collect();
 
-    // Tier 1: aussagekräftig gleicher Name + gleiche Länge = Duplikat, ganz ohne
-    // Fingerprint (z. B. gleicher Titel, anderes Format). Übrige gleich-lange
-    // Paare kommen in die Audio-Prüfung.
+    // Tier 1: meaningfully equal name + equal length = duplicate, entirely
+    // without a fingerprint (e.g. same title, different format). The remaining
+    // equal-length pairs go into the audio check.
     let mut needs_fp = vec![false; n];
     let mut audio_pairs: Vec<(usize, usize)> = Vec::new();
     for &(i, j) in &pairs {
@@ -203,19 +203,19 @@ pub async fn find_duplicates(
         }
     }
 
-    // Fingerabdrücke berechnen (der teure Teil) – parallel mit Fortschritt.
-    // Nur für Dateien nötig, die eine gleich lange, aber anders benannte Datei
-    // haben (Tier-1-Treffer brauchen keinen Fingerprint).
+    // Compute fingerprints (the expensive part) - in parallel with progress.
+    // Only needed for files that have an equal-length but differently named file
+    // (Tier-1 matches need no fingerprint).
     let to_fp: Vec<usize> = (0..n).filter(|&i| needs_fp[i]).collect();
     let total = to_fp.len();
     let mut fps: Vec<Option<Vec<u32>>> = vec![None; n];
     let mut done = 0usize;
-    emit(app, generation, 0, total, "Analysiere", true);
+    emit(app, generation, 0, total, "Analyzing", true);
     for chunk in to_fp.chunks(FP_CONCURRENCY) {
         if app.state::<DedupeState>().cancel.load(Ordering::SeqCst) {
             return (vec![], true);
         }
-        // Ganzen Chunk gleichzeitig dekodieren/fingerprinten.
+        // Decode/fingerprint the whole chunk at once.
         let handles: Vec<(usize, _)> = chunk
             .iter()
             .map(|&i| {
@@ -234,12 +234,12 @@ pub async fn find_duplicates(
                 fps[i] = Some(fp);
             }
             done += 1;
-            emit(app, generation, done, total, "Analysiere", true);
+            emit(app, generation, done, total, "Analyzing", true);
         }
     }
-    emit(app, generation, total, total, "Vergleiche", true);
+    emit(app, generation, total, total, "Comparing", true);
 
-    // Tier 2: gleich lange, aber anders benannte Paare per Audio prüfen.
+    // Tier 2: check equal-length but differently named pairs via audio.
     let config = fingerprint::config();
     for &(i, j) in &audio_pairs {
         if app.state::<DedupeState>().cancel.load(Ordering::SeqCst) {
@@ -253,7 +253,7 @@ pub async fn find_duplicates(
         }
     }
 
-    // Komponenten mit >= 2 Mitgliedern zu Gruppen zusammenfassen.
+    // Combine components with >= 2 members into groups.
     let mut groups_map: HashMap<usize, Vec<usize>> = HashMap::new();
     for i in 0..n {
         let root = uf_find(&mut parent, i);
@@ -269,7 +269,7 @@ pub async fn find_duplicates(
             .iter()
             .map(|&i| to_duplicate_file(&candidates[i]))
             .collect();
-        // Vorschlag: höchste Qualität behalten.
+        // Suggestion: keep the highest quality.
         let keep_id = files
             .iter()
             .max_by(|a, b| quality_key(a).cmp(&quality_key(b)))
@@ -288,7 +288,7 @@ pub async fn find_duplicates(
         });
     }
 
-    // Stabile Ausgabe: Gruppen nach ID sortieren.
+    // Stable output: sort groups by ID.
     groups.sort_by(|a, b| a.id.cmp(&b.id));
     (groups, false)
 }

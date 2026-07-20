@@ -19,7 +19,7 @@ pub fn run() {
         .manage(jobs::ScanState::default())
         .manage(jobs::DedupeState::default())
         .setup(|app| {
-            // Gespeicherte Bandcamp-Sitzung beim Start wiederherstellen.
+            // Restore the saved Bandcamp session on startup.
             let state = app.state::<bandcamp::session::BandcampState>();
             bandcamp::session::restore(app.handle(), &state);
             Ok(())

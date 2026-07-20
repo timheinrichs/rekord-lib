@@ -10,15 +10,15 @@ use crate::models::BandcampAccount;
 
 pub const LOGIN_LABEL: &str = "bandcamp-login";
 
-/// Store-Datei und -Schlüssel für die persistierte Sitzung.
+/// Store file and key for the persisted session.
 const STORE_FILE: &str = "rekord-lib.json";
 const SESSION_KEY: &str = "bandcamp_session";
 
-/// In der App verwalteter Bandcamp-Sitzungszustand.
+/// Bandcamp session state managed by the app.
 #[derive(Default)]
 pub struct BandcampState(pub Mutex<Option<Session>>);
 
-/// Eine aktive Bandcamp-Sitzung (nur im Speicher, kein Passwort).
+/// An active Bandcamp session (in memory only, no password).
 #[derive(Clone)]
 pub struct Session {
     pub cookie_header: String,
@@ -26,7 +26,7 @@ pub struct Session {
     pub username: String,
 }
 
-/// Öffnet (oder fokussiert) das Bandcamp-Login-Fenster.
+/// Opens (or focuses) the Bandcamp login window.
 pub fn open_login(app: &AppHandle) -> AppResult<()> {
     if let Some(w) = app.get_webview_window(LOGIN_LABEL) {
         let _ = w.set_focus();
@@ -34,34 +34,34 @@ pub fn open_login(app: &AppHandle) -> AppResult<()> {
     }
     let url = "https://bandcamp.com/login"
         .parse()
-        .map_err(|e| AppError::Bandcamp(format!("URL-Fehler: {e}")))?;
+        .map_err(|e| AppError::Bandcamp(format!("URL error: {e}")))?;
 
     WebviewWindowBuilder::new(app, LOGIN_LABEL, WebviewUrl::External(url))
-        .title("Bandcamp-Login")
+        .title("Bandcamp login")
         .inner_size(520.0, 760.0)
         .build()
-        .map_err(|e| AppError::Bandcamp(format!("Login-Fenster fehlgeschlagen: {e}")))?;
+        .map_err(|e| AppError::Bandcamp(format!("Login window failed: {e}")))?;
     Ok(())
 }
 
-/// Liest die Bandcamp-Cookies aus dem Login- (oder Haupt-)Fenster als Header.
+/// Reads the Bandcamp cookies from the login (or main) window as a header.
 fn cookie_header(app: &AppHandle) -> AppResult<String> {
     let window = app
         .get_webview_window(LOGIN_LABEL)
         .or_else(|| app.get_webview_window("main"))
-        .ok_or_else(|| AppError::Bandcamp("kein Fenster zum Cookie-Auslesen".into()))?;
+        .ok_or_else(|| AppError::Bandcamp("no window to read cookies from".into()))?;
 
     let url = "https://bandcamp.com"
         .parse()
-        .map_err(|e| AppError::Bandcamp(format!("URL-Fehler: {e}")))?;
+        .map_err(|e| AppError::Bandcamp(format!("URL error: {e}")))?;
 
     let cookies = window
         .cookies_for_url(url)
-        .map_err(|e| AppError::Bandcamp(format!("Cookies nicht lesbar: {e}")))?;
+        .map_err(|e| AppError::Bandcamp(format!("Cannot read cookies: {e}")))?;
 
     if !cookies.iter().any(|c| c.name() == "identity") {
         return Err(AppError::Bandcamp(
-            "Noch nicht eingeloggt (kein identity-Cookie gefunden).".into(),
+            "Not logged in yet (no identity cookie found).".into(),
         ));
     }
 
@@ -73,8 +73,8 @@ fn cookie_header(app: &AppHandle) -> AppResult<String> {
     Ok(header)
 }
 
-/// Verifiziert den Login über collection_summary, speichert die Sitzung und
-/// schließt das Login-Fenster.
+/// Verifies the login via collection_summary, stores the session and
+/// closes the login window.
 pub async fn connect(app: &AppHandle, state: &BandcampState) -> AppResult<BandcampAccount> {
     let cookie = cookie_header(app)?;
     let client = net::client()?;
@@ -102,7 +102,7 @@ pub async fn connect(app: &AppHandle, state: &BandcampState) -> AppResult<Bandca
         .get("fan_id")
         .and_then(Value::as_i64)
         .or_else(|| json.pointer("/collection_summary/fan_id").and_then(Value::as_i64))
-        .ok_or_else(|| AppError::Bandcamp("nicht eingeloggt (keine fan_id)".into()))?;
+        .ok_or_else(|| AppError::Bandcamp("not logged in (no fan_id)".into()))?;
 
     let username = json
         .pointer("/collection_summary/username")
@@ -120,11 +120,11 @@ pub async fn connect(app: &AppHandle, state: &BandcampState) -> AppResult<Bandca
         let mut guard = state
             .0
             .lock()
-            .map_err(|_| AppError::Bandcamp("State-Lock vergiftet".into()))?;
+            .map_err(|_| AppError::Bandcamp("state lock poisoned".into()))?;
         *guard = Some(session.clone());
     }
 
-    // Sitzung persistieren, damit der Verbindungsstatus Neustarts übersteht.
+    // Persist the session so the connection status survives restarts.
     persist(app, &session);
 
     if let Some(w) = app.get_webview_window(LOGIN_LABEL) {
@@ -134,7 +134,7 @@ pub async fn connect(app: &AppHandle, state: &BandcampState) -> AppResult<Bandca
     Ok(BandcampAccount { username, fan_id })
 }
 
-/// Speichert die Sitzung im lokalen Store (Cookie-Header, kein Passwort).
+/// Stores the session in the local store (cookie header, no password).
 fn persist(app: &AppHandle, session: &Session) {
     if let Ok(store) = app.store(STORE_FILE) {
         store.set(
@@ -149,7 +149,7 @@ fn persist(app: &AppHandle, session: &Session) {
     }
 }
 
-/// Lädt eine zuvor gespeicherte Sitzung beim App-Start in den State.
+/// Loads a previously saved session into the state on app start.
 pub fn restore(app: &AppHandle, state: &BandcampState) {
     let Ok(store) = app.store(STORE_FILE) else {
         return;
@@ -175,7 +175,7 @@ pub fn restore(app: &AppHandle, state: &BandcampState) {
     }
 }
 
-/// Liefert das aktuell verbundene Konto (falls eine Sitzung besteht).
+/// Returns the currently connected account (if a session exists).
 pub fn status(state: &BandcampState) -> Option<BandcampAccount> {
     state.0.lock().ok().and_then(|guard| {
         guard.as_ref().map(|s| BandcampAccount {
@@ -185,17 +185,17 @@ pub fn status(state: &BandcampState) -> Option<BandcampAccount> {
     })
 }
 
-/// Liefert die aktuelle Sitzung (geklont) oder einen Fehler, falls nicht verbunden.
+/// Returns the current session (cloned) or an error if not connected.
 pub fn current(state: &BandcampState) -> AppResult<Session> {
     state
         .0
         .lock()
-        .map_err(|_| AppError::Bandcamp("State-Lock vergiftet".into()))?
+        .map_err(|_| AppError::Bandcamp("state lock poisoned".into()))?
         .clone()
-        .ok_or_else(|| AppError::Bandcamp("nicht mit Bandcamp verbunden".into()))
+        .ok_or_else(|| AppError::Bandcamp("not connected to Bandcamp".into()))
 }
 
-/// Meldet ab (verwirft die Sitzung im Speicher und im Store).
+/// Logs out (discards the session in memory and in the store).
 pub fn disconnect(app: &AppHandle, state: &BandcampState) {
     if let Ok(mut guard) = state.0.lock() {
         *guard = None;

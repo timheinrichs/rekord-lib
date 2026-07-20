@@ -5,8 +5,8 @@ use lofty::tag::ItemKey;
 use crate::error::{AppError, AppResult};
 use crate::models::TrackMetadata;
 
-/// Liest die vorhandenen Metadaten einer Datei via lofty.
-/// Dateien ohne Tags liefern ein leeres [`TrackMetadata`].
+/// Reads a file's existing metadata via lofty.
+/// Files without tags return an empty [`TrackMetadata`].
 pub fn read_metadata(path: &str) -> AppResult<TrackMetadata> {
     let tagged = read_from_path(path).map_err(|e| AppError::Metadata(e.to_string()))?;
 
@@ -23,8 +23,8 @@ pub fn read_metadata(path: &str) -> AppResult<TrackMetadata> {
         md.has_cover = !tag.pictures().is_empty();
     }
 
-    // Kein eingebettetes Cover? Dann zählt auch ein Cover-Bild im Ordner
-    // (wird beim Konvertieren automatisch eingebettet).
+    // No embedded cover? Then a cover image in the folder counts too
+    // (it gets embedded automatically on conversion).
     if !md.has_cover {
         md.has_cover = crate::metadata::write::has_sidecar_cover(path);
     }

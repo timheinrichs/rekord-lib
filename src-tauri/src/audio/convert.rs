@@ -9,7 +9,7 @@ use crate::audio::probe;
 use crate::error::{AppError, AppResult};
 use crate::models::{ConvertOptions, TargetFormat};
 
-/// Fortschritts-Event, das während der Konvertierung an das Frontend geht.
+/// Progress event sent to the frontend during conversion.
 #[derive(Debug, Clone, Serialize)]
 pub struct ConvertProgress {
     pub id: String,
@@ -18,7 +18,7 @@ pub struct ConvertProgress {
     pub stage: String,
 }
 
-/// Auf allen Playern unterstützte Ziel-Samplerate ableiten.
+/// Derive a target sample rate supported by all players.
 fn target_sample_rate(source_rate: u32) -> u32 {
     match source_rate {
         44_100 | 48_000 => source_rate,
@@ -26,7 +26,7 @@ fn target_sample_rate(source_rate: u32) -> u32 {
     }
 }
 
-/// Ersetzt für CDJ/USB problematische Zeichen durch Unterstriche.
+/// Replaces characters problematic for CDJ/USB with underscores.
 fn sanitize(name: &str) -> String {
     name.chars()
         .map(|c| match c {
@@ -39,13 +39,13 @@ fn sanitize(name: &str) -> String {
         .to_string()
 }
 
-/// Ermittelt den Ausgabepfad für eine Quelldatei und ein Zielformat.
+/// Determines the output path for a source file and a target format.
 fn output_path(source: &str, opts: &ConvertOptions) -> AppResult<PathBuf> {
     let src = Path::new(source);
     let stem = src
         .file_stem()
         .and_then(|s| s.to_str())
-        .ok_or_else(|| AppError::Convert(format!("ungültiger Dateiname: {source}")))?;
+        .ok_or_else(|| AppError::Convert(format!("invalid file name: {source}")))?;
 
     let stem = if opts.sanitize_filenames {
         sanitize(stem)
@@ -66,7 +66,7 @@ fn output_path(source: &str, opts: &ConvertOptions) -> AppResult<PathBuf> {
     Ok(dir.join(file_name))
 }
 
-/// Baut die ffmpeg-Argumentliste für Quelle → Ziel.
+/// Builds the ffmpeg argument list for source -> target.
 fn build_args(source: &str, output: &str, opts: &ConvertOptions, source_rate: u32) -> Vec<String> {
     let sr = target_sample_rate(source_rate).to_string();
     let bit24 = opts.bit_depth == 24;
@@ -75,10 +75,10 @@ fn build_args(source: &str, output: &str, opts: &ConvertOptions, source_rate: u3
         "-y".into(),
         "-i".into(),
         source.into(),
-        // Nur den ersten Audiostream übernehmen (Cover-Art folgt in Phase 2 via lofty).
+        // Take only the first audio stream (cover art follows in phase 2 via lofty).
         "-map".into(),
         "0:a:0".into(),
-        // Vorhandene Textmetadaten mitnehmen.
+        // Carry over existing text metadata.
         "-map_metadata".into(),
         "0".into(),
     ];
@@ -123,7 +123,7 @@ fn build_args(source: &str, output: &str, opts: &ConvertOptions, source_rate: u3
     args.push("-ar".into());
     args.push(sr);
 
-    // Maschinenlesbaren Fortschritt auf stdout ausgeben.
+    // Emit machine-readable progress on stdout.
     args.push("-progress".into());
     args.push("pipe:1".into());
     args.push("-nostats".into());
@@ -132,24 +132,24 @@ fn build_args(source: &str, output: &str, opts: &ConvertOptions, source_rate: u3
     args
 }
 
-/// Ergebnis einer Konvertierung.
+/// Result of a conversion.
 pub struct Converted {
-    /// Endgültiger Zielpfad.
+    /// Final target path.
     pub output_path: String,
-    /// Pfad, an dem die konvertierten Bytes aktuell liegen. Weicht bei
-    /// In-place-Konvertierung (Temp-Datei) von `output_path` ab; der Aufrufer
-    /// muss dann nach dem Finalisieren `written_path` → `output_path` verschieben.
+    /// Path where the converted bytes currently reside. For an in-place
+    /// conversion (temp file) this differs from `output_path`; the caller
+    /// must then move `written_path` -> `output_path` after finalizing.
     pub written_path: String,
 }
 
-/// Konvertiert eine einzelne Datei und streamt den Fortschritt via Event.
+/// Converts a single file and streams progress via events.
 pub async fn convert_file(
     app: &AppHandle,
     id: &str,
     source: &str,
     opts: &ConvertOptions,
 ) -> AppResult<Converted> {
-    // Für Ziel-Samplerate und Fortschrittsberechnung erst analysieren.
+    // Analyze first for the target sample rate and progress calculation.
     let info = probe::probe(app, source).await?;
     let out = output_path(source, opts)?;
     let out_str = out.to_string_lossy().to_string();
@@ -158,8 +158,8 @@ pub async fn convert_file(
         std::fs::create_dir_all(parent).ok();
     }
 
-    // In-place-Konvertierung (Ziel == Quelle) würde ffmpeg die gerade gelesene
-    // Datei überschreiben. Daher in eine Temp-Datei schreiben und danach ersetzen.
+    // An in-place conversion (target == source) would have ffmpeg overwrite the
+    // file it is currently reading. So write to a temp file and replace afterwards.
     let in_place = paths_equal(source, &out);
     let write_target = if in_place {
         temp_sibling(&out)
@@ -189,11 +189,11 @@ pub async fn convert_file(
             CommandEvent::Stdout(bytes) => {
                 let line = String::from_utf8_lossy(&bytes);
                 if let Some(pct) = parse_progress(&line, total_us) {
-                    emit_progress(app, id, pct, "Konvertiere");
+                    emit_progress(app, id, pct, "Converting");
                 }
             }
             CommandEvent::Stderr(bytes) => {
-                // Letzte ffmpeg-Ausgabe für Fehlermeldungen sammeln.
+                // Collect the last ffmpeg output for error messages.
                 let line = String::from_utf8_lossy(&bytes);
                 stderr_tail.push_str(&line);
                 if stderr_tail.len() > 4000 {
@@ -210,7 +210,7 @@ pub async fn convert_file(
 
     match exit_code {
         Some(0) => {
-            emit_progress(app, id, 100, "Fertig");
+            emit_progress(app, id, 100, "Done");
             Ok(Converted {
                 output_path: out_str,
                 written_path: write_str,
@@ -229,7 +229,7 @@ pub async fn convert_file(
     }
 }
 
-/// Prüft, ob zwei Pfade auf dieselbe Datei zeigen.
+/// Checks whether two paths point to the same file.
 fn paths_equal(a: &str, b: &Path) -> bool {
     let pa = Path::new(a);
     if pa == b {
@@ -241,7 +241,7 @@ fn paths_equal(a: &str, b: &Path) -> bool {
     }
 }
 
-/// Liefert einen freien Temp-Pfad neben dem Ziel (gleiche Endung für ffmpeg).
+/// Returns a free temp path next to the target (same extension for ffmpeg).
 fn temp_sibling(target: &Path) -> PathBuf {
     let ext = target
         .extension()
@@ -261,9 +261,9 @@ fn temp_sibling(target: &Path) -> PathBuf {
     unreachable!()
 }
 
-/// Parst eine ffmpeg-progress-Zeile und berechnet den Prozentwert.
+/// Parses an ffmpeg progress line and computes the percentage.
 fn parse_progress(chunk: &str, total_us: f64) -> Option<u32> {
-    // ffmpeg gibt Blöcke mit key=value-Zeilen aus; out_time_us ist maßgeblich.
+    // ffmpeg emits blocks of key=value lines; out_time_us is the decisive one.
     let mut latest: Option<u32> = None;
     for line in chunk.lines() {
         if let Some(val) = line.strip_prefix("out_time_us=") {

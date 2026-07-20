@@ -1,14 +1,14 @@
-//! Gemeinsamer Zustand für die langlaufenden Hintergrund-Jobs (Scan, Dedupe).
-//! Beide laufen als Singleton: es gibt immer höchstens einen aktiven Lauf, der
-//! im Hintergrund weiterläuft (unabhängig von Reload/Fenster) und abgebrochen
-//! werden kann. Ergebnisse werden per Event ausgeliefert.
+//! Shared state for the long-running background jobs (scan, dedupe).
+//! Both run as singletons: there is always at most one active run, which
+//! keeps running in the background (independent of reload/window) and can be
+//! cancelled. Results are delivered via events.
 
 use std::sync::atomic::{AtomicBool, AtomicU64, AtomicUsize};
 use std::sync::Mutex;
 
 use crate::models::DuplicateGroup;
 
-/// Zustand des Library-Scans.
+/// State of the library scan.
 #[derive(Default)]
 pub struct ScanState {
     pub running: AtomicBool,
@@ -18,7 +18,7 @@ pub struct ScanState {
     pub total: AtomicUsize,
 }
 
-/// Zustand der Duplikatsuche (inkl. Ergebnis-Cache für Reattach).
+/// State of the duplicate search (including a result cache for reattach).
 #[derive(Default)]
 pub struct DedupeState {
     pub running: AtomicBool,
@@ -27,6 +27,6 @@ pub struct DedupeState {
     pub done: AtomicUsize,
     pub total: AtomicUsize,
     pub stage: Mutex<String>,
-    /// Ergebnis des letzten abgeschlossenen Laufs (für erneutes Öffnen).
+    /// Result of the last completed run (for reopening).
     pub result: Mutex<Option<Vec<DuplicateGroup>>>,
 }

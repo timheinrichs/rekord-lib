@@ -4,21 +4,21 @@ use tauri_plugin_shell::ShellExt;
 
 use crate::error::{AppError, AppResult};
 
-/// Länge (Sekunden), die pro Datei für den Fingerabdruck dekodiert wird.
-/// Reicht, um denselben Track zuverlässig zu erkennen, ohne ganze Files zu lesen.
+/// Length (seconds) decoded per file for the fingerprint.
+/// Enough to reliably identify the same track without reading whole files.
 const FINGERPRINT_SECS: u32 = 120;
 
-/// Sample-Rate, auf die chromaprint intern ohnehin resampled.
+/// Sample rate that chromaprint resamples to internally anyway.
 const SAMPLE_RATE: u32 = 11025;
 
-/// Gemeinsame Konfiguration für Berechnung und Vergleich.
+/// Shared configuration for computation and comparison.
 pub fn config() -> Configuration {
     Configuration::default()
 }
 
-/// Dekodiert den Anfang einer Datei zu Mono-PCM (11025 Hz, s16le) via ffmpeg
-/// und berechnet daraus einen Chromaprint-Fingerabdruck. Format-/Dateinamen-
-/// unabhängig, da auf dem tatsächlichen Audioinhalt basierend.
+/// Decodes the beginning of a file to mono PCM (11025 Hz, s16le) via ffmpeg
+/// and computes a Chromaprint fingerprint from it. Independent of format/file
+/// name, since it is based on the actual audio content.
 pub async fn fingerprint(app: &AppHandle, path: &str) -> AppResult<Vec<u32>> {
     let dur = FINGERPRINT_SECS.to_string();
     let sr = SAMPLE_RATE.to_string();
@@ -43,7 +43,7 @@ pub async fn fingerprint(app: &AppHandle, path: &str) -> AppResult<Vec<u32>> {
         )));
     }
 
-    // Rohe s16le-Bytes -> i16-Samples.
+    // Raw s16le bytes -> i16 samples.
     let samples: Vec<i16> = output
         .stdout
         .chunks_exact(2)
@@ -51,13 +51,13 @@ pub async fn fingerprint(app: &AppHandle, path: &str) -> AppResult<Vec<u32>> {
         .collect();
 
     if samples.is_empty() {
-        return Err(AppError::Probe("kein Audio dekodiert".into()));
+        return Err(AppError::Probe("no audio decoded".into()));
     }
 
     let mut printer = Fingerprinter::new(&config());
     printer
         .start(SAMPLE_RATE, 1)
-        .map_err(|e| AppError::Probe(format!("Fingerprint-Start fehlgeschlagen: {e}")))?;
+        .map_err(|e| AppError::Probe(format!("Fingerprint start failed: {e}")))?;
     printer.consume(&samples);
     printer.finish();
     Ok(printer.fingerprint().to_vec())

@@ -7,11 +7,11 @@ use crate::metadata::net;
 use crate::metadata::read::read_metadata;
 use crate::models::{MbCandidate, MetadataSuggestions, TrackMetadata};
 
-/// Leitet aus Dateiname und übergeordnetem Ordner eine Metadaten-Vermutung ab.
+/// Derives a metadata guess from the filename and parent folder.
 ///
-/// Unterstützte Muster (typisch für Underground-/Bandcamp-Dateien):
-/// `NN - Artist - Titel`, `Artist - Titel`, `NN Titel`, `Titel`.
-/// Das Album wird aus dem Ordnernamen abgeleitet.
+/// Supported patterns (typical for underground/Bandcamp files):
+/// `NN - Artist - Title`, `Artist - Title`, `NN Title`, `Title`.
+/// The album is derived from the folder name.
 pub fn parse_filename(path: &str) -> TrackMetadata {
     let p = Path::new(path);
     let stem = p
@@ -23,11 +23,11 @@ pub fn parse_filename(path: &str) -> TrackMetadata {
 
     let mut md = TrackMetadata::default();
 
-    // Führende Tracknummer abtrennen: "01 - ", "1. ", "07_"
+    // Strip a leading track number: "01 - ", "1. ", "07_"
     let (track_number, rest) = split_leading_track(&stem);
     md.track_number = track_number;
 
-    // Nach " - " aufteilen.
+    // Split on " - ".
     let parts: Vec<&str> = rest.split(" - ").map(str::trim).collect();
     match parts.as_slice() {
         [artist, title] => {
@@ -47,7 +47,7 @@ pub fn parse_filename(path: &str) -> TrackMetadata {
         }
     }
 
-    // Album aus Ordnername, falls noch nicht gesetzt.
+    // Album from the folder name, if not set yet.
     if md.album.is_none() {
         if let Some(folder) = p
             .parent()
@@ -61,7 +61,7 @@ pub fn parse_filename(path: &str) -> TrackMetadata {
     md
 }
 
-/// Trennt eine führende Tracknummer ab und gibt (Nummer, Rest) zurück.
+/// Strips a leading track number and returns (number, rest).
 fn split_leading_track(s: &str) -> (Option<u32>, String) {
     let digits: String = s.chars().take_while(|c| c.is_ascii_digit()).collect();
     if digits.is_empty() || digits.len() > 3 {
@@ -69,7 +69,7 @@ fn split_leading_track(s: &str) -> (Option<u32>, String) {
     }
     let after = &s[digits.len()..];
     let trimmed = after.trim_start_matches([' ', '.', '_', '-']);
-    // Nur als Tracknummer werten, wenn danach ein Trenner stand.
+    // Only treat it as a track number if a separator followed.
     if after.len() != trimmed.len() {
         (digits.parse::<u32>().ok(), trimmed.to_string())
     } else {
@@ -77,7 +77,7 @@ fn split_leading_track(s: &str) -> (Option<u32>, String) {
     }
 }
 
-/// Entfernt Jahres-/Katalog-Präfixe aus Ordnernamen, z. B. "(2021) Album".
+/// Removes year/catalog prefixes from folder names, e.g. "(2021) Album".
 fn clean_folder(name: &str) -> String {
     let name = name.trim();
     let name = name
@@ -94,7 +94,7 @@ fn non_empty(s: &str) -> Option<String> {
     }
 }
 
-/// Sucht Kandidaten in MusicBrainz anhand von Artist/Titel.
+/// Searches MusicBrainz for candidates based on artist/title.
 pub async fn search_musicbrainz(
     client: &reqwest::Client,
     artist: Option<&str>,
@@ -102,7 +102,7 @@ pub async fn search_musicbrainz(
 ) -> AppResult<Vec<MbCandidate>> {
     let title = match title {
         Some(t) if !t.trim().is_empty() => t.trim(),
-        _ => return Ok(Vec::new()), // ohne Titel keine sinnvolle Suche
+        _ => return Ok(Vec::new()), // no useful search without a title
     };
 
     let query = match artist {
@@ -121,7 +121,7 @@ pub async fn search_musicbrainz(
         ])
         .send()
         .await
-        .map_err(|e| AppError::Metadata(format!("MusicBrainz-Abfrage fehlgeschlagen: {e}")))?;
+        .map_err(|e| AppError::Metadata(format!("MusicBrainz query failed: {e}")))?;
 
     if !resp.status().is_success() {
         return Err(AppError::Metadata(format!(
@@ -149,7 +149,7 @@ pub async fn search_musicbrainz(
     Ok(candidates)
 }
 
-/// Wandelt einen MusicBrainz-Recording-Eintrag in einen Kandidaten um.
+/// Converts a MusicBrainz recording entry into a candidate.
 fn parse_recording(rec: &Value) -> MbCandidate {
     let title = rec.get("title").and_then(Value::as_str).map(String::from);
 
@@ -211,13 +211,13 @@ fn parse_recording(rec: &Value) -> MbCandidate {
     }
 }
 
-/// Erstellt Vorschläge für eine Datei: vorhandene Tags, Dateiname-Vermutung
-/// und MusicBrainz-Kandidaten.
+/// Builds suggestions for a file: existing tags, filename guess and
+/// MusicBrainz candidates.
 pub async fn suggest(path: &str) -> AppResult<MetadataSuggestions> {
     let current = read_metadata(path).unwrap_or_default();
     let filename_guess = parse_filename(path);
 
-    // Bestmögliche Query-Basis: vorhandene Tags vor Dateiname-Vermutung.
+    // Best possible query basis: existing tags before the filename guess.
     let title = current
         .title
         .clone()

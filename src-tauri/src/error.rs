@@ -4,22 +4,22 @@ use serde::{Serialize, Serializer};
 /// receives a readable message from any failing command.
 #[derive(Debug, thiserror::Error)]
 pub enum AppError {
-    #[error("ffprobe/ffmpeg konnte nicht ausgeführt werden: {0}")]
+    #[error("Failed to run ffprobe/ffmpeg: {0}")]
     Sidecar(String),
 
-    #[error("Datei konnte nicht analysiert werden: {0}")]
+    #[error("Failed to analyze file: {0}")]
     Probe(String),
 
-    #[error("Konvertierung fehlgeschlagen: {0}")]
+    #[error("Conversion failed: {0}")]
     Convert(String),
 
-    #[error("Metadaten-Fehler: {0}")]
+    #[error("Metadata error: {0}")]
     Metadata(String),
 
     #[error("Bandcamp: {0}")]
     Bandcamp(String),
 
-    #[error("E/A-Fehler: {0}")]
+    #[error("I/O error: {0}")]
     Io(#[from] std::io::Error),
 }
 

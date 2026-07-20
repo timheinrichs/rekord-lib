@@ -9,7 +9,7 @@ use crate::bandcamp::session::Session;
 use crate::error::{AppError, AppResult};
 use crate::metadata::net;
 
-/// Fortschritt eines Bandcamp-Downloads (an das Frontend gestreamt).
+/// Progress of a Bandcamp download (streamed to the frontend).
 #[derive(Clone, Serialize)]
 struct BandcampProgress {
     key: String,
@@ -30,8 +30,8 @@ fn emit_progress(app: &AppHandle, key: &str, downloaded: u64, total: u64, stage:
     );
 }
 
-/// Liest den Response-Body gestreamt in einen Vec und meldet dabei den
-/// Fortschritt (throttled, ~alle 256 KB).
+/// Reads the response body as a stream into a Vec and reports progress
+/// (throttled, ~every 256 KB).
 async fn stream_collect(
     mut resp: reqwest::Response,
     app: &AppHandle,
@@ -45,7 +45,7 @@ async fn stream_collect(
     while let Some(chunk) = resp
         .chunk()
         .await
-        .map_err(|e| AppError::Bandcamp(format!("Download-Stream: {e}")))?
+        .map_err(|e| AppError::Bandcamp(format!("Download stream: {e}")))?
     {
         buf.extend_from_slice(&chunk);
         let dl = buf.len() as u64;
@@ -58,14 +58,14 @@ async fn stream_collect(
     Ok(buf)
 }
 
-/// Bevorzugte Download-Formate (verlustfrei zuerst); das Ergebnis wird ohnehin
-/// noch in das CDJ-Zielformat konvertiert.
+/// Preferred download formats (lossless first); the result is converted to the
+/// CDJ target format afterward anyway.
 const FORMAT_PREFERENCE: [&str; 4] = ["flac", "aiff-lossless", "wav", "mp3-320"];
 
-/// Audio-Endungen, die aus einem Album-ZIP übernommen werden.
+/// Audio extensions taken from an album ZIP.
 const AUDIO_EXTS: [&str; 7] = ["flac", "aiff", "aif", "wav", "mp3", "m4a", "aac"];
 
-/// Lädt ein gekauftes Item herunter und liefert die (ggf. entpackten) Dateipfade.
+/// Downloads a purchased item and returns the (possibly extracted) file paths.
 pub async fn download(
     app: &AppHandle,
     session: &Session,
@@ -73,33 +73,33 @@ pub async fn download(
     page_url: &str,
     dest_dir: &str,
 ) -> AppResult<Vec<String>> {
-    // Eigener Client ohne Gesamt-Timeout (Alben können groß sein).
+    // Dedicated client without an overall timeout (albums can be large).
     let client = net::download_client()?;
 
-    // 1. Download-Seite laden und data-blob extrahieren.
+    // 1. Load the download page and extract the data-blob.
     let html = client
         .get(page_url)
         .header("Cookie", &session.cookie_header)
         .send()
         .await
-        .map_err(|e| AppError::Bandcamp(format!("Download-Seite: {e}")))?
+        .map_err(|e| AppError::Bandcamp(format!("Download page: {e}")))?
         .text()
         .await
         .map_err(|e| AppError::Bandcamp(e.to_string()))?;
 
     let blob = extract_blob(&html)?;
 
-    // 2. Ersten digitalen Artikel + passendes Format wählen.
+    // 2. Pick the first digital item + a suitable format.
     let item = blob
         .get("digital_items")
         .and_then(Value::as_array)
         .and_then(|a| a.first())
-        .ok_or_else(|| AppError::Bandcamp("keine digital_items in der Download-Seite".into()))?;
+        .ok_or_else(|| AppError::Bandcamp("no digital_items on the download page".into()))?;
 
     let downloads = item
         .get("downloads")
         .and_then(Value::as_object)
-        .ok_or_else(|| AppError::Bandcamp("keine downloads im Item".into()))?;
+        .ok_or_else(|| AppError::Bandcamp("no downloads in the item".into()))?;
 
     let (fmt, url) = FORMAT_PREFERENCE
         .iter()
@@ -112,7 +112,7 @@ pub async fn download(
         })
         .ok_or_else(|| {
             AppError::Bandcamp(format!(
-                "kein unterstütztes Format verfügbar (vorhanden: {:?})",
+                "no supported format available (present: {:?})",
                 downloads.keys().collect::<Vec<_>>()
             ))
         })?;
@@ -127,20 +127,20 @@ pub async fn download(
         .map(|t| t == "a")
         .unwrap_or(false);
 
-    // 3+4. Datei-Bytes holen (die .vrs=1-Anfrage liefert die Datei entweder
-    // direkt oder als JSON mit der echten download_url) – gestreamt mit Fortschritt.
+    // 3+4. Fetch the file bytes (the .vrs=1 request returns the file either
+    // directly or as JSON with the real download_url) – streamed with progress.
     let bytes = fetch_download_bytes(&client, session, key, &url, app).await?;
 
     std::fs::create_dir_all(dest_dir)?;
     let safe_title = sanitize(title);
 
-    // 5. Album-ZIP entpacken, Einzeltrack direkt speichern.
+    // 5. Extract album ZIP, save a single track directly.
     let done = bytes.len() as u64;
     if is_album || looks_like_zip(&bytes) {
-        emit_progress(app, key, done, done, "Entpackt");
+        emit_progress(app, key, done, done, "Extracting");
         extract_zip(&bytes, Path::new(dest_dir), &safe_title)
     } else {
-        emit_progress(app, key, done, done, "Speichert");
+        emit_progress(app, key, done, done, "Saving");
         let ext = extension_for_format(fmt);
         let out = Path::new(dest_dir).join(format!("{safe_title}.{ext}"));
         std::fs::write(&out, &bytes)?;
@@ -148,27 +148,25 @@ pub async fn download(
     }
 }
 
-/// Extrahiert und decodiert das `data-blob`-JSON aus der Download-Seite.
+/// Extracts and decodes the `data-blob` JSON from the download page.
 fn extract_blob(html: &str) -> AppResult<Value> {
     let marker = "data-blob=\"";
     let start = html
         .find(marker)
-        .ok_or_else(|| AppError::Bandcamp("data-blob nicht gefunden".into()))?
+        .ok_or_else(|| AppError::Bandcamp("data-blob not found".into()))?
         + marker.len();
     let rest = &html[start..];
     let end = rest
         .find('"')
-        .ok_or_else(|| AppError::Bandcamp("data-blob nicht geschlossen".into()))?;
+        .ok_or_else(|| AppError::Bandcamp("data-blob not closed".into()))?;
     let escaped = &rest[..end];
     let json = html_unescape(escaped);
     serde_json::from_str(&json)
-        .map_err(|e| AppError::Bandcamp(format!("data-blob JSON-Fehler: {e}")))
+        .map_err(|e| AppError::Bandcamp(format!("data-blob JSON error: {e}")))
 }
 
-/// Löst die tatsächliche Datei-URL auf. Der Blob-Link liefert entweder direkt
-/// die Datei (Redirect) oder JSON mit `download_url`/`url`.
-/// Holt die Datei-Bytes zu einem Format-Download-Link. Die `.vrs=1`-Anfrage
-/// liefert entweder direkt die Datei (ZIP/Audio) oder JSON mit der echten URL.
+/// Fetches the file bytes for a format download link. The `.vrs=1` request
+/// returns either the file directly (ZIP/audio) or JSON with the real URL.
 async fn fetch_download_bytes(
     client: &reqwest::Client,
     session: &Session,
@@ -201,16 +199,16 @@ async fn fetch_download_bytes(
         .unwrap_or("")
         .to_string();
 
-    // Body gestreamt einlesen (bei Direkt-Datei ist das bereits der große Download).
-    let bytes = stream_collect(resp, app, key, "Lädt").await?;
+    // Read the body as a stream (for a direct file this is already the large download).
+    let bytes = stream_collect(resp, app, key, "Downloading").await?;
 
-    // Direkt eine Datei (ZIP/Audio)? Dann Bytes sofort verwenden.
+    // A file directly (ZIP/audio)? Then use the bytes immediately.
     let is_json = ct.contains("json") || bytes.first() == Some(&b'{');
     if !is_json {
         return Ok(bytes);
     }
 
-    // JSON-Variante: echte download_url extrahieren und die Datei gestreamt laden.
+    // JSON variant: extract the real download_url and stream the file.
     let json: Value = serde_json::from_slice(&bytes)
         .map_err(|e| AppError::Bandcamp(format!("statdownload JSON: {e}")))?;
     let dl = json
@@ -220,7 +218,7 @@ async fn fetch_download_bytes(
         .and_then(Value::as_str)
         .ok_or_else(|| {
             AppError::Bandcamp(format!(
-                "keine download_url in statdownload-JSON (keys: {:?})",
+                "no download_url in statdownload JSON (keys: {:?})",
                 json.as_object().map(|o| o.keys().collect::<Vec<_>>())
             ))
         })?;
@@ -230,22 +228,22 @@ async fn fetch_download_bytes(
         .header("Cookie", &session.cookie_header)
         .send()
         .await
-        .map_err(|e| AppError::Bandcamp(format!("Datei-Download: {e}")))?;
+        .map_err(|e| AppError::Bandcamp(format!("File download: {e}")))?;
     let status = file_resp.status();
     if !status.is_success() {
-        return Err(AppError::Bandcamp(format!("Datei-Download HTTP {status}")));
+        return Err(AppError::Bandcamp(format!("File download HTTP {status}")));
     }
-    stream_collect(file_resp, app, key, "Lädt").await
+    stream_collect(file_resp, app, key, "Downloading").await
 }
 
 fn looks_like_zip(bytes: &[u8]) -> bool {
     bytes.len() >= 2 && &bytes[..2] == b"PK"
 }
 
-/// Entpackt Audiodateien aus einem Album-ZIP in einen Unterordner.
+/// Extracts audio files from an album ZIP into a subfolder.
 fn extract_zip(bytes: &[u8], dest: &Path, album: &str) -> AppResult<Vec<String>> {
     let mut archive = zip::ZipArchive::new(Cursor::new(bytes))
-        .map_err(|e| AppError::Bandcamp(format!("ZIP-Fehler: {e}")))?;
+        .map_err(|e| AppError::Bandcamp(format!("ZIP error: {e}")))?;
 
     let album_dir = dest.join(album);
     std::fs::create_dir_all(&album_dir)?;
@@ -254,7 +252,7 @@ fn extract_zip(bytes: &[u8], dest: &Path, album: &str) -> AppResult<Vec<String>>
     for i in 0..archive.len() {
         let mut entry = archive
             .by_index(i)
-            .map_err(|e| AppError::Bandcamp(format!("ZIP-Eintrag: {e}")))?;
+            .map_err(|e| AppError::Bandcamp(format!("ZIP entry: {e}")))?;
         if !entry.is_file() {
             continue;
         }
@@ -278,7 +276,7 @@ fn extract_zip(bytes: &[u8], dest: &Path, album: &str) -> AppResult<Vec<String>>
     }
 
     if files.is_empty() {
-        return Err(AppError::Bandcamp("keine Audiodateien im ZIP".into()));
+        return Err(AppError::Bandcamp("no audio files in the ZIP".into()));
     }
     Ok(files)
 }
@@ -306,7 +304,7 @@ fn sanitize(name: &str) -> String {
     s.trim().to_string()
 }
 
-/// Minimaler HTML-Entity-Decoder für das data-blob-Attribut.
+/// Minimal HTML entity decoder for the data-blob attribute.
 fn html_unescape(s: &str) -> String {
     s.replace("&quot;", "\"")
         .replace("&#39;", "'")

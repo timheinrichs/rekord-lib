@@ -5,13 +5,13 @@ use crate::error::{AppError, AppResult};
 use crate::metadata::net;
 use crate::models::BandcampItem;
 
-/// Ruft die (gekaufte) Sammlung des verbundenen Kontos ab.
+/// Fetches the (purchased) collection of the connected account.
 pub async fn list(session: &Session) -> AppResult<Vec<BandcampItem>> {
     let client = net::client()?;
 
     let body = serde_json::json!({
         "fan_id": session.fan_id,
-        // Sehr großer Token => neueste Einträge zuerst.
+        // Very large token => newest entries first.
         "older_than_token": "9999999999::a::",
         "count": 200
     });
@@ -40,13 +40,13 @@ pub async fn list(session: &Session) -> AppResult<Vec<BandcampItem>> {
     let json: Value = serde_json::from_str(&text)
         .map_err(|e| AppError::Bandcamp(format!("collection_items JSON: {e}")))?;
 
-    // Bandcamp meldet Fehler als 200 mit {"error":true,...}.
+    // Bandcamp reports errors as 200 with {"error":true,...}.
     if json.get("error").and_then(Value::as_bool) == Some(true) {
         return Err(AppError::Bandcamp(format!(
             "collection_items: {}",
             json.get("error_message")
                 .and_then(Value::as_str)
-                .unwrap_or("unbekannter Fehler")
+                .unwrap_or("unknown error")
         )));
     }
 
@@ -63,7 +63,7 @@ pub async fn list(session: &Session) -> AppResult<Vec<BandcampItem>> {
         .collect())
 }
 
-/// Wandelt einen collection_items-Eintrag in ein [`BandcampItem`] um.
+/// Converts a collection_items entry into a [`BandcampItem`].
 fn parse_item(it: &Value, redownload: &Value) -> Option<BandcampItem> {
     let sale_item_id = it.get("sale_item_id").and_then(Value::as_i64)?;
     let sale_item_type = it

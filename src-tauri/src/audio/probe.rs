@@ -5,7 +5,7 @@ use tauri_plugin_shell::ShellExt;
 use crate::error::{AppError, AppResult};
 use crate::models::AudioInfo;
 
-/// Führt den gebündelten ffprobe-Sidecar aus und liefert die rohen JSON-Daten.
+/// Runs the bundled ffprobe sidecar and returns the raw JSON data.
 async fn run_ffprobe(app: &AppHandle, path: &str) -> AppResult<Value> {
     let output = app
         .shell()
@@ -34,27 +34,27 @@ async fn run_ffprobe(app: &AppHandle, path: &str) -> AppResult<Value> {
     }
 
     serde_json::from_slice(&output.stdout)
-        .map_err(|e| AppError::Probe(format!("JSON konnte nicht gelesen werden: {e}")))
+        .map_err(|e| AppError::Probe(format!("JSON could not be read: {e}")))
 }
 
-/// Verlustfreie Codecs, die für die Bit-Tiefen-/Container-Regeln relevant sind.
+/// Lossless codecs relevant to the bit-depth/container rules.
 fn is_lossless_codec(codec: &str) -> bool {
     codec.starts_with("pcm_") || matches!(codec, "flac" | "alac" | "wavpack" | "tta")
 }
 
-/// Analysiert eine Datei und extrahiert die relevanten Audio-Eigenschaften.
+/// Analyzes a file and extracts the relevant audio properties.
 pub async fn probe(app: &AppHandle, path: &str) -> AppResult<AudioInfo> {
     let json = run_ffprobe(app, path).await?;
 
     let streams = json
         .get("streams")
         .and_then(Value::as_array)
-        .ok_or_else(|| AppError::Probe("keine Streams gefunden".into()))?;
+        .ok_or_else(|| AppError::Probe("no streams found".into()))?;
 
     let audio = streams
         .iter()
         .find(|s| s.get("codec_type").and_then(Value::as_str) == Some("audio"))
-        .ok_or_else(|| AppError::Probe("kein Audio-Stream gefunden".into()))?;
+        .ok_or_else(|| AppError::Probe("no audio stream found".into()))?;
 
     let codec = audio
         .get("codec_name")
@@ -62,14 +62,14 @@ pub async fn probe(app: &AppHandle, path: &str) -> AppResult<AudioInfo> {
         .unwrap_or("unknown")
         .to_string();
 
-    // sample_rate kommt als String, z. B. "44100".
+    // sample_rate comes as a string, e.g. "44100".
     let sample_rate = audio
         .get("sample_rate")
         .and_then(Value::as_str)
         .and_then(|s| s.parse::<u32>().ok())
         .unwrap_or(0);
 
-    // Bit-Tiefe: bits_per_raw_sample bevorzugt, sonst bits_per_sample.
+    // Bit depth: prefer bits_per_raw_sample, otherwise bits_per_sample.
     let bits_per_sample = audio
         .get("bits_per_raw_sample")
         .and_then(json_number_as_u32)
@@ -81,7 +81,7 @@ pub async fn probe(app: &AppHandle, path: &str) -> AppResult<AudioInfo> {
         .and_then(json_number_as_u32)
         .unwrap_or(0);
 
-    // Dauer: bevorzugt aus dem Stream, sonst aus dem Container.
+    // Duration: preferably from the stream, otherwise from the container.
     let duration_secs = audio
         .get("duration")
         .and_then(json_number_as_f64)
@@ -110,7 +110,7 @@ pub async fn probe(app: &AppHandle, path: &str) -> AppResult<AudioInfo> {
     })
 }
 
-/// ffprobe liefert Zahlen teils als String, teils als Number.
+/// ffprobe returns numbers partly as strings, partly as numbers.
 fn json_number_as_u32(v: &Value) -> Option<u32> {
     v.as_u64()
         .map(|n| n as u32)
