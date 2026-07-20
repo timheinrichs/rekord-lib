@@ -3,15 +3,15 @@ import { useScrolled } from "../lib/useScrolled";
 import logoUrl from "../assets/brand/rekord-lib-logo-horizontal-dark.svg";
 
 interface Props {
-  /** Rechtsbündige Aktionen (primäre Buttons, Zahnrad, „Fertig" …). */
+  /** Right-aligned actions (primary buttons, gear, "Done" …). */
   right?: ReactNode;
-  /** Klick auf den Titel (i. d. R. zurück zur Library). */
+  /** Click on the title (usually back to the library). */
   onTitleClick?: () => void;
 }
 
 /**
- * Sticky-App-Header mit Titel links und Aktions-Slot rechts.
- * Beim Scrollen dockt er per Schatten/Blur sanft an.
+ * Sticky app header with the title on the left and an actions slot on the right.
+ * On scroll it gently docks with a shadow/blur.
  */
 export default function AppHeader({ right, onTitleClick }: Props) {
   const scrolled = useScrolled(4);
@@ -26,7 +26,7 @@ export default function AppHeader({ right, onTitleClick }: Props) {
       <button
         onClick={onTitleClick}
         className="flex min-w-0 items-center gap-3 text-left"
-        title="Zur Library"
+        title="To library"
       >
         <img
           src={logoUrl}

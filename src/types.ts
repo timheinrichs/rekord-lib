@@ -1,4 +1,4 @@
-// Spiegelt die Rust-Modelle in src-tauri/src/models.rs
+// Mirrors the Rust models in src-tauri/src/models.rs
 
 export type TargetFormat = "aiff" | "wav" | "flac" | "alac" | "mp3" | "aac";
 
@@ -85,7 +85,7 @@ export interface MetadataSuggestions {
   candidates: MbCandidate[];
 }
 
-/** Vom Nutzer bestätigte Metadaten + Cover-Wahl für einen Track. */
+/** User-confirmed metadata + cover choice for a track. */
 export interface TrackEdit {
   metadata: TrackMetadata;
   cover: CoverInput;
@@ -169,7 +169,7 @@ export interface DedupeDone {
   groups: DuplicateGroup[];
 }
 
-/** Schlanke Projektion eines Tracks als Kandidat für die Duplikatsuche. */
+/** Lightweight projection of a track as a candidate for duplicate detection. */
 export interface DupCandidate {
   id: string;
   path: string;
@@ -200,7 +200,7 @@ export interface DuplicateFile {
 export interface DuplicateGroup {
   id: string;
   files: DuplicateFile[];
-  /** Vorschlag, welche Datei behalten werden soll (höchste Qualität). */
+  /** Suggestion for which file to keep (highest quality). */
   keep_id: string;
 }
 
@@ -211,7 +211,7 @@ export interface DeleteResult {
 }
 
 export const FORMAT_LABELS: Record<TargetFormat, string> = {
-  aiff: "AIFF (empfohlen)",
+  aiff: "AIFF (recommended)",
   wav: "WAV",
   flac: "FLAC",
   alac: "ALAC",
@@ -219,5 +219,5 @@ export const FORMAT_LABELS: Record<TargetFormat, string> = {
   aac: "AAC 320k",
 };
 
-/** Formate, die nur auf neueren Playern (CDJ-3000/NXS2) laufen. */
+/** Formats that only work on newer players (CDJ-3000/NXS2). */
 export const NEWER_PLAYERS_ONLY: TargetFormat[] = ["flac", "alac"];

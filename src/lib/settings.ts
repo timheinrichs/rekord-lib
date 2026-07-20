@@ -1,15 +1,15 @@
 import { Store } from "@tauri-apps/plugin-store";
 import type { TargetFormat } from "../types";
 
-/** In der App persistierte Standard-Einstellungen. */
+/** Default settings persisted in the app. */
 export interface Settings {
-  /** Zentraler Library-Ordner (Sammlung). */
+  /** Central library folder (collection). */
   library_dir: string | null;
-  /** Standard-Zielformat der Konvertierung. */
+  /** Default target format for conversion. */
   format: TargetFormat;
-  /** Standard-Bit-Tiefe (16 oder 24). */
+  /** Default bit depth (16 or 24). */
   bit_depth: number;
-  /** Sonderzeichen in Dateinamen bereinigen. */
+  /** Clean up special characters in filenames. */
   sanitize_filenames: boolean;
 }
 
@@ -20,7 +20,7 @@ export const DEFAULT_SETTINGS: Settings = {
   sanitize_filenames: false,
 };
 
-// Gleiche Store-Datei wie das Rust-Backend (getrennte Schlüssel).
+// Same store file as the Rust backend (separate keys).
 const STORE_FILE = "rekord-lib.json";
 const SETTINGS_KEY = "settings";
 
@@ -30,14 +30,14 @@ function getStore(): Promise<Store> {
   return storePromise;
 }
 
-/** Lädt die gespeicherten Einstellungen (mit Defaults aufgefüllt). */
+/** Loads the saved settings (filled in with defaults). */
 export async function loadSettings(): Promise<Settings> {
   const store = await getStore();
   const saved = await store.get<Partial<Settings>>(SETTINGS_KEY);
   return { ...DEFAULT_SETTINGS, ...(saved ?? {}) };
 }
 
-/** Speichert die Einstellungen dauerhaft. */
+/** Persists the settings. */
 export async function saveSettings(settings: Settings): Promise<void> {
   const store = await getStore();
   await store.set(SETTINGS_KEY, settings);

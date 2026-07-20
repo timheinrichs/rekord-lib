@@ -1,7 +1,7 @@
 import { Store } from "@tauri-apps/plugin-store";
 import type { DuplicateGroup } from "../types";
 
-// Gleiche Store-Datei wie Einstellungen/Library, eigener Schlüssel.
+// Same store file as settings/library, with its own key.
 const STORE_FILE = "rekord-lib.json";
 const KEY = "duplicates";
 
@@ -11,14 +11,14 @@ function getStore(): Promise<Store> {
   return storePromise;
 }
 
-/** Lädt die zuletzt gefundenen Duplikat-Gruppen (oder leer). */
+/** Loads the most recently found duplicate groups (or empty). */
 export async function loadDuplicates(): Promise<DuplicateGroup[]> {
   const store = await getStore();
   const saved = await store.get<DuplicateGroup[]>(KEY);
   return saved ?? [];
 }
 
-/** Speichert die aktuellen Duplikat-Gruppen dauerhaft. */
+/** Persists the current duplicate groups. */
 export async function saveDuplicates(groups: DuplicateGroup[]): Promise<void> {
   const store = await getStore();
   await store.set(KEY, groups);

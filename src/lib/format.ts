@@ -1,8 +1,8 @@
 import type { TrackAnalysis, TrackEdit } from "../types";
 
 /**
- * Sind alle für Rekordbox relevanten Textfelder gesetzt?
- * (Titel, Artist, Album, Album-Artist, Genre, Jahr)
+ * Are all text fields relevant to Rekordbox set?
+ * (title, artist, album, album artist, genre, year)
  */
 export function editComplete(edit: TrackEdit): boolean {
   const m = edit.metadata;
@@ -43,7 +43,7 @@ export function formatBytes(bytes: number): string {
 
 export type Badge = { label: string; className: string; title?: string };
 
-/** Erzeugt die Status-Badges für einen Track (Kompatibilität, Metadaten, Herkunft). */
+/** Builds the status badges for a track (compatibility, metadata, origin). */
 export function trackBadges(
   t: TrackAnalysis,
   edit?: TrackEdit,
@@ -52,12 +52,12 @@ export function trackBadges(
   const badges: Badge[] = [];
   if (t.compat.compatible) {
     badges.push({
-      label: "Kompatibel",
+      label: "Compatible",
       className: "bg-success-500/15 text-success-500 ring-success-500/30",
     });
   } else {
     badges.push({
-      label: "Konvertieren",
+      label: "Convert",
       className: "bg-warning-500/15 text-warning-500 ring-warning-500/30",
       title: t.compat.issues.map((i) => i.message).join("\n"),
     });
@@ -65,7 +65,7 @@ export function trackBadges(
   const warnings = t.compat.issues.filter((i) => i.severity === "warning");
   if (t.compat.compatible && warnings.length) {
     badges.push({
-      label: "Hinweis",
+      label: "Note",
       className: "bg-accent-500/15 text-accent-300 ring-accent-500/30",
       title: warnings.map((i) => i.message).join("\n"),
     });
@@ -73,12 +73,12 @@ export function trackBadges(
   const complete = edit ? editComplete(edit) : !t.metadata_incomplete;
   if (edit && complete) {
     badges.push({
-      label: "Metadaten ✓",
+      label: "Metadata ✓",
       className: "bg-success-500/15 text-success-500 ring-success-500/30",
     });
   } else if (!complete) {
     badges.push({
-      label: "Metadaten unvollständig",
+      label: "Metadata incomplete",
       className: "bg-warning-500/15 text-warning-500 ring-warning-500/30",
     });
   }

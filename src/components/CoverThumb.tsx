@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { coverThumbnail } from "../lib/api";
 
-/** Modulweiter Cache: Pfad → data-URL (oder null = kein Cover). */
+/** Module-wide cache: path → data URL (or null = no cover). */
 const cache = new Map<string, string | null>();
 
 interface Props {
@@ -10,16 +10,16 @@ interface Props {
 }
 
 /**
- * Zeigt das eingebettete Cover eines Tracks als kleines Thumbnail.
- * Lädt erst, wenn die Zeile in den Viewport scrollt (IntersectionObserver),
- * und merkt sich das Ergebnis modulweit, um das Backend nicht zu fluten.
+ * Shows a track's embedded cover as a small thumbnail.
+ * Loads only once the row scrolls into the viewport (IntersectionObserver),
+ * and caches the result module-wide to avoid flooding the backend.
  */
 export default function CoverThumb({ path, hasCover }: Props) {
   const [url, setUrl] = useState<string | null>(() => cache.get(path) ?? null);
   const [visible, setVisible] = useState(() => cache.has(path));
   const ref = useRef<HTMLDivElement>(null);
 
-  // Sichtbarkeit beobachten (nur laden, was auch gezeigt wird).
+  // Observe visibility (only load what is actually shown).
   useEffect(() => {
     if (cache.has(path) || !hasCover) return;
     const el = ref.current;
@@ -37,7 +37,7 @@ export default function CoverThumb({ path, hasCover }: Props) {
     return () => io.disconnect();
   }, [path, hasCover]);
 
-  // Thumbnail laden, sobald sichtbar.
+  // Load the thumbnail once visible.
   useEffect(() => {
     if (!visible || !hasCover) return;
     if (cache.has(path)) {

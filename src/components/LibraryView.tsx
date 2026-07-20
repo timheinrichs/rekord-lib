@@ -80,9 +80,9 @@ interface DownloadEntry {
   error?: string;
 }
 
-/** Entfernt nicht mehr gültige Dateien aus Duplikat-Gruppen, verwirft Gruppen
- *  mit < 2 Dateien und korrigiert die Behalten-Wahl. Referenzstabil, wenn
- *  nichts geändert wurde. */
+/** Removes files that are no longer valid from duplicate groups, discards groups
+ *  with < 2 files and corrects the keep choice. Reference-stable when
+ *  nothing changed. */
 function pruneGroups(
   groups: DuplicateGroup[],
   isValid: (path: string) => boolean,
@@ -134,11 +134,11 @@ export default function LibraryView({ settings, account, onOpenSettings }: Props
   const [error, setError] = useState<string | null>(null);
 
   const libraryDir = settings.library_dir;
-  // Erst persistieren, nachdem der Cache geladen wurde – sonst überschreibt der
-  // initiale (leere) State den gespeicherten Stand beim Mount.
+  // Only persist after the cache has been loaded – otherwise the initial
+  // (empty) state overwrites the saved state on mount.
   const hydratedRef = useRef(false);
 
-  // Startet einen (Hintergrund-)Scan. Läuft bereits einer, dockt die UI nur an.
+  // Starts a (background) scan. If one is already running, the UI just docks onto it.
   const rescan = useCallback(async () => {
     if (!libraryDir) {
       setTracks([]);
@@ -149,7 +149,7 @@ export default function LibraryView({ settings, account, onOpenSettings }: Props
     void startScan(libraryDir);
   }, [libraryDir]);
 
-  // Persistente Scan-Listener (einmalig): Fortschritt + Ergebnis.
+  // Persistent scan listeners (one-time): progress + result.
   useEffect(() => {
     let unProg: (() => void) | undefined;
     let unDone: (() => void) | undefined;
@@ -162,7 +162,7 @@ export default function LibraryView({ settings, account, onOpenSettings }: Props
         setLoading(false);
         if (d.cancelled) return;
         setTracks(d.tracks);
-        // Persistierte Duplikate gegen die aktuellen Dateien bereinigen.
+        // Prune persisted duplicates against the current files.
         const valid = new Set(d.tracks.map((t) => t.path));
         setDupGroups((prev) => {
           const pruned = pruneGroups(prev, (p) => valid.has(p));
@@ -177,7 +177,7 @@ export default function LibraryView({ settings, account, onOpenSettings }: Props
     };
   }, []);
 
-  // Persistente Dedupe-Listener: Fortschritt (in dieselbe Leiste) + Abschluss.
+  // Persistent dedupe listeners: progress (into the same bar) + completion.
   useEffect(() => {
     let unProg: (() => void) | undefined;
     let unDone: (() => void) | undefined;
@@ -188,7 +188,7 @@ export default function LibraryView({ settings, account, onOpenSettings }: Props
       });
       unDone = await onDedupeDone((d) => {
         setDedupeRunning(false);
-        // Bei Erfolg Ergebnisse persistent übernehmen und anzeigen.
+        // On success, persist and display the results.
         if (!d.cancelled) {
           setDupGroups(d.groups);
           void saveDuplicates(d.groups);
@@ -202,7 +202,7 @@ export default function LibraryView({ settings, account, onOpenSettings }: Props
     };
   }, []);
 
-  // Persistenter Bandcamp-Download-Fortschritt (für das Downloads-Overlay).
+  // Persistent Bandcamp download progress (for the downloads overlay).
   useEffect(() => {
     let unProg: (() => void) | undefined;
     void (async () => {
@@ -225,9 +225,9 @@ export default function LibraryView({ settings, account, onOpenSettings }: Props
     return () => unProg?.();
   }, []);
 
-  // Beim Start / Ordnerwechsel: zwischengespeicherte Liste sofort anzeigen,
-  // dann an einen laufenden Scan andocken oder einen neuen (Hintergrund-)Scan
-  // starten. Die Liste bleibt dabei sichtbar.
+  // On start / folder change: immediately show the cached list, then dock onto
+  // a running scan or start a new (background) scan. The list stays visible
+  // in the meantime.
   useEffect(() => {
     let active = true;
     hydratedRef.current = false;
@@ -239,13 +239,13 @@ export default function LibraryView({ settings, account, onOpenSettings }: Props
       }
       const dups = await loadDuplicates();
       if (active && dups.length) setDupGroups(dups);
-      // Ab jetzt darf persistiert werden (Cache wurde berücksichtigt).
+      // From now on persisting is allowed (the cache has been taken into account).
       hydratedRef.current = true;
       if (!active || !libraryDir) return;
       const status = await scanStatus();
       if (!active) return;
       if (status.running) {
-        // An laufenden Scan andocken statt neu zu starten.
+        // Dock onto the running scan instead of restarting.
         setLoading(true);
         setScanProgress({
           generation: status.generation,
@@ -262,17 +262,17 @@ export default function LibraryView({ settings, account, onOpenSettings }: Props
     };
   }, [libraryDir, rescan]);
 
-  // Track-Datenbank persistent halten (erst nach der Hydration, damit der
-  // initiale leere State den Cache nicht überschreibt).
+  // Keep the track database persisted (only after hydration, so the initial
+  // empty state doesn't overwrite the cache).
   useEffect(() => {
     if (!libraryDir || !hydratedRef.current) return;
     void saveLibrary({ library_dir: libraryDir, tracks, edits });
   }, [libraryDir, tracks, edits]);
 
-  // Konvertierungsaufträge ausführen.
-  // - "library": Quelle liegt schon in der Library -> Ausgabe in denselben
-  //   Ordner (output_dir=null) und Original nach Formatwechsel löschen.
-  // - "import": externe Datei -> in die Library kopieren, Original behalten.
+  // Run conversion jobs.
+  // - "library": source already lives in the library -> output to the same
+  //   folder (output_dir=null) and delete the original after a format change.
+  // - "import": external file -> copy into the library, keep the original.
   const runConvert = useCallback(
     async (jobs: ConvertJob[], mode: "library" | "import" = "library") => {
       if (!jobs.length) return;
@@ -298,14 +298,14 @@ export default function LibraryView({ settings, account, onOpenSettings }: Props
         const failed = res.filter((r) => !r.success);
         if (failed.length) {
           setError(
-            `${failed.length} Datei(en) fehlgeschlagen: ${failed
+            `${failed.length} file(s) failed: ${failed
               .map((f) => f.error)
               .filter(Boolean)
               .join("; ")}`,
           );
         }
-        // Progress stoppen -> "✓ Fertig" pro Zeile zeigen, kurz stehen lassen,
-        // dann (bei Bulk erst wenn alle fertig sind) die Liste aktualisieren.
+        // Stop progress -> show "✓ Done" per row, leave it briefly,
+        // then (for bulk only once all are done) refresh the list.
         unlisten();
         setConverting(false);
         await new Promise((resolve) => setTimeout(resolve, 1200));
@@ -316,7 +316,7 @@ export default function LibraryView({ settings, account, onOpenSettings }: Props
       } catch (e) {
         unlisten();
         setConverting(false);
-        setError(`Konvertierung fehlgeschlagen: ${e}`);
+        setError(`Conversion failed: ${e}`);
       }
     },
     [settings, libraryDir, rescan],
@@ -345,11 +345,11 @@ export default function LibraryView({ settings, account, onOpenSettings }: Props
     [jobFor, runConvert],
   );
 
-  // Drag & Drop: Dateien in die Library konvertieren.
+  // Drag & drop: convert files into the library.
   const importPaths = useCallback(
     async (paths: string[]) => {
       if (!libraryDir) {
-        setError("Bitte zuerst einen Library-Ordner in den Einstellungen wählen.");
+        setError("Please choose a library folder in the settings first.");
         return;
       }
       const jobs: ConvertJob[] = paths.map((p) => ({
@@ -383,7 +383,7 @@ export default function LibraryView({ settings, account, onOpenSettings }: Props
     return () => unlisten?.();
   }, []);
 
-  // Bandcamp-Abgleich.
+  // Bandcamp sync.
   const runSync = useCallback(async () => {
     if (!account) return;
     setSyncing(true);
@@ -393,7 +393,7 @@ export default function LibraryView({ settings, account, onOpenSettings }: Props
       setSync(syncCollection(tracks, items));
       setMissingDismissed(false);
     } catch (e) {
-      setError(`Abgleich fehlgeschlagen: ${e}`);
+      setError(`Sync failed: ${e}`);
     } finally {
       setSyncing(false);
     }
@@ -412,7 +412,7 @@ export default function LibraryView({ settings, account, onOpenSettings }: Props
           state: "loading",
           downloaded: 0,
           total: 0,
-          stage: "Lädt",
+          stage: "Downloading",
         },
       }));
       setDownloadsOpen(true);
@@ -428,12 +428,12 @@ export default function LibraryView({ settings, account, onOpenSettings }: Props
         );
         if (res.success) {
           setDl((s) => ({ ...s, [item.key]: "done" }));
-          finish({ state: "done", stage: "Fertig" });
+          finish({ state: "done", stage: "Done" });
           await rescan();
         } else {
           setDl((s) => ({ ...s, [item.key]: "error" }));
-          finish({ state: "error", error: res.error ?? "Download fehlgeschlagen" });
-          setError(res.error ?? "Download fehlgeschlagen");
+          finish({ state: "error", error: res.error ?? "Download failed" });
+          setError(res.error ?? "Download failed");
         }
       } catch (e) {
         setDl((s) => ({ ...s, [item.key]: "error" }));
@@ -444,12 +444,12 @@ export default function LibraryView({ settings, account, onOpenSettings }: Props
     [libraryDir, rescan],
   );
 
-  // Anker für die Shift-Bereichsauswahl (Index in visibleTracks) und die
-  // Auswahl zum Anker-Zeitpunkt (Basis, auf die der Shift-Bereich angewandt wird).
+  // Anchor for the shift range selection (index into visibleTracks) and the
+  // selection at anchor time (base onto which the shift range is applied).
   const anchorIndexRef = useRef<number | null>(null);
   const baseSelectionRef = useRef<Set<string>>(new Set());
 
-  // Ist ein Track (unter Berücksichtigung offener Edits) unvollständig?
+  // Is a track incomplete (taking pending edits into account)?
   const isIncomplete = useCallback(
     (t: TrackAnalysis) => {
       const edit = edits[t.id];
@@ -458,7 +458,7 @@ export default function LibraryView({ settings, account, onOpenSettings }: Props
     [edits],
   );
 
-  // Sichtbare Tracks gemäß Filter + Suche.
+  // Visible tracks according to filter + search.
   const visibleTracks = useMemo(() => {
     const q = search.trim().toLowerCase();
     return tracks.filter((t) => {
@@ -475,18 +475,18 @@ export default function LibraryView({ settings, account, onOpenSettings }: Props
     });
   }, [tracks, filter, search, isIncomplete]);
 
-  // Album-Schlüssel eines Tracks (Album-Tag, sonst Ordnername).
+  // Album key of a track (album tag, otherwise folder name).
   const albumOf = useCallback(
     (t: TrackAnalysis): string => {
       const md = edits[t.id]?.metadata ?? t.metadata;
       if (md.album?.trim()) return md.album.trim();
       const parts = t.path.split("/");
-      return parts[parts.length - 2] || "(Kein Album)";
+      return parts[parts.length - 2] || "(No album)";
     },
     [edits],
   );
 
-  // Gruppierung nach Album (>= 2 Tracks = Gruppe, sonst Einzelzeile).
+  // Grouping by album (>= 2 tracks = group, otherwise a single row).
   type AlbumItem =
     | { type: "group"; key: string; tracks: TrackAnalysis[] }
     | { type: "track"; track: TrackAnalysis };
@@ -507,7 +507,7 @@ export default function LibraryView({ settings, account, onOpenSettings }: Props
     return items;
   }, [groupByAlbum, visibleTracks, albumOf]);
 
-  // Flache Render-Reihenfolge (inkl. eingeklappter) für die Shift-Auswahl.
+  // Flat render order (including collapsed) for the shift selection.
   const renderOrder = useMemo(() => {
     if (!albumItems) return visibleTracks;
     const arr: TrackAnalysis[] = [];
@@ -542,7 +542,7 @@ export default function LibraryView({ settings, account, onOpenSettings }: Props
     );
   }, [allGroupKeys]);
 
-  // Alle Tracks einer Album-Gruppe (de)selektieren.
+  // (De)select all tracks of an album group.
   const toggleAlbumSelect = useCallback((tracksInAlbum: TrackAnalysis[]) => {
     setSelected((prev) => {
       const ids = tracksInAlbum.map((t) => t.id);
@@ -568,15 +568,15 @@ export default function LibraryView({ settings, account, onOpenSettings }: Props
     });
   }, [visibleTracks]);
 
-  // Zeilenauswahl mit Shift-Bereichsauswahl (klassisch wie im Datei-Explorer).
+  // Row selection with shift range selection (classic file explorer style).
   const handleRowSelect = useCallback(
     (index: number, shiftKey: boolean) => {
       const id = renderOrder[index]?.id;
       if (!id) return;
 
       if (shiftKey && anchorIndexRef.current !== null) {
-        // Bereich neu setzen: Basis + aktueller Anker-Bereich. Zeilen, die zu
-        // einem früheren (größeren) Bereich gehörten, fallen so wieder weg.
+        // Reset the range: base + current anchor range. Rows that belonged to
+        // an earlier (larger) range are thus dropped again.
         const start = Math.min(anchorIndexRef.current, index);
         const end = Math.max(anchorIndexRef.current, index);
         setSelected(() => {
@@ -588,7 +588,7 @@ export default function LibraryView({ settings, account, onOpenSettings }: Props
           return next;
         });
       } else {
-        // Normaler Klick: einzeln togglen, Anker + Basis neu festlegen.
+        // Normal click: toggle individually, set anchor + base anew.
         setSelected((prev) => {
           const next = new Set(prev);
           next.has(id) ? next.delete(id) : next.add(id);
@@ -606,7 +606,7 @@ export default function LibraryView({ settings, account, onOpenSettings }: Props
     setEditingId(null);
   }, []);
 
-  // Bulk-Edit: gewählte Felder auf alle selektierten Tracks anwenden.
+  // Bulk edit: apply the selected fields to all selected tracks.
   const applyBulk = useCallback(
     (patch: BulkPatch) => {
       setEdits((prev) => {
@@ -626,8 +626,8 @@ export default function LibraryView({ settings, account, onOpenSettings }: Props
     [tracks, selected],
   );
 
-  // Duplikate: einzelne/mehrere Dateien in den Papierkorb verschieben und
-  // Gruppen/Library live aktualisieren (Modal bleibt offen).
+  // Duplicates: move one/several files to the trash and update
+  // groups/library live (the modal stays open).
   const handleDeleteDuplicateFiles = useCallback(async (paths: string[]) => {
     const results = await deleteFiles(paths);
     const gone = new Set(results.filter((r) => r.success).map((r) => r.path));
@@ -647,12 +647,12 @@ export default function LibraryView({ settings, account, onOpenSettings }: Props
     const failed = results.filter((r) => !r.success);
     if (failed.length) {
       throw new Error(
-        failed.map((f) => f.error).filter(Boolean).join("; ") || "unbekannt",
+        failed.map((f) => f.error).filter(Boolean).join("; ") || "unknown",
       );
     }
   }, []);
 
-  // Gruppe verwerfen („kein Duplikat") – persistent.
+  // Dismiss a group ("not a duplicate") – persistent.
   const dismissDuplicateGroup = useCallback((id: string) => {
     setDupGroups((prev) => {
       const next = prev.filter((g) => g.id !== id);
@@ -678,14 +678,14 @@ export default function LibraryView({ settings, account, onOpenSettings }: Props
     [tracks, edits],
   );
 
-  // Neuen Suchlauf starten (aus Header oder Modal „Erneut suchen").
+  // Start a new scan (from the header or the modal's "Search again").
   const startDuplicateScan = useCallback(async () => {
     const status = await dedupeStatus();
     if (status.running) return;
     void startDedupe(buildDupCandidates());
   }, [buildDupCandidates]);
 
-  // Header-Button: vorhandene Ergebnisse zeigen, sonst neue Suche starten.
+  // Header button: show existing results, otherwise start a new scan.
   const findDuplicates = useCallback(async () => {
     if (dupGroups.length > 0) {
       setDupOpen(true);
@@ -694,7 +694,7 @@ export default function LibraryView({ settings, account, onOpenSettings }: Props
     await startDuplicateScan();
   }, [dupGroups.length, startDuplicateScan]);
 
-  // Vorhandene Werte je Feld als Auswahl-Vorschläge (aus Tracks + Edits).
+  // Existing values per field as selection suggestions (from tracks + edits).
   const fieldOptions = useMemo(() => {
     const collect = (get: (m: TrackAnalysis["metadata"]) => string | null) => {
       const set = new Set<string>();
@@ -714,12 +714,12 @@ export default function LibraryView({ settings, account, onOpenSettings }: Props
     } as Record<string, string[]>;
   }, [tracks, edits]);
 
-  // Sticky-„Andock"-Animation + Back-to-Top.
+  // Sticky "docking" animation + back-to-top.
   const scrolled = useScrolled(4);
   const showTop = useScrolled(400);
   const scrollToTop = () => window.scrollTo({ top: 0, behavior: "smooth" });
 
-  // Eine Leiste für beide Hintergrund-Jobs (Scan & Duplikatsuche).
+  // One bar for both background jobs (scan & duplicate search).
   const scanPct =
     scanProgress && scanProgress.total > 0
       ? Math.round((scanProgress.done / scanProgress.total) * 100)
@@ -732,23 +732,23 @@ export default function LibraryView({ settings, account, onOpenSettings }: Props
   const progressBar = dedupeRunning
     ? {
         label:
-          dedupeProgress?.stage === "Vergleiche"
-            ? "Vergleiche Fingerabdrücke…"
-            : "Suche Duplikate…",
+          dedupeProgress?.stage === "Comparing"
+            ? "Comparing fingerprints…"
+            : "Finding duplicates…",
         done: dedupeProgress?.done ?? 0,
         total: dedupeProgress?.total ?? 0,
         pct: dedupePct,
         cancel: () => void cancelDedupe(),
       }
     : {
-        label: "Scanne Library…",
+        label: "Scanning…",
         done: scanProgress?.done ?? 0,
         total: scanProgress?.total ?? 0,
         pct: scanPct,
         cancel: () => void cancelScan(),
       };
 
-  // Downloads-Overlay (Bandcamp) – Chrome-artiges Icon mit Fortschritt.
+  // Downloads overlay (Bandcamp) – Chrome-like icon with progress.
   const downloadList = Object.values(downloads);
   const activeDownloads = downloadList.filter((d) => d.state === "loading").length;
   const clearFinishedDownloads = () =>
@@ -783,13 +783,13 @@ export default function LibraryView({ settings, account, onOpenSettings }: Props
                   onClick={clearFinishedDownloads}
                   className="text-xs text-fg-subtle hover:text-fg"
                 >
-                  Aufräumen
+                  Clear
                 </button>
               )}
               <button
                 onClick={() => setDownloadsOpen(false)}
                 className="text-fg-subtle hover:text-fg"
-                aria-label="Schließen"
+                aria-label="Close"
               >
                 ✕
               </button>
@@ -807,9 +807,9 @@ export default function LibraryView({ settings, account, onOpenSettings }: Props
                     </span>
                     <span className="shrink-0 text-xs text-fg-subtle">
                       {d.state === "done"
-                        ? "✓ Fertig"
+                        ? "✓ Done"
                         : d.state === "error"
-                          ? "Fehler"
+                          ? "Error"
                           : d.total > 0
                             ? `${pct}%`
                             : d.stage}
@@ -852,14 +852,14 @@ export default function LibraryView({ settings, account, onOpenSettings }: Props
     <button
       onClick={onOpenSettings}
       className="shrink-0 rounded-lg border border-border-strong p-2 text-fg-muted hover:border-accent-500 hover:text-accent-400"
-      title="Einstellungen"
-      aria-label="Einstellungen"
+      title="Settings"
+      aria-label="Settings"
     >
       <GearIcon />
     </button>
   );
 
-  // Primäre Aktionen für den Header.
+  // Primary actions for the header.
   const headerActions = (
     <>
       <button
@@ -867,7 +867,7 @@ export default function LibraryView({ settings, account, onOpenSettings }: Props
         disabled={loading || converting || dedupeRunning}
         className="rounded-lg border border-border-strong px-3 py-2 text-sm hover:border-accent-500 disabled:opacity-50"
       >
-        {loading ? "Scanne…" : "Neu scannen"}
+        {loading ? "Scanning…" : "Rescan"}
       </button>
       <button
         onClick={() => void runSync()}
@@ -875,11 +875,11 @@ export default function LibraryView({ settings, account, onOpenSettings }: Props
         className="rounded-lg border border-border-strong px-3 py-2 text-sm hover:border-accent-500 disabled:opacity-50"
         title={
           account
-            ? "Library mit Bandcamp-Sammlung abgleichen"
-            : "In den Einstellungen mit Bandcamp verbinden"
+            ? "Sync library with Bandcamp collection"
+            : "Connect with Bandcamp in the settings"
         }
       >
-        {syncing ? "Gleiche ab…" : "Mit Bandcamp abgleichen"}
+        {syncing ? "Syncing…" : "Sync with Bandcamp"}
       </button>
       <button
         onClick={() => void findDuplicates()}
@@ -890,13 +890,13 @@ export default function LibraryView({ settings, account, onOpenSettings }: Props
           (dupGroups.length === 0 && tracks.length < 2)
         }
         className="rounded-lg border border-border-strong px-3 py-2 text-sm hover:border-accent-500 disabled:opacity-50"
-        title="Doppelte Tracks über alle Formate finden"
+        title="Find duplicate tracks across all formats"
       >
         {dedupeRunning
-          ? "Suche Duplikate…"
+          ? "Finding duplicates…"
           : dupGroups.length > 0
-            ? `Duplikate (${dupGroups.length})`
-            : "Duplikate suchen"}
+            ? `Duplicates (${dupGroups.length})`
+            : "Find duplicates"}
       </button>
       {selected.size > 0 && (
         <>
@@ -905,14 +905,14 @@ export default function LibraryView({ settings, account, onOpenSettings }: Props
             disabled={converting}
             className="rounded-lg border border-border-strong px-3 py-2 text-sm hover:border-accent-500 disabled:opacity-50"
           >
-            Metadaten bearbeiten ({selected.size})
+            Edit metadata ({selected.size})
           </button>
           <button
             onClick={convertSelected}
             disabled={converting}
             className="rounded-lg bg-accent-600 px-4 py-2 text-sm font-medium hover:bg-accent-500 disabled:opacity-50"
           >
-            {converting ? "Konvertiere…" : `Auswahl konvertieren (${selected.size})`}
+            {converting ? "Converting…" : `Convert selection (${selected.size})`}
           </button>
         </>
       )}
@@ -928,15 +928,15 @@ export default function LibraryView({ settings, account, onOpenSettings }: Props
         <AppHeader onTitleClick={scrollToTop} right={gearButton} />
         <main className="mx-auto max-w-6xl px-6 py-16">
           <div className="flex flex-col items-center gap-3 rounded-xl border border-dashed border-border bg-surface py-20 text-center text-fg-subtle">
-            <p className="text-lg text-fg-muted">Kein Library-Ordner gewählt</p>
+            <p className="text-lg text-fg-muted">No library folder selected</p>
             <p className="text-sm">
-              Lege in den Einstellungen fest, wo deine Sammlung liegt.
+              Set where your collection lives in the settings.
             </p>
             <button
               onClick={onOpenSettings}
               className="mt-2 rounded-lg bg-accent-600 px-4 py-2 text-sm font-medium hover:bg-accent-500"
             >
-              Einstellungen öffnen
+              Open settings
             </button>
           </div>
         </main>
@@ -948,7 +948,7 @@ export default function LibraryView({ settings, account, onOpenSettings }: Props
     <>
       <AppHeader onTitleClick={scrollToTop} right={headerActions} />
       <main className="w-full px-6 py-6">
-      {/* Fortschritt (Scan & Duplikatsuche): scrollt mit und verschwindet. */}
+      {/* Progress (scan & duplicate search): scrolls along and disappears. */}
       <div
         className={`overflow-hidden transition-all duration-500 ease-out ${
           showBar ? "mb-4 max-h-24 opacity-100" : "mb-0 max-h-0 opacity-0"
@@ -966,7 +966,7 @@ export default function LibraryView({ settings, account, onOpenSettings }: Props
               onClick={progressBar.cancel}
               className="ml-auto rounded-md border border-border-strong px-2 py-0.5 text-xs text-fg-muted hover:border-danger-500 hover:text-danger-500"
             >
-              Abbrechen
+              Cancel
             </button>
           </div>
           <div className="h-2 w-full overflow-hidden rounded-full bg-surface-2">
@@ -984,18 +984,18 @@ export default function LibraryView({ settings, account, onOpenSettings }: Props
         </div>
       )}
 
-      {/* Fehlt in Library */}
+      {/* Missing in library */}
       {sync && sync.missing.length > 0 && !missingDismissed && (
         <section className="mb-6 rounded-xl border border-accent-500/30 bg-accent-500/5 p-4">
           <div className="mb-3 flex items-center justify-between">
             <h2 className="text-sm font-semibold text-accent-300">
-              Fehlt in Library ({sync.missing.length})
+              Missing in library ({sync.missing.length})
             </h2>
             <button
               onClick={() => setMissingDismissed(true)}
               className="flex h-7 w-7 items-center justify-center rounded-md text-fg-subtle hover:bg-surface-2 hover:text-fg"
-              title="Schließen"
-              aria-label="Schließen"
+              title="Close"
+              aria-label="Close"
             >
               ✕
             </button>
@@ -1031,12 +1031,12 @@ export default function LibraryView({ settings, account, onOpenSettings }: Props
                     className="shrink-0 rounded-lg bg-accent-600 px-3 py-1.5 text-xs font-medium hover:bg-accent-500 disabled:opacity-40"
                   >
                     {state === "loading"
-                      ? "Lädt…"
+                      ? "Loading…"
                       : state === "done"
-                        ? "✓ Geladen"
+                        ? "✓ Downloaded"
                         : state === "error"
-                          ? "Fehler"
-                          : "Laden"}
+                          ? "Error"
+                          : "Download"}
                   </button>
                 </div>
               );
@@ -1045,7 +1045,7 @@ export default function LibraryView({ settings, account, onOpenSettings }: Props
         </section>
       )}
 
-      {/* Filterleiste (sticky unter dem Header) */}
+      {/* Filter bar (sticky below the header) */}
       {tracks.length > 0 && (
         <div
           className={`sticky top-16 z-20 -mx-6 mb-3 flex h-14 items-center gap-2 border-b px-6 transition-[box-shadow,background-color,border-color] duration-300 ${
@@ -1057,25 +1057,25 @@ export default function LibraryView({ settings, account, onOpenSettings }: Props
           <FilterChip
             active={filter === "all"}
             onClick={() => setFilter("all")}
-            label={`Alle (${tracks.length})`}
+            label={`All (${tracks.length})`}
           />
           <FilterChip
             active={filter === "convert"}
             onClick={() => setFilter("convert")}
-            label={`Zu konvertieren (${
+            label={`To convert (${
               tracks.filter((t) => !t.compat.compatible).length
             })`}
           />
           <FilterChip
             active={filter === "incomplete"}
             onClick={() => setFilter("incomplete")}
-            label={`Metadaten unvollständig (${tracks.filter(isIncomplete).length})`}
+            label={`Metadata incomplete (${tracks.filter(isIncomplete).length})`}
           />
           <div className="ml-auto flex items-center gap-2">
             <FilterChip
               active={groupByAlbum}
               onClick={() => setGroupByAlbum((v) => !v)}
-              label="Nach Album"
+              label="By album"
             />
             {groupByAlbum && allGroupKeys.length > 0 && (
               <button
@@ -1083,22 +1083,22 @@ export default function LibraryView({ settings, account, onOpenSettings }: Props
                 className="whitespace-nowrap rounded-full px-3 py-1.5 text-sm text-fg-muted ring-1 ring-border-strong transition-colors hover:text-fg hover:ring-border-strong"
               >
                 {expandedAlbums.size >= allGroupKeys.length
-                  ? "Alle einklappen"
-                  : "Alle ausklappen"}
+                  ? "Collapse all"
+                  : "Expand all"}
               </button>
             )}
             <input
               type="search"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              placeholder="Suchen…"
+              placeholder="Search…"
               className="w-56 rounded-lg border border-border-strong bg-surface-2 px-3 py-1.5 text-sm outline-none focus:border-accent-500"
             />
           </div>
         </div>
       )}
 
-      {/* Track-Liste / Drop-Zone */}
+      {/* Track list / drop zone */}
       <section
         className={`rounded-xl border transition-colors ${
           dragging
@@ -1109,17 +1109,17 @@ export default function LibraryView({ settings, account, onOpenSettings }: Props
         {tracks.length === 0 ? (
           <div className="flex h-64 flex-col items-center justify-center gap-2 text-fg-subtle">
             <p className="text-lg">
-              {loading ? "Scanne Library…" : "Noch keine Musik in der Library"}
+              {loading ? "Scanning…" : "No music in the library yet"}
             </p>
             {!loading && (
               <p className="text-sm">
-                Zieh Dateien hierher – sie werden in die Library konvertiert.
+                Drag files here – they will be converted into the library.
               </p>
             )}
           </div>
         ) : visibleTracks.length === 0 ? (
           <div className="flex h-40 flex-col items-center justify-center gap-2 text-fg-subtle">
-            <p className="text-sm">Keine Titel passen zum Filter.</p>
+            <p className="text-sm">No tracks match the filter.</p>
           </div>
         ) : (
           <div className="overflow-x-auto">
@@ -1132,15 +1132,15 @@ export default function LibraryView({ settings, account, onOpenSettings }: Props
                     checked={allVisibleSelected}
                     onChange={toggleSelectAll}
                     className="h-4 w-4 rounded border-border-strong bg-surface-2"
-                    aria-label="Alle auswählen"
+                    aria-label="Select all"
                   />
                 </th>
                 <th className="w-14 px-4 py-3"></th>
-                <th className="px-4 py-3 font-medium">Titel</th>
+                <th className="px-4 py-3 font-medium">Title</th>
                 <th className="w-40 px-4 py-3 font-medium">Artist</th>
                 <th className="w-40 px-4 py-3 font-medium">Album</th>
                 <th className="w-44 px-4 py-3 font-medium">Format</th>
-                <th className="w-20 px-4 py-3 font-medium">Länge</th>
+                <th className="w-20 px-4 py-3 font-medium">Length</th>
                 <th className="w-56 px-4 py-3 font-medium">Status</th>
                 <th className="w-28 px-4 py-3 font-medium"></th>
               </tr>
@@ -1151,7 +1151,7 @@ export default function LibraryView({ settings, account, onOpenSettings }: Props
                 const prog = progress[t.id];
                 const result = results[t.id];
                 const fromBandcamp = !!sync?.originById[t.id];
-                // Bestätigte Edits sofort in der Liste anzeigen.
+                // Show confirmed edits in the list immediately.
                 const md = edits[t.id]?.metadata ?? t.metadata;
                 return (
                   <tr
@@ -1173,7 +1173,7 @@ export default function LibraryView({ settings, account, onOpenSettings }: Props
                           handleRowSelect(index, e.shiftKey);
                         }}
                         className="h-4 w-4 rounded border-border-strong bg-surface-2"
-                        aria-label={`${t.file_name} auswählen`}
+                        aria-label={`Select ${t.file_name}`}
                       />
                     </td>
                     <td className="px-4 py-3">
@@ -1204,10 +1204,10 @@ export default function LibraryView({ settings, account, onOpenSettings }: Props
                     <td className="px-4 py-3">
                       {result ? (
                         result.success ? (
-                          <span className="text-success-500">✓ Fertig</span>
+                          <span className="text-success-500">✓ Done</span>
                         ) : (
                           <span className="text-danger-500" title={result.error ?? ""}>
-                            ✕ Fehler
+                            ✕ Error
                           </span>
                         )
                       ) : prog && converting ? (
@@ -1246,17 +1246,17 @@ export default function LibraryView({ settings, account, onOpenSettings }: Props
                             onClick={() => convertOne(t)}
                             disabled={converting}
                             className="rounded-md bg-accent-600 px-2 py-1 text-xs font-medium hover:bg-accent-500 disabled:opacity-40"
-                            title="In Zielformat konvertieren"
+                            title="Convert to target format"
                           >
-                            Konvertieren
+                            Convert
                           </button>
                         )}
                         <button
                           onClick={() => setEditingId(t.id)}
                           disabled={converting}
                           className="flex h-8 w-8 items-center justify-center rounded-md text-fg-subtle hover:bg-surface-2 hover:text-accent-400 disabled:opacity-40"
-                          title="Metadaten bearbeiten"
-                          aria-label="Metadaten bearbeiten"
+                          title="Edit metadata"
+                          aria-label="Edit metadata"
                         >
                           <EditIcon />
                         </button>
@@ -1302,7 +1302,7 @@ export default function LibraryView({ settings, account, onOpenSettings }: Props
                             }}
                             onChange={() => toggleAlbumSelect(gTracks)}
                             className="h-4 w-4 rounded border-border-strong bg-surface-2"
-                            aria-label={`${it.key} auswählen`}
+                            aria-label={`Select ${it.key}`}
                           />
                         </td>
                         <td className="px-4 py-2.5">
@@ -1320,8 +1320,8 @@ export default function LibraryView({ settings, account, onOpenSettings }: Props
                               {it.key}
                             </span>
                             <span className="whitespace-nowrap text-xs text-fg-subtle">
-                              {gTracks.length} Titel
-                              {needConvert ? ` · ${needConvert} zu konvertieren` : ""}
+                              {gTracks.length} tracks
+                              {needConvert ? ` · ${needConvert} to convert` : ""}
                             </span>
                           </div>
                         </td>
@@ -1386,10 +1386,10 @@ export default function LibraryView({ settings, account, onOpenSettings }: Props
       )}
       </main>
 
-      {/* Back-to-Top */}
+      {/* Back-to-top */}
       <button
         onClick={scrollToTop}
-        aria-label="Nach oben"
+        aria-label="Back to top"
         className={`fixed bottom-6 right-6 z-40 flex h-11 w-11 items-center justify-center rounded-full border border-border-strong bg-surface text-fg shadow-lg shadow-black/40 backdrop-blur transition-all duration-300 hover:border-accent-500 hover:text-accent-400 ${
           showTop
             ? "translate-y-0 opacity-100"

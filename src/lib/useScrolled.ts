@@ -1,8 +1,8 @@
 import { useEffect, useState } from "react";
 
 /**
- * Liefert true, sobald das Fenster mehr als `threshold` Pixel gescrollt ist.
- * Für sticky-„Andock"-Animationen und den Back-to-Top-Button.
+ * Returns true once the window is scrolled more than `threshold` pixels.
+ * Used for sticky "dock" animations and the back-to-top button.
  */
 export function useScrolled(threshold = 4): boolean {
   const [scrolled, setScrolled] = useState(false);

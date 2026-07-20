@@ -44,76 +44,76 @@ const AUDIO_EXTENSIONS = [
   "wma",
 ];
 
-/** Analysiert die übergebenen Dateipfade im Rust-Backend. */
+/** Analyzes the given file paths in the Rust backend. */
 export function analyzeFiles(paths: string[]): Promise<TrackAnalysis[]> {
   return invoke<TrackAnalysis[]>("analyze_files", { paths });
 }
 
-/** Startet einen Library-Scan (Hintergrund-Singleton). false = lief bereits. */
+/** Starts a library scan (background singleton). false = already running. */
 export function startScan(dir: string): Promise<boolean> {
   return invoke<boolean>("start_scan", { dir });
 }
 
-/** Aktueller Scan-Status (zum Andocken nach Reload). */
+/** Current scan status (for reattaching after a reload). */
 export function scanStatus(): Promise<ScanStatus> {
   return invoke<ScanStatus>("scan_status");
 }
 
-/** Bricht einen laufenden Scan ab. */
+/** Cancels a running scan. */
 export function cancelScan(): Promise<void> {
   return invoke("cancel_scan");
 }
 
-/** Abonniert Fortschritts-Events des Library-Scans. */
+/** Subscribes to progress events of the library scan. */
 export function onScanProgress(
   cb: (p: ScanProgress) => void,
 ): Promise<UnlistenFn> {
   return listen<ScanProgress>("scan://progress", (e) => cb(e.payload));
 }
 
-/** Abonniert das Abschluss-Event des Scans (liefert das Ergebnis). */
+/** Subscribes to the scan completion event (delivers the result). */
 export function onScanDone(cb: (d: ScanDone) => void): Promise<UnlistenFn> {
   return listen<ScanDone>("scan://done", (e) => cb(e.payload));
 }
 
-/** Startet die Duplikatsuche (Hintergrund-Singleton). false = lief bereits. */
+/** Starts duplicate detection (background singleton). false = already running. */
 export function startDedupe(candidates: DupCandidate[]): Promise<boolean> {
   return invoke<boolean>("start_dedupe", { candidates });
 }
 
-/** Aktueller Dedupe-Status (running/Fortschritt/Ergebnis vorhanden). */
+/** Current dedupe status (running/progress/result available). */
 export function dedupeStatus(): Promise<DedupeStatus> {
   return invoke<DedupeStatus>("dedupe_status");
 }
 
-/** Liefert das zwischengespeicherte Dedupe-Ergebnis (oder null). */
+/** Returns the cached dedupe result (or null). */
 export function dedupeResult(): Promise<DuplicateGroup[] | null> {
   return invoke<DuplicateGroup[] | null>("dedupe_result");
 }
 
-/** Bricht eine laufende Duplikatsuche ab. */
+/** Cancels a running duplicate detection. */
 export function cancelDedupe(): Promise<void> {
   return invoke("cancel_dedupe");
 }
 
-/** Abonniert Fortschritts-Events der Duplikatsuche. */
+/** Subscribes to progress events of the duplicate detection. */
 export function onDedupeProgress(
   cb: (p: DedupeProgress) => void,
 ): Promise<UnlistenFn> {
   return listen<DedupeProgress>("dedupe://progress", (e) => cb(e.payload));
 }
 
-/** Abonniert das Abschluss-Event der Duplikatsuche (liefert das Ergebnis). */
+/** Subscribes to the duplicate detection completion event (delivers the result). */
 export function onDedupeDone(cb: (d: DedupeDone) => void): Promise<UnlistenFn> {
   return listen<DedupeDone>("dedupe://done", (e) => cb(e.payload));
 }
 
-/** Verschiebt Dateien in den Papierkorb (umkehrbar). */
+/** Moves files to the trash (reversible). */
 export function deleteFiles(paths: string[]): Promise<DeleteResult[]> {
   return invoke<DeleteResult[]>("delete_files", { paths });
 }
 
-/** Startet die Konvertierung. Fortschritt kommt über onConvertProgress. */
+/** Starts the conversion. Progress arrives via onConvertProgress. */
 export function convertTracks(
   jobs: ConvertJob[],
   options: ConvertOptions,
@@ -121,19 +121,19 @@ export function convertTracks(
   return invoke<ConvertResult[]>("convert_tracks", { jobs, options });
 }
 
-/** Abonniert Fortschritts-Events pro Datei. */
+/** Subscribes to per-file progress events. */
 export function onConvertProgress(
   cb: (p: ConvertProgress) => void,
 ): Promise<UnlistenFn> {
   return listen<ConvertProgress>("convert://progress", (e) => cb(e.payload));
 }
 
-/** Holt Metadaten-Vorschläge (Tags, Dateiname, MusicBrainz) für eine Datei. */
+/** Fetches metadata suggestions (tags, filename, MusicBrainz) for a file. */
 export function suggestMetadata(path: string): Promise<MetadataSuggestions> {
   return invoke<MetadataSuggestions>("suggest_metadata", { path });
 }
 
-/** Liefert eine Cover-Vorschau als data:-URL für die gewählte Cover-Quelle. */
+/** Returns a cover preview as a data: URL for the chosen cover source. */
 export function coverPreview(
   source: string,
   cover: CoverInput,
@@ -141,22 +141,22 @@ export function coverPreview(
   return invoke<string | null>("cover_preview", { source, cover });
 }
 
-/** Liefert ein kleines eingebettetes Cover-Thumbnail (data:-URL) für die Liste. */
+/** Returns a small embedded cover thumbnail (data: URL) for the list. */
 export function coverThumbnail(path: string): Promise<string | null> {
   return invoke<string | null>("cover_thumbnail", { path });
 }
 
-/** Öffnet den Datei-Dialog zur Auswahl einer Bilddatei (Cover). */
+/** Opens the file dialog for selecting an image file (cover). */
 export async function pickImageFile(): Promise<string | null> {
   const selected = await open({
     multiple: false,
     directory: false,
-    filters: [{ name: "Bild", extensions: ["jpg", "jpeg", "png", "webp"] }],
+    filters: [{ name: "Image", extensions: ["jpg", "jpeg", "png", "webp"] }],
   });
   return typeof selected === "string" ? selected : null;
 }
 
-/** Öffnet den Datei-Dialog zur Auswahl von Audiodateien. */
+/** Opens the file dialog for selecting audio files. */
 export async function pickAudioFiles(): Promise<string[]> {
   const selected = await open({
     multiple: true,
@@ -167,7 +167,7 @@ export async function pickAudioFiles(): Promise<string[]> {
   return Array.isArray(selected) ? selected : [selected];
 }
 
-/** Öffnet den Ordner-Dialog für den Ausgabeordner. */
+/** Opens the folder dialog for the output directory. */
 export async function pickOutputDir(): Promise<string | null> {
   const selected = await open({ multiple: false, directory: true });
   return typeof selected === "string" ? selected : null;
@@ -175,32 +175,32 @@ export async function pickOutputDir(): Promise<string | null> {
 
 // --- Bandcamp ---
 
-/** Öffnet das Bandcamp-Login-Fenster. */
+/** Opens the Bandcamp login window. */
 export function bandcampLogin(): Promise<void> {
   return invoke("bandcamp_login");
 }
 
-/** Übernimmt die Session nach dem Login und liefert das Konto. */
+/** Adopts the session after login and returns the account. */
 export function bandcampConnect(): Promise<BandcampAccount> {
   return invoke<BandcampAccount>("bandcamp_connect");
 }
 
-/** Liefert das aktuell verbundene Konto (oder null, falls nicht verbunden). */
+/** Returns the currently connected account (or null if not connected). */
 export function bandcampStatus(): Promise<BandcampAccount | null> {
   return invoke<BandcampAccount | null>("bandcamp_status");
 }
 
-/** Meldet von Bandcamp ab. */
+/** Signs out of Bandcamp. */
 export function bandcampDisconnect(): Promise<void> {
   return invoke("bandcamp_disconnect");
 }
 
-/** Liefert die gekaufte Sammlung. */
+/** Returns the purchased collection. */
 export function bandcampCollection(): Promise<BandcampItem[]> {
   return invoke<BandcampItem[]>("bandcamp_collection");
 }
 
-/** Lädt ein gekauftes Item verlustfrei herunter. */
+/** Downloads a purchased item losslessly. */
 export function bandcampDownload(
   key: string,
   pageUrl: string,
@@ -213,7 +213,7 @@ export function bandcampDownload(
   });
 }
 
-/** Abonniert Fortschritts-Events der Bandcamp-Downloads. */
+/** Subscribes to progress events of the Bandcamp downloads. */
 export function onBandcampProgress(
   cb: (p: BandcampProgress) => void,
 ): Promise<UnlistenFn> {

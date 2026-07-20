@@ -1,16 +1,16 @@
 import type { BandcampItem, TrackAnalysis } from "../types";
 
-/** Normalisiert einen Titel/Namen für den unscharfen Abgleich. */
+/** Normalizes a title/name for fuzzy matching. */
 function normalize(s: string | null | undefined): string {
   return (s ?? "")
     .toLowerCase()
     .normalize("NFKD")
-    .replace(/[̀-ͯ]/g, "") // Diakritika entfernen
+    .replace(/[̀-ͯ]/g, "") // remove diacritics
     .replace(/[^a-z0-9]+/g, " ")
     .trim();
 }
 
-/** Passt ein lokaler Track zum Bandcamp-Eintrag (Album/Track + Artist)? */
+/** Does a local track match the Bandcamp entry (album/track + artist)? */
 function matches(track: TrackAnalysis, item: BandcampItem): boolean {
   const itemTitle = normalize(item.title);
   const band = normalize(item.band_name);
@@ -20,23 +20,23 @@ function matches(track: TrackAnalysis, item: BandcampItem): boolean {
   const title = normalize(track.metadata.title);
   const artist = normalize(track.metadata.album_artist ?? track.metadata.artist);
 
-  // Album-Kauf: Album-Tag == Item-Titel. Einzeltrack: Track-Titel == Item-Titel.
+  // Album purchase: album tag == item title. Single track: track title == item title.
   const titleHit = album === itemTitle || title === itemTitle;
   if (!titleHit) return false;
 
-  // Artist locker prüfen (leerer Band-Name gilt als Treffer).
+  // Loosely check the artist (an empty band name counts as a match).
   if (!band || !artist) return true;
   return artist === band || artist.includes(band) || band.includes(artist);
 }
 
 export interface SyncResult {
-  /** Track-ID → Bandcamp-Key für lokal vorhandene Käufe. */
+  /** Track ID → Bandcamp key for purchases present locally. */
   originById: Record<string, string>;
-  /** Käufe, die (noch) nicht in der Library liegen. */
+  /** Purchases that are not (yet) in the library. */
   missing: BandcampItem[];
 }
 
-/** Gleicht die gescannte Library mit der Bandcamp-Sammlung ab. */
+/** Reconciles the scanned library with the Bandcamp collection. */
 export function syncCollection(
   tracks: TrackAnalysis[],
   items: BandcampItem[],

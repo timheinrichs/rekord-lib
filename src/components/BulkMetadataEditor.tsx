@@ -1,14 +1,14 @@
 import { useState } from "react";
 import type { TrackMetadata } from "../types";
 
-/** Felder, die sich per Bulk-Edit setzen lassen. */
+/** Fields that can be set via bulk edit. */
 export type BulkPatch = Partial<
   Pick<TrackMetadata, "artist" | "album" | "album_artist" | "genre" | "year">
 >;
 
 interface Props {
   count: number;
-  /** Vorhandene Werte je Feld als Auswahl-Vorschläge. */
+  /** Existing values per field as selection suggestions. */
   suggestions?: Record<string, string[]>;
   onClose: () => void;
   onApply: (patch: BulkPatch) => void;
@@ -18,15 +18,15 @@ type FieldKey = keyof BulkPatch;
 
 const FIELDS: { key: FieldKey; label: string }[] = [
   { key: "album", label: "Album" },
-  { key: "album_artist", label: "Album-Artist" },
+  { key: "album_artist", label: "Album Artist" },
   { key: "artist", label: "Artist" },
   { key: "genre", label: "Genre" },
-  { key: "year", label: "Jahr" },
+  { key: "year", label: "Year" },
 ];
 
 /**
- * Setzt ausgewählte Metadaten-Felder für mehrere Tracks gleichzeitig.
- * Nur angehakte Felder werden übernommen – leerer Wert löscht das Feld.
+ * Sets selected metadata fields for multiple tracks at once.
+ * Only checked fields are applied – an empty value clears the field.
  */
 export default function BulkMetadataEditor({
   count,
@@ -66,7 +66,7 @@ export default function BulkMetadataEditor({
       <div className="flex w-full max-w-lg flex-col overflow-hidden rounded-2xl border border-border bg-surface shadow-2xl">
         <header className="flex items-center justify-between border-b border-border px-5 py-3">
           <h2 className="text-sm font-medium">
-            Metadaten bearbeiten · {count} Titel
+            Edit metadata · {count} tracks
           </h2>
           <button
             onClick={onClose}
@@ -78,8 +78,8 @@ export default function BulkMetadataEditor({
 
         <div className="flex flex-col gap-3 p-5">
           <p className="text-xs text-fg-subtle">
-            Häkchen setzen, um ein Feld für alle ausgewählten Titel zu
-            überschreiben. Leeres Feld entfernt den Wert.
+            Check a field to overwrite it for all selected tracks. An empty
+            field removes the value.
           </p>
           {FIELDS.map(({ key, label }) => {
             const opts = suggestions?.[key] ?? [];
@@ -127,14 +127,14 @@ export default function BulkMetadataEditor({
             onClick={onClose}
             className="rounded-lg border border-border-strong px-4 py-2 text-sm hover:border-border-strong"
           >
-            Abbrechen
+            Cancel
           </button>
           <button
             onClick={handleApply}
             disabled={!anyEnabled}
             className="rounded-lg bg-accent-600 px-4 py-2 text-sm font-medium hover:bg-accent-500 disabled:opacity-40"
           >
-            Übernehmen
+            Apply
           </button>
         </footer>
       </div>

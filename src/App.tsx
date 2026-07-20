@@ -19,7 +19,7 @@ export default function App() {
   const [account, setAccount] = useState<BandcampAccount | null>(null);
   const [ready, setReady] = useState(false);
 
-  // Einstellungen + Bandcamp-Status beim Start laden.
+  // Load settings + Bandcamp status on startup.
   useEffect(() => {
     void (async () => {
       const [loaded, status] = await Promise.all([
@@ -44,9 +44,9 @@ export default function App() {
     <div className="min-h-screen bg-bg font-mono text-fg">
       {ready && (
         <>
-          {/* LibraryView bleibt gemountet (inkl. eigenem Header), damit laufende
-              Scans/Zustände beim Öffnen der Einstellungen nicht unterbrochen oder
-              neu gestartet werden – sie wird nur ausgeblendet. */}
+          {/* LibraryView stays mounted (including its own header) so that running
+              scans/state are not interrupted or restarted when opening the
+              settings – it is only hidden. */}
           <div className={view === "settings" ? "hidden" : undefined}>
             <LibraryView
               settings={settings}
@@ -63,7 +63,7 @@ export default function App() {
                     onClick={() => setView("library")}
                     className="shrink-0 rounded-lg border border-border-strong px-4 py-2 text-sm font-medium hover:border-accent-500"
                   >
-                    Fertig
+                    Done
                   </button>
                 }
               />

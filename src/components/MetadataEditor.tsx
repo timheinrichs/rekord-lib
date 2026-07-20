@@ -16,7 +16,7 @@ import type {
 interface Props {
   track: TrackAnalysis;
   initial?: TrackEdit;
-  /** Vorhandene Werte je Feld als Auswahl-Vorschläge. */
+  /** Existing values per field as selection suggestions. */
   fieldOptions?: Record<string, string[]>;
   onClose: () => void;
   onSave: (edit: TrackEdit) => void;
@@ -63,13 +63,13 @@ function toMetadata(f: FormState, hasCover: boolean): TrackMetadata {
 }
 
 const FIELDS: { key: keyof FormState; label: string; required?: boolean }[] = [
-  { key: "title", label: "Titel", required: true },
+  { key: "title", label: "Title", required: true },
   { key: "artist", label: "Artist", required: true },
   { key: "album", label: "Album" },
-  { key: "album_artist", label: "Album-Artist" },
+  { key: "album_artist", label: "Album Artist" },
   { key: "genre", label: "Genre" },
-  { key: "year", label: "Jahr" },
-  { key: "track_number", label: "Track-Nr." },
+  { key: "year", label: "Year" },
+  { key: "track_number", label: "Track No." },
 ];
 
 export default function MetadataEditor({
@@ -90,7 +90,7 @@ export default function MetadataEditor({
   const [coverUrl, setCoverUrl] = useState<string | null>(null);
   const [coverLoading, setCoverLoading] = useState(false);
 
-  // Vorschläge laden.
+  // Load suggestions.
   useEffect(() => {
     let active = true;
     setLoading(true);
@@ -103,7 +103,7 @@ export default function MetadataEditor({
     };
   }, [track.path]);
 
-  // Cover-Vorschau bei Änderung der Cover-Quelle laden.
+  // Load cover preview when the cover source changes.
   useEffect(() => {
     let active = true;
     if (cover.kind === "none") {
@@ -123,7 +123,7 @@ export default function MetadataEditor({
   const set = (key: keyof FormState, value: string) =>
     setForm((f) => ({ ...f, [key]: value }));
 
-  // Vermuteter Wert (Dateiname zuerst, sonst bester MB-Treffer) je Feld.
+  // Guessed value per field (filename first, otherwise best MB match).
   const guesses = useMemo(() => {
     const g: Partial<Record<keyof FormState, string>> = {};
     const best = suggestions?.candidates[0];
@@ -164,7 +164,7 @@ export default function MetadataEditor({
     if (path) setCover({ kind: "file", path });
   };
 
-  // Titel & Artist sind Pflichtfelder.
+  // Title & Artist are required fields.
   const canSave = !!form.title.trim() && !!form.artist.trim();
 
   const handleSave = () => {
@@ -180,7 +180,7 @@ export default function MetadataEditor({
       <div className="flex max-h-[90vh] w-full max-w-3xl flex-col overflow-hidden rounded-2xl border border-border bg-surface shadow-2xl">
         <header className="flex items-center justify-between border-b border-border px-5 py-3">
           <h2 className="truncate text-sm font-medium" title={track.file_name}>
-            Metadaten · {track.file_name}
+            Metadata · {track.file_name}
           </h2>
           <button
             onClick={onClose}
@@ -191,7 +191,7 @@ export default function MetadataEditor({
         </header>
 
         <div className="grid flex-1 grid-cols-1 gap-5 overflow-y-auto p-5 md:grid-cols-[1fr_220px]">
-          {/* Felder */}
+          {/* Fields */}
           <div className="flex flex-col gap-3">
             {FIELDS.map(({ key, label, required }) => {
               const guess = guesses[key];
@@ -224,7 +224,7 @@ export default function MetadataEditor({
                     {showGuess && (
                       <button
                         onClick={() => set(key, guess!)}
-                        title={`Vorschlag übernehmen: ${guess}`}
+                        title={`Apply suggestion: ${guess}`}
                         className="max-w-[40%] truncate rounded-lg border border-accent-600/40 bg-accent-600/10 px-2 py-1 text-xs text-accent-300 hover:bg-accent-600/20"
                       >
                         ↩ {guess}
@@ -241,11 +241,11 @@ export default function MetadataEditor({
             <span className="text-sm text-fg-muted">Cover</span>
             <div className="flex aspect-square w-full items-center justify-center overflow-hidden rounded-lg border border-border-strong bg-surface-2">
               {coverLoading ? (
-                <span className="text-xs text-fg-subtle">Lädt…</span>
+                <span className="text-xs text-fg-subtle">Loading…</span>
               ) : coverUrl ? (
                 <img src={coverUrl} className="h-full w-full object-cover" alt="Cover" />
               ) : (
-                <span className="text-xs text-fg-subtle">Kein Cover</span>
+                <span className="text-xs text-fg-subtle">No cover</span>
               )}
             </div>
             <div className="flex flex-col gap-1 text-sm">
@@ -253,7 +253,7 @@ export default function MetadataEditor({
                 <CoverRadio
                   checked={coverKind === "keep"}
                   onChange={() => setCover({ kind: "keep" })}
-                  label="Vorhandenes behalten"
+                  label="Keep existing"
                 />
               )}
               <CoverRadio
@@ -263,30 +263,30 @@ export default function MetadataEditor({
                   if (rid) setCover({ kind: "musicbrainz", release_id: rid });
                 }}
                 disabled={!suggestions?.candidates.some((c) => c.release_id)}
-                label="Von MusicBrainz"
+                label="From MusicBrainz"
               />
               <CoverRadio
                 checked={coverKind === "file"}
                 onChange={chooseFile}
-                label="Aus Datei…"
+                label="From file…"
               />
               <CoverRadio
                 checked={coverKind === "none"}
                 onChange={() => setCover({ kind: "none" })}
-                label="Kein Cover"
+                label="No cover"
               />
             </div>
           </div>
         </div>
 
-        {/* MusicBrainz-Kandidaten */}
+        {/* MusicBrainz candidates */}
         <div className="border-t border-border px-5 py-3">
           <p className="mb-2 text-xs text-fg-muted">
             {loading
-              ? "Suche Vorschläge…"
+              ? "Searching for suggestions…"
               : suggestions?.candidates.length
-                ? "MusicBrainz-Treffer (klicken zum Übernehmen):"
-                : "Keine MusicBrainz-Treffer – Felder manuell bestätigen."}
+                ? "MusicBrainz matches (click to apply):"
+                : "No MusicBrainz matches – confirm fields manually."}
           </p>
           <div className="flex max-h-32 flex-col gap-1 overflow-y-auto">
             {suggestions?.candidates.map((c, i) => (
@@ -315,21 +315,21 @@ export default function MetadataEditor({
         <footer className="flex items-center justify-end gap-3 border-t border-border px-5 py-3">
           {!canSave && (
             <span className="mr-auto text-xs text-danger-500">
-              Titel und Artist sind Pflichtfelder.
+              Title and Artist are required.
             </span>
           )}
           <button
             onClick={onClose}
             className="rounded-lg border border-border-strong px-4 py-2 text-sm hover:border-border-strong"
           >
-            Abbrechen
+            Cancel
           </button>
           <button
             onClick={handleSave}
             disabled={!canSave}
             className="rounded-lg bg-accent-600 px-4 py-2 text-sm font-medium hover:bg-accent-500 disabled:opacity-40"
           >
-            Bestätigen
+            Confirm
           </button>
         </footer>
       </div>
