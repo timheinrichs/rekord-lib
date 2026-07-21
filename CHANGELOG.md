@@ -9,6 +9,11 @@ contain incompatible changes.
 
 ## [Unreleased]
 
+## [0.3.3] - 2026-07-21
+
+Maintenance release — confirms the fully automatic release/publish pipeline
+(immutable releases disabled, `releaseDraft: false`). No functional changes.
+
 ## [0.3.2] - 2026-07-21
 
 Maintenance release — first published GitHub Release, used to validate the
