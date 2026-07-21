@@ -622,6 +622,7 @@ export default function LibraryView({
       year: collect((m) => m.year),
       label: collect((m) => m.label),
       catalog_number: collect((m) => m.catalog_number),
+      country: collect((m) => m.country),
     } as Record<string, string[]>;
   }, [tracks, edits]);
 
@@ -1120,6 +1121,8 @@ export default function LibraryView({
               track={track}
               initial={edits[editingId]}
               fieldOptions={fieldOptions}
+              discogsKey={settings.discogs_key}
+              discogsSecret={settings.discogs_secret}
               onClose={() => setEditingId(null)}
               onSave={(edit) => saveEdit(editingId, edit)}
             />

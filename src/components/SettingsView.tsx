@@ -280,6 +280,48 @@ export default function SettingsView({
         </label>
       </section>
 
+      {/* Discogs */}
+      <section className="rounded-xl border border-border bg-surface p-5">
+        <h2 className="text-sm font-semibold text-fg">Discogs</h2>
+        <p className="mt-1 text-sm text-fg-subtle">
+          Consumer key/secret of your Discogs app (
+          <button
+            onClick={() =>
+              void openUrl("https://www.discogs.com/settings/developers")
+            }
+            className="underline decoration-dotted underline-offset-2 hover:text-fg"
+          >
+            discogs.com/settings/developers
+          </button>
+          ) for per-field metadata suggestions. Stored locally only.
+        </p>
+        <div className="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-2">
+          <label className="flex flex-col gap-1 text-sm">
+            <span className="text-fg-muted">Consumer key</span>
+            <input
+              value={settings.discogs_key ?? ""}
+              onChange={(e) =>
+                onSettingsChange({ discogs_key: e.target.value.trim() || null })
+              }
+              className="rounded-lg border border-border-strong bg-surface-2 px-3 py-2 outline-none focus:border-accent-500"
+            />
+          </label>
+          <label className="flex flex-col gap-1 text-sm">
+            <span className="text-fg-muted">Consumer secret</span>
+            <input
+              type="password"
+              value={settings.discogs_secret ?? ""}
+              onChange={(e) =>
+                onSettingsChange({
+                  discogs_secret: e.target.value.trim() || null,
+                })
+              }
+              className="rounded-lg border border-border-strong bg-surface-2 px-3 py-2 outline-none focus:border-accent-500"
+            />
+          </label>
+        </div>
+      </section>
+
       {/* About / updates */}
       <section className="rounded-xl border border-border bg-surface p-5">
         <h2 className="text-sm font-semibold text-fg">About</h2>

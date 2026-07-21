@@ -23,18 +23,28 @@ export default function AppHeader({ right, onTitleClick }: Props) {
           : "border-border bg-surface"
       }`}
     >
-      <button
-        onClick={onTitleClick}
-        className="flex min-w-0 items-center gap-3 text-left"
-        title="To library"
-      >
-        <img
-          src={logoUrl}
-          alt="rekord-lib"
-          className="h-7 w-auto shrink-0"
-          draggable={false}
-        />
-      </button>
+      <div className="flex min-w-0 items-center gap-2">
+        <button
+          onClick={onTitleClick}
+          className="flex min-w-0 items-center gap-3 text-left"
+          title="To library"
+        >
+          <img
+            src={logoUrl}
+            alt="rekord-lib"
+            className="h-7 w-auto shrink-0"
+            draggable={false}
+          />
+        </button>
+        {import.meta.env.DEV && (
+          <span
+            className="shrink-0 rounded-full bg-accent-500/15 px-2 py-0.5 text-xs text-accent-300 ring-1 ring-accent-500/30"
+            title="Development build"
+          >
+            dev
+          </span>
+        )}
+      </div>
 
       <div className="flex shrink-0 items-center gap-2">{right}</div>
     </header>

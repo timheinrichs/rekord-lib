@@ -25,9 +25,22 @@ interface Props {
   initial?: TrackEdit;
   /** Existing values per field as selection suggestions. */
   fieldOptions?: Record<string, string[]>;
+  /** Discogs credentials (from settings) for online suggestions. */
+  discogsKey?: string | null;
+  discogsSecret?: string | null;
   onClose: () => void;
   onSave: (edit: TrackEdit) => void;
 }
+
+/** Maps a form field to its per-field suggestion list in the response. */
+const SUGGESTION_KEY: Partial<
+  Record<keyof FormState, "genres" | "years" | "labels" | "countries">
+> = {
+  genre: "genres",
+  year: "years",
+  label: "labels",
+  country: "countries",
+};
 
 interface FormState {
   title: string;
@@ -39,6 +52,7 @@ interface FormState {
   track_number: string;
   catalog_number: string;
   label: string;
+  country: string;
 }
 
 function toForm(md: TrackMetadata): FormState {
@@ -52,6 +66,7 @@ function toForm(md: TrackMetadata): FormState {
     track_number: md.track_number != null ? String(md.track_number) : "",
     catalog_number: md.catalog_number ?? "",
     label: md.label ?? "",
+    country: md.country ?? "",
   };
 }
 
@@ -71,6 +86,7 @@ function toMetadata(f: FormState, hasCover: boolean): TrackMetadata {
     track_number: n(f.track_number),
     catalog_number: s(f.catalog_number),
     label: s(f.label),
+    country: s(f.country),
     has_cover: hasCover,
   };
 }
@@ -85,12 +101,15 @@ const FIELDS: { key: keyof FormState; label: string; required?: boolean }[] = [
   { key: "track_number", label: "Track No." },
   { key: "label", label: "Label" },
   { key: "catalog_number", label: "Catalog no." },
+  { key: "country", label: "Country" },
 ];
 
 export default function MetadataEditor({
   track,
   initial,
   fieldOptions,
+  discogsKey,
+  discogsSecret,
   onClose,
   onSave,
 }: Props) {
@@ -109,14 +128,14 @@ export default function MetadataEditor({
   useEffect(() => {
     let active = true;
     setLoading(true);
-    suggestMetadata(track.path)
+    suggestMetadata(track.path, discogsKey, discogsSecret)
       .then((s) => active && setSuggestions(s))
       .catch((e) => console.error(e))
       .finally(() => active && setLoading(false));
     return () => {
       active = false;
     };
-  }, [track.path]);
+  }, [track.path, discogsKey, discogsSecret]);
 
   // Load cover preview when the cover source changes.
   useEffect(() => {
@@ -246,6 +265,29 @@ export default function MetadataEditor({
                       </button>
                     )}
                   </div>
+                  {(() => {
+                    const sk = SUGGESTION_KEY[key];
+                    const chips = sk
+                      ? (suggestions?.field_suggestions?.[sk] ?? []).filter(
+                          (v) =>
+                            v.toLowerCase() !== form[key].trim().toLowerCase(),
+                        )
+                      : [];
+                    return chips.length ? (
+                      <div className="flex flex-wrap gap-1.5 pt-0.5">
+                        {chips.map((v) => (
+                          <button
+                            key={v}
+                            onClick={() => set(key, v)}
+                            title={`Use "${v}"`}
+                            className="max-w-full truncate rounded-full border border-accent-600/40 bg-accent-600/10 px-2 py-0.5 text-xs text-accent-300 hover:bg-accent-600/20"
+                          >
+                            {v}
+                          </button>
+                        ))}
+                      </div>
+                    ) : null;
+                  })()}
                 </label>
               );
             })}

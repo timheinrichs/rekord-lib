@@ -11,6 +11,12 @@ vi.mock("../lib/api", () => ({
     current: null,
     filename_guess: {},
     candidates: [],
+    field_suggestions: {
+      genres: ["Deep House"],
+      years: [],
+      labels: [],
+      countries: ["Germany"],
+    },
   })),
   coverPreview: vi.fn(async () => "data:image/jpeg;base64,AA"),
   pickImageFile: vi.fn(async () => null),
@@ -72,6 +78,22 @@ describe("MetadataEditor", () => {
     const edit = onSave.mock.calls[0][0] as TrackEdit;
     expect(edit.metadata.label).toBe("Warp Records");
     expect(edit.metadata.catalog_number).toBe("WARP-042");
+  });
+
+  it("applies a per-field suggestion chip (genre/country)", async () => {
+    const onSave = vi.fn();
+    render(
+      <MetadataEditor track={makeTrack()} onClose={() => {}} onSave={onSave} />,
+    );
+    // Chips appear once suggestions load.
+    const genreChip = await screen.findByRole("button", { name: "Deep House" });
+    await userEvent.click(genreChip);
+    await userEvent.click(screen.getByRole("button", { name: "Germany" }));
+    await userEvent.click(screen.getByRole("button", { name: "Confirm" }));
+
+    const edit = onSave.mock.calls[0][0] as TrackEdit;
+    expect(edit.metadata.genre).toBe("Deep House");
+    expect(edit.metadata.country).toBe("Germany");
   });
 
   it("prefills fields from an existing edit", async () => {

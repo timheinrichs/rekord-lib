@@ -5,7 +5,14 @@ import type { TrackMetadata } from "../types";
 export type BulkPatch = Partial<
   Pick<
     TrackMetadata,
-    "artist" | "album" | "album_artist" | "genre" | "year" | "label" | "catalog_number"
+    | "artist"
+    | "album"
+    | "album_artist"
+    | "genre"
+    | "year"
+    | "label"
+    | "catalog_number"
+    | "country"
   >
 >;
 
@@ -27,6 +34,7 @@ const FIELDS: { key: FieldKey; label: string }[] = [
   { key: "year", label: "Year" },
   { key: "label", label: "Label" },
   { key: "catalog_number", label: "Catalog no." },
+  { key: "country", label: "Country" },
 ];
 
 /**
@@ -47,6 +55,7 @@ export default function BulkMetadataEditor({
     year: false,
     label: false,
     catalog_number: false,
+    country: false,
   });
   const [values, setValues] = useState<Record<FieldKey, string>>({
     album: "",
@@ -56,6 +65,7 @@ export default function BulkMetadataEditor({
     year: "",
     label: "",
     catalog_number: "",
+    country: "",
   });
 
   const anyEnabled = FIELDS.some((f) => enabled[f.key]);

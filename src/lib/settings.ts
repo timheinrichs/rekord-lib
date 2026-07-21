@@ -45,6 +45,9 @@ export interface Settings {
   sanitize_filenames: boolean;
   /** Format to request from Bandcamp downloads. */
   download_format: DownloadFormat;
+  /** Discogs app credentials for metadata suggestions (stored locally only). */
+  discogs_key: string | null;
+  discogs_secret: string | null;
 }
 
 export const DEFAULT_SETTINGS: Settings = {
@@ -53,6 +56,8 @@ export const DEFAULT_SETTINGS: Settings = {
   bit_depth: 16,
   sanitize_filenames: false,
   download_format: "aiff",
+  discogs_key: null,
+  discogs_secret: null,
 };
 
 // Same store file as the Rust backend (separate keys).

@@ -24,6 +24,7 @@ export interface TrackMetadata {
   track_number: number | null;
   catalog_number: string | null;
   label: string | null;
+  country: string | null;
   has_cover: boolean;
 }
 
@@ -80,11 +81,19 @@ export interface MbCandidate {
   score: number;
 }
 
+export interface FieldSuggestions {
+  genres: string[];
+  years: string[];
+  labels: string[];
+  countries: string[];
+}
+
 export interface MetadataSuggestions {
   id: string;
   current: TrackMetadata;
   filename_guess: TrackMetadata;
   candidates: MbCandidate[];
+  field_suggestions: FieldSuggestions;
 }
 
 /** User-confirmed metadata + cover choice for a track. */

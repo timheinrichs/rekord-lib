@@ -46,6 +46,13 @@ describe("loadSettings", () => {
     expect((await loadSettings()).download_format).toBe("aiff");
   });
 
+  it("defaults Discogs credentials to null", async () => {
+    getMock.mockResolvedValueOnce(undefined);
+    const s = await loadSettings();
+    expect(s.discogs_key).toBeNull();
+    expect(s.discogs_secret).toBeNull();
+  });
+
   it("merges stored values over the defaults", async () => {
     getMock.mockResolvedValueOnce({ format: "flac", bit_depth: 24 });
     const s = await loadSettings();

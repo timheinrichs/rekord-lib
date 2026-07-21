@@ -5,6 +5,7 @@ import BandcampView from "./components/BandcampView";
 import SettingsView from "./components/SettingsView";
 import HeaderNav from "./components/HeaderNav";
 import { CloseIcon } from "./components/icons";
+import { getCurrentWindow } from "@tauri-apps/api/window";
 import { bandcampStatus } from "./lib/api";
 import { syncCollection } from "./lib/bandcampSync";
 import { useBandcamp } from "./lib/useBandcamp";
@@ -46,6 +47,15 @@ export default function App() {
   // Check for an app update on startup (silent; errors are treated as "up to date").
   useEffect(() => {
     void (async () => setUpdate(await checkForUpdate()))();
+  }, []);
+
+  // Mark the window title in dev builds so the dev instance is identifiable.
+  useEffect(() => {
+    if (import.meta.env.DEV) {
+      void getCurrentWindow()
+        .setTitle("rekord-lib (dev)")
+        .catch(() => {});
+    }
   }, []);
 
   const updateSettings = useCallback((patch: Partial<Settings>) => {

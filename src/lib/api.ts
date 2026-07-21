@@ -133,9 +133,17 @@ export function onConvertProgress(
   return listen<ConvertProgress>("convert://progress", (e) => cb(e.payload));
 }
 
-/** Fetches metadata suggestions (tags, filename, MusicBrainz) for a file. */
-export function suggestMetadata(path: string): Promise<MetadataSuggestions> {
-  return invoke<MetadataSuggestions>("suggest_metadata", { path });
+/** Fetches metadata suggestions (tags, filename, MusicBrainz, Discogs) for a file. */
+export function suggestMetadata(
+  path: string,
+  discogsKey?: string | null,
+  discogsSecret?: string | null,
+): Promise<MetadataSuggestions> {
+  return invoke<MetadataSuggestions>("suggest_metadata", {
+    path,
+    discogsKey: discogsKey ?? null,
+    discogsSecret: discogsSecret ?? null,
+  });
 }
 
 /** Returns a cover preview as a data: URL for the chosen cover source. */
