@@ -8,7 +8,7 @@ use crate::audio::{compat, convert, dedupe, probe};
 use crate::bandcamp::session::BandcampState;
 use crate::bandcamp::{collection, download, session};
 use crate::error::{AppError, AppResult};
-use crate::jobs::{DedupeState, ScanState, WatchState};
+use crate::jobs::{BandcampDownloadState, DedupeState, ScanState, WatchState};
 use crate::metadata::read::read_metadata;
 use crate::metadata::{artwork, suggest, write};
 use crate::models::{
@@ -594,13 +594,29 @@ pub async fn bandcamp_collection(
 pub async fn bandcamp_download(
     app: AppHandle,
     state: State<'_, BandcampState>,
+    dl_state: State<'_, BandcampDownloadState>,
     key: String,
     page_url: String,
     dest_dir: String,
     format: Option<String>,
 ) -> AppResult<BandcampDownloadResult> {
     let session = session::current(&state)?;
-    match download::download(&app, &session, &key, &page_url, &dest_dir, format.as_deref()).await {
+
+    // Register a cancel flag for this download so it can be aborted mid-stream.
+    let cancel = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+    dl_state
+        .cancels
+        .lock()
+        .unwrap()
+        .insert(key.clone(), cancel.clone());
+
+    let result =
+        download::download(&app, &session, &key, &page_url, &dest_dir, format.as_deref(), &cancel)
+            .await;
+
+    dl_state.cancels.lock().unwrap().remove(&key);
+
+    match result {
         Ok(files) => Ok(BandcampDownloadResult {
             key,
             files,
@@ -613,6 +629,14 @@ pub async fn bandcamp_download(
             success: false,
             error: Some(e.to_string()),
         }),
+    }
+}
+
+/// Requests cancellation of an in-flight Bandcamp download.
+#[tauri::command]
+pub fn cancel_bandcamp_download(state: State<'_, BandcampDownloadState>, key: String) {
+    if let Some(flag) = state.cancels.lock().unwrap().get(&key) {
+        flag.store(true, Ordering::SeqCst);
     }
 }
 

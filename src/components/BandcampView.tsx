@@ -21,6 +21,7 @@ interface Props {
   onSyncLibrary: () => void;
   // Shared header nav
   onClearDownloads: () => void;
+  onCancelDownload: (key: string) => void;
   onNavigate: (v: "library" | "bandcamp") => void;
   onOpenSettings: () => void;
   updateAvailable?: boolean;
@@ -41,6 +42,7 @@ export default function BandcampView({
   onDownloadAll,
   onSyncLibrary,
   onClearDownloads,
+  onCancelDownload,
   onNavigate,
   onOpenSettings,
   updateAvailable,
@@ -53,6 +55,7 @@ export default function BandcampView({
       onNavigate={onNavigate}
       downloads={downloads}
       onClearDownloads={onClearDownloads}
+      onCancelDownload={onCancelDownload}
       onOpenSettings={onOpenSettings}
       updateAvailable={updateAvailable}
     />

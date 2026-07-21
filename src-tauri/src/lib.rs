@@ -29,6 +29,7 @@ pub fn run() {
         .manage(jobs::ScanState::default())
         .manage(jobs::DedupeState::default())
         .manage(jobs::WatchState::default())
+        .manage(jobs::BandcampDownloadState::default())
         .setup(|app| {
             // The self-updater only exists on desktop targets.
             #[cfg(desktop)]
@@ -63,6 +64,7 @@ pub fn run() {
             commands::bandcamp_status,
             commands::bandcamp_collection,
             commands::bandcamp_download,
+            commands::cancel_bandcamp_download,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

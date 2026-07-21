@@ -82,6 +82,7 @@ export default function App() {
       onNavigate={setView}
       downloads={bc.downloads}
       onClearDownloads={bc.clearFinished}
+      onCancelDownload={bc.cancelDownload}
       onOpenSettings={() => setSettingsOpen(true)}
       updateAvailable={!!update}
     />
@@ -118,6 +119,7 @@ export default function App() {
               onDownloadAll={() => void bc.downloadAll()}
               onSyncLibrary={() => void bc.syncLibrary(libraryTracks)}
               onClearDownloads={bc.clearFinished}
+              onCancelDownload={bc.cancelDownload}
               onNavigate={setView}
               onOpenSettings={() => setSettingsOpen(true)}
               updateAvailable={!!update}

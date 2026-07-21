@@ -36,6 +36,7 @@ function baseProps() {
     onDownloadAll: vi.fn(),
     onSyncLibrary: vi.fn(),
     onClearDownloads: vi.fn(),
+    onCancelDownload: vi.fn(),
     onNavigate: vi.fn(),
     onOpenSettings: vi.fn(),
   };

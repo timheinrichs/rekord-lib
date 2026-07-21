@@ -10,6 +10,7 @@ interface Props {
   onNavigate: (view: MainView) => void;
   downloads: Record<string, DownloadEntry>;
   onClearDownloads: () => void;
+  onCancelDownload: (key: string) => void;
   onOpenSettings: () => void;
   updateAvailable?: boolean;
 }
@@ -23,6 +24,7 @@ export default function HeaderNav({
   onNavigate,
   downloads,
   onClearDownloads,
+  onCancelDownload,
   onOpenSettings,
   updateAvailable,
 }: Props) {
@@ -92,15 +94,27 @@ export default function HeaderNav({
                         <span className="truncate text-sm text-fg" title={d.title}>
                           {d.title}
                         </span>
-                        <span className="shrink-0 text-xs text-fg-subtle">
-                          {d.state === "done"
-                            ? "✓ Done"
-                            : d.state === "error"
-                              ? "Error"
-                              : d.total > 0
-                                ? `${pct}%`
-                                : d.stage}
-                        </span>
+                        <div className="flex shrink-0 items-center gap-1.5">
+                          <span className="text-xs text-fg-subtle">
+                            {d.state === "done"
+                              ? "✓ Done"
+                              : d.state === "error"
+                                ? "Error"
+                                : d.total > 0
+                                  ? `${pct}%`
+                                  : d.stage}
+                          </span>
+                          {d.state === "loading" && (
+                            <button
+                              onClick={() => onCancelDownload(d.key)}
+                              className="text-fg-subtle hover:text-danger-500"
+                              title="Cancel download"
+                              aria-label="Cancel download"
+                            >
+                              ✕
+                            </button>
+                          )}
+                        </div>
                       </div>
                       {d.band && <p className="truncate text-xs text-fg-subtle">{d.band}</p>}
                       {d.state === "loading" && (

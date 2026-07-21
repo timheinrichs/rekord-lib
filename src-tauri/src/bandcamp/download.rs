@@ -1,5 +1,6 @@
 use std::io::Cursor;
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicBool, Ordering};
 
 use serde::Serialize;
 use serde_json::Value;
@@ -37,6 +38,7 @@ async fn stream_collect(
     app: &AppHandle,
     key: &str,
     stage: &str,
+    cancel: &AtomicBool,
 ) -> AppResult<Vec<u8>> {
     let total = resp.content_length().unwrap_or(0);
     let mut buf: Vec<u8> = Vec::with_capacity(total.min(64 * 1024 * 1024) as usize);
@@ -47,6 +49,9 @@ async fn stream_collect(
         .await
         .map_err(|e| AppError::Bandcamp(format!("Download stream: {e}")))?
     {
+        if cancel.load(Ordering::SeqCst) {
+            return Err(AppError::Bandcamp("Download cancelled".into()));
+        }
         buf.extend_from_slice(&chunk);
         let dl = buf.len() as u64;
         if dl - last_emit >= 256 * 1024 {
@@ -73,6 +78,7 @@ pub async fn download(
     page_url: &str,
     dest_dir: &str,
     preferred_format: Option<&str>,
+    cancel: &AtomicBool,
 ) -> AppResult<Vec<String>> {
     // Dedicated client without an overall timeout (albums can be large).
     let client = net::download_client()?;
@@ -140,7 +146,7 @@ pub async fn download(
 
     // 3+4. Fetch the file bytes (the .vrs=1 request returns the file either
     // directly or as JSON with the real download_url) – streamed with progress.
-    let bytes = fetch_download_bytes(&client, session, key, &url, app).await?;
+    let bytes = fetch_download_bytes(&client, session, key, &url, app, cancel).await?;
 
     std::fs::create_dir_all(dest_dir)?;
     let safe_title = sanitize(title);
@@ -184,6 +190,7 @@ async fn fetch_download_bytes(
     key: &str,
     url: &str,
     app: &AppHandle,
+    cancel: &AtomicBool,
 ) -> AppResult<Vec<u8>> {
     let probe_url = if url.contains('?') {
         format!("{url}&.vrs=1")
@@ -211,7 +218,7 @@ async fn fetch_download_bytes(
         .to_string();
 
     // Read the body as a stream (for a direct file this is already the large download).
-    let bytes = stream_collect(resp, app, key, "Downloading").await?;
+    let bytes = stream_collect(resp, app, key, "Downloading", cancel).await?;
 
     // A file directly (ZIP/audio)? Then use the bytes immediately.
     let is_json = ct.contains("json") || bytes.first() == Some(&b'{');
@@ -244,7 +251,7 @@ async fn fetch_download_bytes(
     if !status.is_success() {
         return Err(AppError::Bandcamp(format!("File download HTTP {status}")));
     }
-    stream_collect(file_resp, app, key, "Downloading").await
+    stream_collect(file_resp, app, key, "Downloading", cancel).await
 }
 
 fn looks_like_zip(bytes: &[u8]) -> bool {

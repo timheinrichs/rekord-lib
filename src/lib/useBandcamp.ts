@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   bandcampCollection,
   bandcampDownload,
+  cancelBandcampDownload,
   onBandcampProgress,
 } from "./api";
 import {
@@ -46,6 +47,7 @@ export interface UseBandcamp {
   downloadItem: (item: BandcampItem) => Promise<void>;
   downloadAll: () => Promise<void>;
   syncLibrary: (tracks: TrackAnalysis[]) => Promise<void>;
+  cancelDownload: (key: string) => void;
   clearFinished: () => void;
 }
 
@@ -195,6 +197,17 @@ export function useBandcamp(
     [runQueue],
   );
 
+  // Cancel an in-flight download: tell the backend to abort and drop the entry.
+  const cancelDownload = useCallback((key: string) => {
+    void cancelBandcampDownload(key);
+    setDownloads((s) => {
+      if (!s[key]) return s;
+      const next = { ...s };
+      delete next[key];
+      return next;
+    });
+  }, []);
+
   const clearFinished = useCallback(() => {
     setDownloads((s) =>
       Object.fromEntries(
@@ -214,6 +227,7 @@ export function useBandcamp(
       downloadItem,
       downloadAll,
       syncLibrary,
+      cancelDownload,
       clearFinished,
     }),
     [
@@ -226,6 +240,7 @@ export function useBandcamp(
       downloadItem,
       downloadAll,
       syncLibrary,
+      cancelDownload,
       clearFinished,
     ],
   );

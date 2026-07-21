@@ -3,8 +3,9 @@
 //! keeps running in the background (independent of reload/window) and can be
 //! cancelled. Results are delivered via events.
 
+use std::collections::HashMap;
 use std::sync::atomic::{AtomicBool, AtomicU64, AtomicUsize};
-use std::sync::Mutex;
+use std::sync::{Arc, Mutex};
 
 use notify_debouncer_full::notify::RecommendedWatcher;
 use notify_debouncer_full::{Debouncer, RecommendedCache};
@@ -39,4 +40,10 @@ pub struct DedupeState {
 #[derive(Default)]
 pub struct WatchState {
     pub debouncer: Mutex<Option<Debouncer<RecommendedWatcher, RecommendedCache>>>,
+}
+
+/// Per-download cancel flags, keyed by the Bandcamp item key.
+#[derive(Default)]
+pub struct BandcampDownloadState {
+    pub cancels: Mutex<HashMap<String, Arc<AtomicBool>>>,
 }

@@ -243,6 +243,11 @@ export function bandcampDownload(
   });
 }
 
+/** Requests cancellation of an in-flight Bandcamp download. */
+export function cancelBandcampDownload(key: string): Promise<void> {
+  return invoke("cancel_bandcamp_download", { key });
+}
+
 /** Subscribes to progress events of the Bandcamp downloads. */
 export function onBandcampProgress(
   cb: (p: BandcampProgress) => void,
