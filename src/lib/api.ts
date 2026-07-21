@@ -113,6 +113,11 @@ export function deleteFiles(paths: string[]): Promise<DeleteResult[]> {
   return invoke<DeleteResult[]>("delete_files", { paths });
 }
 
+/** Trashes directories that no longer contain any audio files (safety-checked). */
+export function pruneEmptyDirs(dirs: string[]): Promise<DeleteResult[]> {
+  return invoke<DeleteResult[]>("prune_empty_dirs", { dirs });
+}
+
 /** Starts the conversion. Progress arrives via onConvertProgress. */
 export function convertTracks(
   jobs: ConvertJob[],

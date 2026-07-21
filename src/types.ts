@@ -183,6 +183,11 @@ export interface DupCandidate {
   lossless: boolean;
   duration_secs: number;
   compatible: boolean;
+  title?: string | null;
+  artist?: string | null;
+  album_artist?: string | null;
+  album?: string | null;
+  track_number?: number | null;
 }
 
 export interface DuplicateFile {
@@ -197,6 +202,9 @@ export interface DuplicateFile {
   duration_secs: number;
   compatible: boolean;
   size_bytes: number;
+  title?: string | null;
+  artist?: string | null;
+  album?: string | null;
 }
 
 export interface DuplicateGroup {

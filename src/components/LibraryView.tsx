@@ -21,6 +21,7 @@ import {
   onDedupeProgress,
   onScanDone,
   onScanProgress,
+  pruneEmptyDirs,
   scanStatus,
   startDedupe,
   startScan,
@@ -66,6 +67,7 @@ import {
   type AlbumItem,
   type SortKey,
 } from "../lib/grouping";
+import { foldersToPrune } from "../lib/dupAlbums";
 
 interface Props {
   settings: Settings;
@@ -616,30 +618,40 @@ export default function LibraryView({
   );
 
   // Duplicates: move one/several files to the trash and update
-  // groups/library live (the modal stays open).
-  const handleDeleteDuplicateFiles = useCallback(async (paths: string[]) => {
-    const results = await deleteFiles(paths);
-    const gone = new Set(results.filter((r) => r.success).map((r) => r.path));
-    if (gone.size) {
-      setTracks((prev) => prev.filter((t) => !gone.has(t.path)));
-      setSelected((prev) => {
-        const next = new Set(prev);
-        gone.forEach((p) => next.delete(p));
-        return next;
-      });
-      setDupGroups((prev) => {
-        const pruned = pruneGroups(prev, (p) => !gone.has(p));
-        void saveDuplicates(pruned);
-        return pruned;
-      });
-    }
-    const failed = results.filter((r) => !r.success);
-    if (failed.length) {
-      throw new Error(
-        failed.map((f) => f.error).filter(Boolean).join("; ") || "unknown",
-      );
-    }
-  }, []);
+  // groups/library live (the modal stays open). Album folders that end up
+  // without any remaining library track are removed too.
+  const handleDeleteDuplicateFiles = useCallback(
+    async (paths: string[]) => {
+      const results = await deleteFiles(paths);
+      const gone = new Set(results.filter((r) => r.success).map((r) => r.path));
+      if (gone.size) {
+        const remaining = tracks
+          .filter((t) => !gone.has(t.path))
+          .map((t) => t.path);
+        setTracks((prev) => prev.filter((t) => !gone.has(t.path)));
+        setSelected((prev) => {
+          const next = new Set(prev);
+          gone.forEach((p) => next.delete(p));
+          return next;
+        });
+        setDupGroups((prev) => {
+          const pruned = pruneGroups(prev, (p) => !gone.has(p));
+          void saveDuplicates(pruned);
+          return pruned;
+        });
+        // Remove now-empty album folders (backend re-checks for safety).
+        const dirs = foldersToPrune([...gone], remaining);
+        if (dirs.length) await pruneEmptyDirs(dirs).catch(() => []);
+      }
+      const failed = results.filter((r) => !r.success);
+      if (failed.length) {
+        throw new Error(
+          failed.map((f) => f.error).filter(Boolean).join("; ") || "unknown",
+        );
+      }
+    },
+    [tracks],
+  );
 
   // Dismiss a group ("not a duplicate") – persistent.
   const dismissDuplicateGroup = useCallback((id: string) => {
@@ -652,18 +664,26 @@ export default function LibraryView({
 
   const buildDupCandidates = useCallback(
     () =>
-      tracks.map((t) => ({
-        id: t.id,
-        path: t.path,
-        name: edits[t.id]?.metadata.title || t.metadata.title || t.file_name,
-        codec: t.audio.codec,
-        container: t.audio.container,
-        sample_rate: t.audio.sample_rate,
-        bits_per_sample: t.audio.bits_per_sample,
-        lossless: t.audio.lossless,
-        duration_secs: t.audio.duration_secs,
-        compatible: t.compat.compatible,
-      })),
+      tracks.map((t) => {
+        const md = edits[t.id]?.metadata ?? t.metadata;
+        return {
+          id: t.id,
+          path: t.path,
+          name: md.title || t.file_name,
+          codec: t.audio.codec,
+          container: t.audio.container,
+          sample_rate: t.audio.sample_rate,
+          bits_per_sample: t.audio.bits_per_sample,
+          lossless: t.audio.lossless,
+          duration_secs: t.audio.duration_secs,
+          compatible: t.compat.compatible,
+          title: md.title,
+          artist: md.artist,
+          album_artist: md.album_artist,
+          album: md.album,
+          track_number: md.track_number,
+        };
+      }),
     [tracks, edits],
   );
 
