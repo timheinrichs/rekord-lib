@@ -47,6 +47,7 @@ import type {
 import MetadataEditor from "./MetadataEditor";
 import BulkMetadataEditor, { type BulkPatch } from "./BulkMetadataEditor";
 import CoverThumb from "./CoverThumb";
+import MarqueeText from "./MarqueeText";
 import DuplicatesModal from "./DuplicatesModal";
 import AppHeader from "./AppHeader";
 import { ArrowUpIcon, ChevronIcon, EditIcon } from "./icons";
@@ -847,7 +848,7 @@ export default function LibraryView({
           </div>
         ) : (
           <div className="overflow-x-auto">
-          <table className="w-full min-w-[60rem] table-fixed text-sm">
+          <table className="w-full min-w-[101rem] table-fixed text-sm">
             <thead className="text-left text-fg-muted">
               <tr className="border-b border-border">
                 <th className="w-10 px-4 py-3">
@@ -860,13 +861,14 @@ export default function LibraryView({
                   />
                 </th>
                 <th className="w-14 px-4 py-3"></th>
+                {/* Title has no fixed width: it absorbs the remaining space
+                    (widest column); min table width keeps it ~600px+. */}
                 <SortableHeader
                   label="Title"
                   sortKey="title"
                   activeKey={sortKey}
                   dir={sortDir}
                   onSort={toggleSort}
-                  className="w-48"
                 />
                 <SortableHeader
                   label="Artist"
@@ -895,8 +897,6 @@ export default function LibraryView({
                 />
                 <th className="w-56 px-4 py-3 font-medium">Status</th>
                 <th className="w-28 px-4 py-3 font-medium"></th>
-                {/* Spacer: absorbs extra width so data columns keep their size. */}
-                <th aria-hidden="true" />
               </tr>
             </thead>
             <tbody>
@@ -911,7 +911,7 @@ export default function LibraryView({
                   <tr
                     key={t.id}
                     onClick={() => setEditingId(t.id)}
-                    className="cursor-pointer border-b border-border last:border-0 hover:bg-surface-2"
+                    className="group cursor-pointer border-b border-border last:border-0 hover:bg-surface-2"
                   >
                     <td
                       className="px-4 py-3"
@@ -933,11 +933,8 @@ export default function LibraryView({
                     <td className="px-4 py-3">
                       <CoverThumb path={t.path} hasCover={t.metadata.has_cover} />
                     </td>
-                    <td
-                      className="max-w-[14rem] truncate px-4 py-3 text-fg"
-                      title={t.path}
-                    >
-                      {md.title || t.file_name}
+                    <td className="px-4 py-3 text-fg" title={t.path}>
+                      <MarqueeText text={md.title || t.file_name} />
                     </td>
                     <td className="max-w-[10rem] truncate px-4 py-3 text-fg-muted">
                       {md.artist || "–"}
@@ -1016,7 +1013,6 @@ export default function LibraryView({
                         </button>
                       </div>
                     </td>
-                    <td aria-hidden="true" />
                   </tr>
                 );
                 };
@@ -1044,7 +1040,7 @@ export default function LibraryView({
                       <tr
                         key={`g-${it.key}`}
                         onClick={() => toggleAlbum(it.key)}
-                        className="cursor-pointer border-b border-border bg-surface-2/40 hover:bg-surface-2"
+                        className="group cursor-pointer border-b border-border bg-surface-2/40 hover:bg-surface-2"
                       >
                         <td
                           className="px-4 py-2.5"
@@ -1086,7 +1082,6 @@ export default function LibraryView({
                         </td>
                         <td colSpan={4} className="px-4 py-2.5"></td>
                         <td className="px-4 py-2.5"></td>
-                        <td aria-hidden="true" />
                       </tr>,
                     );
                     if (expanded) {
