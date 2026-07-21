@@ -2,7 +2,7 @@ import type { TrackAnalysis, TrackEdit } from "../types";
 
 /**
  * Are all text fields relevant to Rekordbox set?
- * (title, artist, album, album artist, genre, year)
+ * (title, artist, album, album artist, year — genre is optional)
  */
 export function editComplete(edit: TrackEdit): boolean {
   const m = edit.metadata;
@@ -11,7 +11,6 @@ export function editComplete(edit: TrackEdit): boolean {
     !!m.artist?.trim() &&
     !!m.album?.trim() &&
     !!m.album_artist?.trim() &&
-    !!m.genre?.trim() &&
     !!m.year?.trim()
   );
 }
@@ -50,12 +49,8 @@ export function trackBadges(
   fromBandcamp?: boolean,
 ): Badge[] {
   const badges: Badge[] = [];
-  if (t.compat.compatible) {
-    badges.push({
-      label: "Compatible",
-      className: "bg-success-500/15 text-success-500 ring-success-500/30",
-    });
-  } else {
+  // Only flag files that need conversion; compatible files show no badge.
+  if (!t.compat.compatible) {
     badges.push({
       label: "Convert",
       className: "bg-warning-500/15 text-warning-500 ring-warning-500/30",

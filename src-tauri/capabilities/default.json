@@ -9,6 +9,7 @@
     "core:window:default",
     "core:webview:allow-internal-toggle-devtools",
     "opener:default",
+    "opener:allow-reveal-item-in-dir",
     "dialog:default",
     "dialog:allow-open",
     "store:default",

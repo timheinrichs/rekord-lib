@@ -16,6 +16,9 @@ vi.mock("../lib/api", () => ({
   pickImageFile: vi.fn(async () => null),
 }));
 
+const { revealMock } = vi.hoisted(() => ({ revealMock: vi.fn() }));
+vi.mock("@tauri-apps/plugin-opener", () => ({ revealItemInDir: revealMock }));
+
 /** The form inputs have no htmlFor; locate them via their label text. */
 function fieldInput(labelText: string): HTMLInputElement {
   const span = screen.getByText(labelText);
@@ -33,6 +36,16 @@ describe("MetadataEditor", () => {
     );
     await waitFor(() => expect(screen.getByText("Label")).toBeInTheDocument());
     expect(screen.getByText("Catalog no.")).toBeInTheDocument();
+  });
+
+  it("shows a disabled path field and reveals it in Finder", async () => {
+    const track = makeTrack({ path: "/music/Album/song.aiff" });
+    render(<MetadataEditor track={track} onClose={() => {}} onSave={() => {}} />);
+    const pathInput = fieldInput("Path");
+    expect(pathInput.value).toBe("/music/Album/song.aiff");
+    expect(pathInput.disabled).toBe(true);
+    await userEvent.click(screen.getByRole("button", { name: "Open in Finder" }));
+    expect(revealMock).toHaveBeenCalledWith("/music/Album/song.aiff");
   });
 
   it("disables Confirm when a required field is empty", async () => {

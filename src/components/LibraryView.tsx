@@ -866,6 +866,7 @@ export default function LibraryView({
                   activeKey={sortKey}
                   dir={sortDir}
                   onSort={toggleSort}
+                  className="w-56"
                 />
                 <SortableHeader
                   label="Artist"
@@ -931,7 +932,7 @@ export default function LibraryView({
                       <CoverThumb path={t.path} hasCover={t.metadata.has_cover} />
                     </td>
                     <td
-                      className="max-w-xs truncate px-4 py-3 text-fg"
+                      className="max-w-[14rem] truncate px-4 py-3 text-fg"
                       title={t.path}
                     >
                       {md.title || t.file_name}

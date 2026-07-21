@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { revealItemInDir } from "@tauri-apps/plugin-opener";
 import {
   coverPreview,
   pickImageFile,
@@ -185,11 +186,9 @@ export default function MetadataEditor({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
-      <div className="flex max-h-[90vh] w-full max-w-3xl flex-col overflow-hidden rounded-2xl border border-border bg-surface shadow-2xl">
+      <div className="flex max-h-[90vh] w-[80vw] max-w-[80vw] flex-col overflow-hidden rounded-2xl border border-border bg-surface shadow-2xl">
         <header className="flex items-center justify-between border-b border-border px-5 py-3">
-          <h2 className="truncate text-sm font-medium" title={track.file_name}>
-            Metadata · {track.file_name}
-          </h2>
+          <h2 className="text-lg font-medium">Metadata</h2>
           <button
             onClick={onClose}
             className="text-fg-muted hover:text-fg"
@@ -201,6 +200,26 @@ export default function MetadataEditor({
         <div className="grid flex-1 grid-cols-1 gap-5 overflow-y-auto p-5 md:grid-cols-[1fr_220px]">
           {/* Fields */}
           <div className="flex flex-col gap-3">
+            {/* File path (read-only) + reveal in Finder */}
+            <label className="flex flex-col gap-1 text-sm">
+              <span className="text-fg-muted">Path</span>
+              <div className="flex gap-2">
+                <input
+                  value={track.path}
+                  disabled
+                  readOnly
+                  className="flex-1 truncate rounded-lg border border-border-strong bg-surface-2 px-3 py-2 text-fg-subtle outline-none"
+                  title={track.path}
+                />
+                <button
+                  onClick={() => void revealItemInDir(track.path)}
+                  className="shrink-0 rounded-lg border border-border-strong px-3 py-2 text-xs text-fg-muted hover:border-accent-500 hover:text-accent-400"
+                >
+                  Open in Finder
+                </button>
+              </div>
+            </label>
+
             {FIELDS.map(({ key, label, required }) => {
               const guess = guesses[key];
               const showGuess = guess && guess !== form[key];

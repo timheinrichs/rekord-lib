@@ -17,9 +17,9 @@ describe("editComplete", () => {
     expect(editComplete(edit)).toBe(true);
   });
 
-  it("ignores optional catalog number and label", () => {
+  it("ignores optional catalog number, label and genre", () => {
     const edit: TrackEdit = {
-      metadata: makeMetadata({ catalog_number: null, label: null }),
+      metadata: makeMetadata({ catalog_number: null, label: null, genre: null }),
       cover,
     };
     expect(editComplete(edit)).toBe(true);
@@ -27,7 +27,7 @@ describe("editComplete", () => {
 
   it("is false when a required field is missing or blank", () => {
     expect(
-      editComplete({ metadata: makeMetadata({ genre: null }), cover }),
+      editComplete({ metadata: makeMetadata({ album: null }), cover }),
     ).toBe(false);
     expect(
       editComplete({ metadata: makeMetadata({ year: "  " }), cover }),
@@ -67,11 +67,10 @@ describe("formatBytes", () => {
 });
 
 describe("trackBadges", () => {
-  it("shows Compatible + Metadata incomplete based on scan state", () => {
+  it("shows no Compatible badge for compatible files, only metadata state", () => {
     const track = makeTrack({ metadata_incomplete: true });
-    const badges = trackBadges(track);
-    const labels = badges.map((b) => b.label);
-    expect(labels).toContain("Compatible");
+    const labels = trackBadges(track).map((b) => b.label);
+    expect(labels).not.toContain("Compatible");
     expect(labels).toContain("Metadata incomplete");
   });
 
