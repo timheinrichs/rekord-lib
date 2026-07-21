@@ -9,10 +9,12 @@ contain incompatible changes.
 
 ## [Unreleased]
 
-## [0.3.1] - 2026-07-21
+## [0.3.2] - 2026-07-21
 
 Maintenance release — first published GitHub Release, used to validate the
-end-to-end auto-update flow (no functional changes over 0.3.0).
+end-to-end auto-update flow (no functional changes over 0.3.0; supersedes the
+unpublished 0.3.1, whose release build could not attach assets to an immutable
+release).
 
 ## [0.3.0] - 2026-07-21
 
