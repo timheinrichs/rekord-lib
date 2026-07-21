@@ -5,6 +5,12 @@ import {
   pickImageFile,
   suggestMetadata,
 } from "../lib/api";
+import {
+  formatDuration,
+  formatLabel,
+  formatSampleRate,
+  trackBadges,
+} from "../lib/format";
 import type {
   CoverInput,
   MbCandidate,
@@ -183,6 +189,8 @@ export default function MetadataEditor({
   };
 
   const coverKind = cover.kind;
+  // Compatibility/metadata status badges (same as the library table).
+  const statusBadges = trackBadges(track, initial);
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
@@ -303,6 +311,40 @@ export default function MetadataEditor({
                 label="No cover"
               />
             </div>
+
+            {/* Read-only track info (same as the library table columns). */}
+            <div className="flex flex-col gap-2 border-t border-border pt-3 text-sm">
+              <InfoRow
+                label="Format"
+                value={`${formatLabel(
+                  track.audio.codec,
+                  track.audio.container,
+                  track.audio.bits_per_sample,
+                )} · ${formatSampleRate(track.audio.sample_rate)}`}
+              />
+              <InfoRow
+                label="Length"
+                value={formatDuration(track.audio.duration_secs)}
+              />
+              <div className="flex flex-col gap-1">
+                <span className="text-fg-muted">Status</span>
+                <div className="flex flex-wrap gap-1.5">
+                  {statusBadges.length ? (
+                    statusBadges.map((b, i) => (
+                      <span
+                        key={i}
+                        title={b.title}
+                        className={`rounded-full px-2 py-0.5 text-xs ring-1 ${b.className}`}
+                      >
+                        {b.label}
+                      </span>
+                    ))
+                  ) : (
+                    <span className="text-fg-subtle">–</span>
+                  )}
+                </div>
+              </div>
+            </div>
           </div>
         </div>
 
@@ -360,6 +402,17 @@ export default function MetadataEditor({
           </button>
         </footer>
       </div>
+    </div>
+  );
+}
+
+function InfoRow({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="flex items-baseline justify-between gap-3">
+      <span className="shrink-0 text-fg-muted">{label}</span>
+      <span className="truncate text-right text-fg" title={value}>
+        {value}
+      </span>
     </div>
   );
 }
