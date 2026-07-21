@@ -1125,6 +1125,9 @@ export default function LibraryView({
                     const albumDate = Math.max(
                       ...gTracks.map((t) => t.download_date ?? 0),
                     );
+                    const albumFromBandcamp = gTracks.some(
+                      (t) => !!originById[t.id],
+                    );
                     rows.push(
                       <tr
                         key={`g-${it.key}`}
@@ -1188,6 +1191,11 @@ export default function LibraryView({
                             {needIncomplete > 0 && (
                               <span className="rounded-full bg-warning-500/15 px-2 py-0.5 text-xs text-warning-500 ring-1 ring-warning-500/30">
                                 Metadata incomplete ({needIncomplete})
+                              </span>
+                            )}
+                            {albumFromBandcamp && (
+                              <span className="rounded-full bg-accent-500/15 px-2 py-0.5 text-xs text-accent-300 ring-1 ring-accent-500/30">
+                                Bandcamp
                               </span>
                             )}
                           </div>
