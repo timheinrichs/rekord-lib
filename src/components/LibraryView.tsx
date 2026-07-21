@@ -1043,10 +1043,10 @@ export default function LibraryView({
                       {formatDate(t.download_date)}
                     </td>
                     <td
-                      className="px-4 py-3 text-right"
+                      className="relative px-4 py-3"
                       onClick={(e) => e.stopPropagation()}
                     >
-                      <div className="flex items-center justify-end gap-2">
+                      <div className="pointer-events-none absolute inset-y-0 right-4 flex items-center gap-2 rounded-lg bg-surface-2 pl-3 opacity-0 transition-opacity group-hover:pointer-events-auto group-hover:opacity-100">
                         {!t.compat.compatible && (
                           <button
                             onClick={() => convertOne(t)}
@@ -1060,7 +1060,7 @@ export default function LibraryView({
                         <button
                           onClick={() => setEditingId(t.id)}
                           disabled={converting}
-                          className="flex h-8 w-8 items-center justify-center rounded-md text-fg-subtle hover:bg-surface-2 hover:text-accent-400 disabled:opacity-40"
+                          className="flex h-8 w-8 items-center justify-center rounded-md text-fg-subtle hover:bg-surface hover:text-accent-400 disabled:opacity-40"
                           title="Edit metadata"
                           aria-label="Edit metadata"
                         >
@@ -1074,7 +1074,7 @@ export default function LibraryView({
                             )
                           }
                           disabled={converting}
-                          className="flex h-8 w-8 items-center justify-center rounded-md text-fg-subtle hover:bg-surface-2 hover:text-danger-500 disabled:opacity-40"
+                          className="flex h-8 w-8 items-center justify-center rounded-md text-fg-subtle hover:bg-surface hover:text-danger-500 disabled:opacity-40"
                           title="Delete (move to trash)"
                           aria-label="Delete track"
                         >
@@ -1196,23 +1196,25 @@ export default function LibraryView({
                           {formatDate(albumDate)}
                         </td>
                         <td
-                          className="px-4 py-2.5 text-right"
+                          className="relative px-4 py-2.5"
                           onClick={(e) => e.stopPropagation()}
                         >
-                          <button
-                            onClick={() =>
-                              void confirmAndDelete(
-                                gTracks.map((t) => t.path),
-                                `Move the album “${it.key}” (${gTracks.length} files) to the trash? An empty folder is removed too.`,
-                              )
-                            }
-                            disabled={converting}
-                            className="flex h-8 w-8 items-center justify-center rounded-md text-fg-subtle hover:bg-surface-2 hover:text-danger-500 disabled:opacity-40"
-                            title="Delete album (move to trash)"
-                            aria-label="Delete album"
-                          >
-                            <TrashIcon />
-                          </button>
+                          <div className="pointer-events-none absolute inset-y-0 right-4 flex items-center rounded-lg bg-surface-2 pl-3 opacity-0 transition-opacity group-hover:pointer-events-auto group-hover:opacity-100">
+                            <button
+                              onClick={() =>
+                                void confirmAndDelete(
+                                  gTracks.map((t) => t.path),
+                                  `Move the album “${it.key}” (${gTracks.length} files) to the trash? An empty folder is removed too.`,
+                                )
+                              }
+                              disabled={converting}
+                              className="flex h-8 w-8 items-center justify-center rounded-md text-fg-subtle hover:bg-surface hover:text-danger-500 disabled:opacity-40"
+                              title="Delete album (move to trash)"
+                              aria-label="Delete album"
+                            >
+                              <TrashIcon />
+                            </button>
+                          </div>
                         </td>
                       </tr>,
                     );
