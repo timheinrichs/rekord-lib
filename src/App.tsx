@@ -9,6 +9,7 @@ import {
   saveSettings,
   type Settings,
 } from "./lib/settings";
+import { checkForUpdate, type UpdateInfo } from "./lib/updater";
 import type { BandcampAccount } from "./types";
 
 type View = "library" | "settings";
@@ -17,6 +18,7 @@ export default function App() {
   const [view, setView] = useState<View>("library");
   const [settings, setSettings] = useState<Settings>(DEFAULT_SETTINGS);
   const [account, setAccount] = useState<BandcampAccount | null>(null);
+  const [update, setUpdate] = useState<UpdateInfo | null>(null);
   const [ready, setReady] = useState(false);
 
   // Load settings + Bandcamp status on startup.
@@ -30,6 +32,11 @@ export default function App() {
       setAccount(status);
       setReady(true);
     })();
+  }, []);
+
+  // Check for an app update on startup (silent; errors are treated as "up to date").
+  useEffect(() => {
+    void (async () => setUpdate(await checkForUpdate()))();
   }, []);
 
   const updateSettings = useCallback((patch: Partial<Settings>) => {
@@ -51,6 +58,7 @@ export default function App() {
             <LibraryView
               settings={settings}
               account={account}
+              updateAvailable={!!update}
               onOpenSettings={() => setView("settings")}
             />
           </div>
@@ -72,6 +80,8 @@ export default function App() {
                 onSettingsChange={updateSettings}
                 account={account}
                 onAccountChange={setAccount}
+                update={update}
+                onUpdateChange={setUpdate}
               />
             </>
           )}

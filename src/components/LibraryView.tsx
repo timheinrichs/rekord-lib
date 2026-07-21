@@ -70,6 +70,8 @@ import {
 interface Props {
   settings: Settings;
   account: BandcampAccount | null;
+  /** Show an update indicator on the settings gear. */
+  updateAvailable?: boolean;
   onOpenSettings: () => void;
 }
 
@@ -88,7 +90,12 @@ interface DownloadEntry {
   error?: string;
 }
 
-export default function LibraryView({ settings, account, onOpenSettings }: Props) {
+export default function LibraryView({
+  settings,
+  account,
+  updateAvailable,
+  onOpenSettings,
+}: Props) {
   const [tracks, setTracks] = useState<TrackAnalysis[]>([]);
   const [loading, setLoading] = useState(false);
   const [scanProgress, setScanProgress] = useState<ScanProgress | null>(null);
@@ -835,11 +842,14 @@ export default function LibraryView({ settings, account, onOpenSettings }: Props
   const gearButton = (
     <button
       onClick={onOpenSettings}
-      className="shrink-0 rounded-lg border border-border-strong p-2 text-fg-muted hover:border-accent-500 hover:text-accent-400"
-      title="Settings"
-      aria-label="Settings"
+      className="relative shrink-0 rounded-lg border border-border-strong p-2 text-fg-muted hover:border-accent-500 hover:text-accent-400"
+      title={updateAvailable ? "Settings · update available" : "Settings"}
+      aria-label={updateAvailable ? "Settings, update available" : "Settings"}
     >
       <GearIcon />
+      {updateAvailable && (
+        <span className="absolute -right-1 -top-1 h-2.5 w-2.5 rounded-full bg-accent-500 ring-2 ring-bg" />
+      )}
     </button>
   );
 

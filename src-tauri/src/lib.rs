@@ -15,10 +15,16 @@ pub fn run() {
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_store::Builder::new().build())
+        .plugin(tauri_plugin_process::init())
         .manage(bandcamp::session::BandcampState::default())
         .manage(jobs::ScanState::default())
         .manage(jobs::DedupeState::default())
         .setup(|app| {
+            // The self-updater only exists on desktop targets.
+            #[cfg(desktop)]
+            app.handle()
+                .plugin(tauri_plugin_updater::Builder::new().build())?;
+
             // Restore the saved Bandcamp session on startup.
             let state = app.state::<bandcamp::session::BandcampState>();
             bandcamp::session::restore(app.handle(), &state);

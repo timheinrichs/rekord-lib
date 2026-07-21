@@ -1,10 +1,13 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { getVersion } from "@tauri-apps/api/app";
+import { openUrl } from "@tauri-apps/plugin-opener";
 import {
   bandcampConnect,
   bandcampDisconnect,
   bandcampLogin,
   pickOutputDir,
 } from "../lib/api";
+import { checkForUpdate, installUpdate, type UpdateInfo } from "../lib/updater";
 import type { Settings } from "../lib/settings";
 import {
   FORMAT_LABELS,
@@ -13,11 +16,16 @@ import {
   type TargetFormat,
 } from "../types";
 
+const LICENSES_URL =
+  "https://github.com/timheinrichs/rekord-lib/blob/main/THIRD_PARTY_LICENSES.md";
+
 interface Props {
   settings: Settings;
   onSettingsChange: (patch: Partial<Settings>) => void;
   account: BandcampAccount | null;
   onAccountChange: (account: BandcampAccount | null) => void;
+  update: UpdateInfo | null;
+  onUpdateChange: (update: UpdateInfo | null) => void;
 }
 
 export default function SettingsView({
@@ -25,9 +33,51 @@ export default function SettingsView({
   onSettingsChange,
   account,
   onAccountChange,
+  update,
+  onUpdateChange,
 }: Props) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // App version + update state for the About section.
+  const [version, setVersion] = useState<string>("");
+  const [checking, setChecking] = useState(false);
+  const [checked, setChecked] = useState(false);
+  const [installing, setInstalling] = useState(false);
+  const [dlPct, setDlPct] = useState<number | null>(null);
+
+  useEffect(() => {
+    void getVersion().then(setVersion).catch(() => {});
+  }, []);
+
+  const checkUpdates = async () => {
+    setChecking(true);
+    setError(null);
+    try {
+      onUpdateChange(await checkForUpdate());
+      setChecked(true);
+    } catch (e) {
+      setError(String(e));
+    } finally {
+      setChecking(false);
+    }
+  };
+
+  const runUpdate = async () => {
+    setInstalling(true);
+    setError(null);
+    setDlPct(0);
+    try {
+      await installUpdate((downloaded, total) => {
+        setDlPct(total ? Math.round((downloaded / total) * 100) : null);
+      });
+      // On success the app relaunches; nothing else to do here.
+    } catch (e) {
+      setError(`Update failed: ${e}`);
+      setInstalling(false);
+      setDlPct(null);
+    }
+  };
 
   const openLogin = async () => {
     setError(null);
@@ -197,6 +247,55 @@ export default function SettingsView({
             compatibility.
           </div>
         )}
+      </section>
+
+      {/* About / updates */}
+      <section className="rounded-xl border border-border bg-surface p-5">
+        <h2 className="text-sm font-semibold text-fg">About</h2>
+
+        {update ? (
+          <div className="mt-3 flex flex-wrap items-center gap-3">
+            <span className="inline-flex items-center gap-2 rounded-full bg-accent-500/15 px-3 py-1 text-sm text-accent-300 ring-1 ring-accent-500/30">
+              <span className="h-1.5 w-1.5 rounded-full bg-accent-500" />
+              Update available: v{update.version}
+            </span>
+            <button
+              onClick={runUpdate}
+              disabled={installing}
+              className="rounded-lg bg-accent-600 px-4 py-2 text-sm font-medium hover:bg-accent-500 disabled:opacity-50"
+            >
+              {installing
+                ? dlPct != null
+                  ? `Installing… ${dlPct}%`
+                  : "Installing…"
+                : "Install & restart"}
+            </button>
+          </div>
+        ) : (
+          <div className="mt-3 flex flex-wrap items-center gap-3">
+            <button
+              onClick={checkUpdates}
+              disabled={checking}
+              className="rounded-lg border border-border-strong px-3 py-1.5 text-sm hover:border-accent-500 disabled:opacity-50"
+            >
+              {checking ? "Checking…" : "Check for updates"}
+            </button>
+            {checked && !checking && (
+              <span className="text-sm text-fg-subtle">You’re up to date.</span>
+            )}
+          </div>
+        )}
+
+        {/* Version + license note (subtle, at the very bottom). */}
+        <p className="mt-4 text-xs text-fg-subtle">
+          rekord-lib · v{version || "…"} · MIT ·{" "}
+          <button
+            onClick={() => void openUrl(LICENSES_URL)}
+            className="underline decoration-dotted underline-offset-2 hover:text-fg"
+          >
+            third-party licenses
+          </button>
+        </p>
       </section>
     </main>
   );
