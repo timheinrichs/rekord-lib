@@ -28,6 +28,7 @@ import { loadDuplicates, saveDuplicates } from "../lib/duplicates";
 import {
   editComplete,
   formatDuration,
+  formatLabel,
   formatSampleRate,
   trackBadges,
 } from "../lib/format";
@@ -943,7 +944,11 @@ export default function LibraryView({
                       {md.album || "–"}
                     </td>
                     <td className="truncate whitespace-nowrap px-4 py-3 text-fg-muted">
-                      {t.audio.codec.toUpperCase()}
+                      {formatLabel(
+                        t.audio.codec,
+                        t.audio.container,
+                        t.audio.bits_per_sample,
+                      )}
                       <span className="text-fg-subtle">
                         {" "}
                         · {formatSampleRate(t.audio.sample_rate)}
@@ -1065,13 +1070,13 @@ export default function LibraryView({
                         </td>
                         <td className="px-4 py-2.5">
                           <div className="flex items-center gap-2">
-                            <span className="text-fg-subtle">
+                            <span className="shrink-0 text-fg-subtle">
                               <ChevronIcon open={expanded} />
                             </span>
-                            <span className="truncate font-medium text-fg">
+                            <span className="min-w-0 truncate font-medium text-fg">
                               {it.key}
                             </span>
-                            <span className="whitespace-nowrap text-xs text-fg-subtle">
+                            <span className="ml-auto shrink-0 whitespace-nowrap pl-2 text-xs text-fg-subtle">
                               {gTracks.length} tracks
                               {needConvert ? ` · ${needConvert} to convert` : ""}
                             </span>

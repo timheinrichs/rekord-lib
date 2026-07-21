@@ -27,6 +27,37 @@ export function formatSampleRate(hz: number): string {
   return `${(hz / 1000).toFixed(1)} kHz`;
 }
 
+/**
+ * Human-friendly format label from codec/container/bit depth.
+ * Raw PCM codecs (e.g. "pcm_s16be") read as their container: "AIFF 16-bit".
+ */
+export function formatLabel(
+  codec: string,
+  container: string,
+  bits: number,
+): string {
+  const co = codec.toLowerCase();
+  const c = container.toLowerCase();
+  const depth = bits > 0 ? ` ${bits}-bit` : "";
+  if (co.startsWith("pcm")) {
+    if (c.includes("aiff")) return `AIFF${depth}`;
+    if (c.includes("wav")) return `WAV${depth}`;
+    return `PCM${depth}`;
+  }
+  switch (co) {
+    case "flac":
+      return `FLAC${depth}`;
+    case "alac":
+      return `ALAC${depth}`;
+    case "mp3":
+      return "MP3";
+    case "aac":
+      return "AAC";
+    default:
+      return codec.toUpperCase();
+  }
+}
+
 export function formatBytes(bytes: number): string {
   if (!bytes || bytes < 0) return "–";
   if (bytes < 1024) return `${bytes} B`;

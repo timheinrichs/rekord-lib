@@ -3,6 +3,7 @@ import {
   editComplete,
   formatBytes,
   formatDuration,
+  formatLabel,
   formatSampleRate,
   trackBadges,
 } from "./format";
@@ -53,6 +54,21 @@ describe("formatSampleRate", () => {
     expect(formatSampleRate(44_100)).toBe("44.1 kHz");
     expect(formatSampleRate(48_000)).toBe("48.0 kHz");
     expect(formatSampleRate(0)).toBe("–");
+  });
+});
+
+describe("formatLabel", () => {
+  it("renders raw PCM as its container with bit depth", () => {
+    expect(formatLabel("pcm_s16be", "aiff", 16)).toBe("AIFF 16-bit");
+    expect(formatLabel("pcm_s24be", "aiff", 24)).toBe("AIFF 24-bit");
+    expect(formatLabel("pcm_s16le", "wav", 16)).toBe("WAV 16-bit");
+  });
+
+  it("labels lossless + lossy codecs", () => {
+    expect(formatLabel("flac", "flac", 24)).toBe("FLAC 24-bit");
+    expect(formatLabel("alac", "mov,mp4,m4a", 16)).toBe("ALAC 16-bit");
+    expect(formatLabel("mp3", "mp3", 0)).toBe("MP3");
+    expect(formatLabel("aac", "mov,mp4,m4a", 0)).toBe("AAC");
   });
 });
 

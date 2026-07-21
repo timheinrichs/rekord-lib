@@ -25,19 +25,17 @@ html {
   }
 }
 
-.marquee-track {
+/* Animation runs only while the row is hovered; leaving resets to the start
+   (transform returns to its initial 0) instead of freezing mid-scroll.
+   The duration comes from an inline style on the element. */
+.group:hover .marquee-track {
   animation-name: marquee;
   animation-timing-function: linear;
   animation-iteration-count: infinite;
-  animation-play-state: paused;
-}
-
-.group:hover .marquee-track {
-  animation-play-state: running;
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .marquee-track {
+  .group:hover .marquee-track {
     animation: none;
   }
 }
