@@ -12,16 +12,38 @@ vi.mock("@tauri-apps/plugin-store", () => ({
   },
 }));
 
-import { DEFAULT_SETTINGS, loadSettings, saveSettings } from "./settings";
+import {
+  DEFAULT_SETTINGS,
+  bandcampFormatKey,
+  loadSettings,
+  saveSettings,
+} from "./settings";
 
 afterEach(() => {
   vi.clearAllMocks();
+});
+
+describe("bandcampFormatKey", () => {
+  it("maps UI formats to Bandcamp download keys", () => {
+    expect(bandcampFormatKey("aiff")).toBe("aiff-lossless");
+    expect(bandcampFormatKey("aac")).toBe("aac-hi");
+    expect(bandcampFormatKey("flac")).toBe("flac");
+    expect(bandcampFormatKey("wav")).toBe("wav");
+    expect(bandcampFormatKey("alac")).toBe("alac");
+    expect(bandcampFormatKey("mp3-320")).toBe("mp3-320");
+    expect(bandcampFormatKey("mp3-v0")).toBe("mp3-v0");
+  });
 });
 
 describe("loadSettings", () => {
   it("returns defaults when nothing is stored", async () => {
     getMock.mockResolvedValueOnce(undefined);
     expect(await loadSettings()).toEqual(DEFAULT_SETTINGS);
+  });
+
+  it("defaults the download format to aiff", async () => {
+    getMock.mockResolvedValueOnce(undefined);
+    expect((await loadSettings()).download_format).toBe("aiff");
   });
 
   it("merges stored values over the defaults", async () => {

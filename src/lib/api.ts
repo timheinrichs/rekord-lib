@@ -205,16 +205,18 @@ export function bandcampCollection(): Promise<BandcampItem[]> {
   return invoke<BandcampItem[]>("bandcamp_collection");
 }
 
-/** Downloads a purchased item losslessly. */
+/** Downloads a purchased item. `format` is a Bandcamp format key (e.g. "flac"). */
 export function bandcampDownload(
   key: string,
   pageUrl: string,
   destDir: string,
+  format?: string,
 ): Promise<BandcampDownloadResult> {
   return invoke<BandcampDownloadResult>("bandcamp_download", {
     key,
     pageUrl,
     destDir,
+    format,
   });
 }
 

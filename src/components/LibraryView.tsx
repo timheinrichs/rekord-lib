@@ -8,14 +8,11 @@ import {
 } from "react";
 import { getCurrentWebview } from "@tauri-apps/api/webview";
 import {
-  bandcampCollection,
-  bandcampDownload,
   cancelDedupe,
   cancelScan,
   convertTracks,
   dedupeStatus,
   deleteFiles,
-  onBandcampProgress,
   onConvertProgress,
   onDedupeDone,
   onDedupeProgress,
@@ -30,17 +27,12 @@ import { loadLibrary, saveLibrary } from "../lib/library";
 import { loadDuplicates, saveDuplicates } from "../lib/duplicates";
 import {
   editComplete,
-  formatBytes,
   formatDuration,
   formatSampleRate,
   trackBadges,
 } from "../lib/format";
-import { syncCollection, type SyncResult } from "../lib/bandcampSync";
 import type { Settings } from "../lib/settings";
 import type {
-  BandcampAccount,
-  BandcampItem,
-  BandcampProgress,
   ConvertJob,
   ConvertOptions,
   ConvertProgress,
@@ -57,7 +49,7 @@ import BulkMetadataEditor, { type BulkPatch } from "./BulkMetadataEditor";
 import CoverThumb from "./CoverThumb";
 import DuplicatesModal from "./DuplicatesModal";
 import AppHeader from "./AppHeader";
-import { ArrowUpIcon, ChevronIcon, DownloadIcon, EditIcon, GearIcon } from "./icons";
+import { ArrowUpIcon, ChevronIcon, EditIcon } from "./icons";
 import { useScrolled } from "../lib/useScrolled";
 import {
   albumArtistOf,
@@ -71,31 +63,22 @@ import { foldersToPrune } from "../lib/dupAlbums";
 
 interface Props {
   settings: Settings;
-  account: BandcampAccount | null;
-  /** Show an update indicator on the settings gear. */
-  updateAvailable?: boolean;
+  /** Track id -> Bandcamp key, for the "Bandcamp" origin badge. */
+  originById: Record<string, string>;
+  /** Mirrors the scanned tracks up to the app (for Bandcamp sync). */
+  onTracksChange?: (tracks: TrackAnalysis[]) => void;
+  /** Shared header navigation (Library/Bandcamp tabs, downloads, gear). */
+  nav?: ReactNode;
   onOpenSettings: () => void;
 }
 
-type DlState = "idle" | "loading" | "done" | "error";
-
 type Filter = "all" | "convert" | "incomplete";
-
-interface DownloadEntry {
-  key: string;
-  title: string;
-  band: string;
-  state: "loading" | "done" | "error";
-  downloaded: number;
-  total: number;
-  stage: string;
-  error?: string;
-}
 
 export default function LibraryView({
   settings,
-  account,
-  updateAvailable,
+  originById,
+  onTracksChange,
+  nav,
   onOpenSettings,
 }: Props) {
   const [tracks, setTracks] = useState<TrackAnalysis[]>([]);
@@ -119,12 +102,6 @@ export default function LibraryView({
   const [expandedAlbums, setExpandedAlbums] = useState<Set<string>>(new Set());
   const [sortKey, setSortKey] = useState<SortKey>("artist");
   const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
-  const [sync, setSync] = useState<SyncResult | null>(null);
-  const [syncing, setSyncing] = useState(false);
-  const [missingDismissed, setMissingDismissed] = useState(false);
-  const [dl, setDl] = useState<Record<string, DlState>>({});
-  const [downloads, setDownloads] = useState<Record<string, DownloadEntry>>({});
-  const [downloadsOpen, setDownloadsOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const libraryDir = settings.library_dir;
@@ -196,29 +173,6 @@ export default function LibraryView({
     };
   }, []);
 
-  // Persistent Bandcamp download progress (for the downloads overlay).
-  useEffect(() => {
-    let unProg: (() => void) | undefined;
-    void (async () => {
-      unProg = await onBandcampProgress((p: BandcampProgress) => {
-        setDownloads((prev) => {
-          const entry = prev[p.key];
-          if (!entry) return prev;
-          return {
-            ...prev,
-            [p.key]: {
-              ...entry,
-              downloaded: p.downloaded,
-              total: p.total,
-              stage: p.stage,
-            },
-          };
-        });
-      });
-    })();
-    return () => unProg?.();
-  }, []);
-
   // On start / folder change: immediately show the cached list, then dock onto
   // a running scan or start a new (background) scan. The list stays visible
   // in the meantime.
@@ -262,6 +216,11 @@ export default function LibraryView({
     if (!libraryDir || !hydratedRef.current) return;
     void saveLibrary({ library_dir: libraryDir, tracks, edits });
   }, [libraryDir, tracks, edits]);
+
+  // Mirror the scanned tracks up to the app (used by the Bandcamp sync).
+  useEffect(() => {
+    onTracksChange?.(tracks);
+  }, [tracks, onTracksChange]);
 
   // Run conversion jobs.
   // - "library": source already lives in the library -> output to the same
@@ -376,67 +335,6 @@ export default function LibraryView({
       .then((fn) => (unlisten = fn));
     return () => unlisten?.();
   }, []);
-
-  // Bandcamp sync.
-  const runSync = useCallback(async () => {
-    if (!account) return;
-    setSyncing(true);
-    setError(null);
-    try {
-      const items = await bandcampCollection();
-      setSync(syncCollection(tracks, items));
-      setMissingDismissed(false);
-    } catch (e) {
-      setError(`Sync failed: ${e}`);
-    } finally {
-      setSyncing(false);
-    }
-  }, [account, tracks]);
-
-  const downloadMissing = useCallback(
-    async (item: BandcampItem) => {
-      if (!item.download_page_url || !libraryDir) return;
-      setDl((s) => ({ ...s, [item.key]: "loading" }));
-      setDownloads((s) => ({
-        ...s,
-        [item.key]: {
-          key: item.key,
-          title: item.title,
-          band: item.band_name,
-          state: "loading",
-          downloaded: 0,
-          total: 0,
-          stage: "Downloading",
-        },
-      }));
-      setDownloadsOpen(true);
-      const finish = (patch: Partial<DownloadEntry>) =>
-        setDownloads((s) =>
-          s[item.key] ? { ...s, [item.key]: { ...s[item.key], ...patch } } : s,
-        );
-      try {
-        const res = await bandcampDownload(
-          item.key,
-          item.download_page_url,
-          libraryDir,
-        );
-        if (res.success) {
-          setDl((s) => ({ ...s, [item.key]: "done" }));
-          finish({ state: "done", stage: "Done" });
-          await rescan();
-        } else {
-          setDl((s) => ({ ...s, [item.key]: "error" }));
-          finish({ state: "error", error: res.error ?? "Download failed" });
-          setError(res.error ?? "Download failed");
-        }
-      } catch (e) {
-        setDl((s) => ({ ...s, [item.key]: "error" }));
-        finish({ state: "error", error: String(e) });
-        setError(String(e));
-      }
-    },
-    [libraryDir, rescan],
-  );
 
   // Anchor for the shift range selection (index into visibleTracks) and the
   // selection at anchor time (base onto which the shift range is applied).
@@ -759,120 +657,6 @@ export default function LibraryView({
         cancel: () => void cancelScan(),
       };
 
-  // Downloads overlay (Bandcamp) – Chrome-like icon with progress.
-  const downloadList = Object.values(downloads);
-  const activeDownloads = downloadList.filter((d) => d.state === "loading").length;
-  const clearFinishedDownloads = () =>
-    setDownloads((s) =>
-      Object.fromEntries(
-        Object.entries(s).filter(([, d]) => d.state === "loading"),
-      ),
-    );
-
-  const downloadsButton = downloadList.length > 0 && (
-    <div className="relative shrink-0">
-      <button
-        onClick={() => setDownloadsOpen((o) => !o)}
-        className="relative flex items-center justify-center rounded-lg border border-border-strong p-2 text-fg-muted hover:border-accent-500 hover:text-accent-400"
-        title="Downloads"
-        aria-label="Downloads"
-      >
-        <DownloadIcon />
-        {activeDownloads > 0 && (
-          <span className="absolute -right-1 -top-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-accent-600 px-1 text-[10px] font-medium text-white">
-            {activeDownloads}
-          </span>
-        )}
-      </button>
-      {downloadsOpen && (
-        <div className="absolute right-0 top-full z-40 mt-2 w-80 overflow-hidden rounded-lg border border-border bg-surface shadow-lg shadow-black/40">
-          <div className="flex items-center justify-between border-b border-border px-3 py-2">
-            <span className="text-xs font-medium text-fg-muted">Downloads</span>
-            <div className="flex items-center gap-2">
-              {downloadList.some((d) => d.state !== "loading") && (
-                <button
-                  onClick={clearFinishedDownloads}
-                  className="text-xs text-fg-subtle hover:text-fg"
-                >
-                  Clear
-                </button>
-              )}
-              <button
-                onClick={() => setDownloadsOpen(false)}
-                className="text-fg-subtle hover:text-fg"
-                aria-label="Close"
-              >
-                ✕
-              </button>
-            </div>
-          </div>
-          <div className="max-h-80 overflow-y-auto">
-            {downloadList.map((d) => {
-              const pct =
-                d.total > 0 ? Math.round((d.downloaded / d.total) * 100) : 0;
-              return (
-                <div key={d.key} className="border-b border-border/60 px-3 py-2 last:border-0">
-                  <div className="flex items-center justify-between gap-2">
-                    <span className="truncate text-sm text-fg" title={d.title}>
-                      {d.title}
-                    </span>
-                    <span className="shrink-0 text-xs text-fg-subtle">
-                      {d.state === "done"
-                        ? "✓ Done"
-                        : d.state === "error"
-                          ? "Error"
-                          : d.total > 0
-                            ? `${pct}%`
-                            : d.stage}
-                    </span>
-                  </div>
-                  {d.band && (
-                    <p className="truncate text-xs text-fg-subtle">{d.band}</p>
-                  )}
-                  {d.state === "loading" && (
-                    <div className="mt-1.5 h-1.5 w-full overflow-hidden rounded-full bg-surface-2">
-                      <div
-                        className={`h-full rounded-full bg-accent-500 transition-all duration-300 ${
-                          d.total > 0 ? "" : "animate-pulse w-1/3"
-                        }`}
-                        style={d.total > 0 ? { width: `${pct}%` } : undefined}
-                      />
-                    </div>
-                  )}
-                  {d.state === "loading" && d.total > 0 && (
-                    <p className="mt-1 text-[11px] text-fg-subtle">
-                      {formatBytes(d.downloaded)} / {formatBytes(d.total)} ·{" "}
-                      {d.stage}
-                    </p>
-                  )}
-                  {d.state === "error" && d.error && (
-                    <p className="mt-1 truncate text-[11px] text-danger-500" title={d.error}>
-                      {d.error}
-                    </p>
-                  )}
-                </div>
-              );
-            })}
-          </div>
-        </div>
-      )}
-    </div>
-  );
-
-  const gearButton = (
-    <button
-      onClick={onOpenSettings}
-      className="relative shrink-0 rounded-lg border border-border-strong p-2 text-fg-muted hover:border-accent-500 hover:text-accent-400"
-      title={updateAvailable ? "Settings · update available" : "Settings"}
-      aria-label={updateAvailable ? "Settings, update available" : "Settings"}
-    >
-      <GearIcon />
-      {updateAvailable && (
-        <span className="absolute -right-1 -top-1 h-2.5 w-2.5 rounded-full bg-accent-500 ring-2 ring-bg" />
-      )}
-    </button>
-  );
-
   // Primary actions for the header.
   const headerActions = (
     <>
@@ -882,18 +666,6 @@ export default function LibraryView({
         className="rounded-lg border border-border-strong px-3 py-2 text-sm hover:border-accent-500 disabled:opacity-50"
       >
         {loading ? "Scanning…" : "Rescan"}
-      </button>
-      <button
-        onClick={() => void runSync()}
-        disabled={!account || syncing || loading}
-        className="rounded-lg border border-border-strong px-3 py-2 text-sm hover:border-accent-500 disabled:opacity-50"
-        title={
-          account
-            ? "Sync library with Bandcamp collection"
-            : "Connect with Bandcamp in the settings"
-        }
-      >
-        {syncing ? "Syncing…" : "Sync with Bandcamp"}
       </button>
       <button
         onClick={() => void findDuplicates()}
@@ -930,8 +702,7 @@ export default function LibraryView({
           </button>
         </>
       )}
-      {downloadsButton}
-      {gearButton}
+      {nav}
     </>
   );
 
@@ -939,7 +710,7 @@ export default function LibraryView({
   if (!libraryDir) {
     return (
       <>
-        <AppHeader onTitleClick={scrollToTop} right={gearButton} />
+        <AppHeader onTitleClick={scrollToTop} right={nav} />
         <main className="mx-auto max-w-6xl px-6 py-16">
           <div className="flex flex-col items-center gap-3 rounded-xl border border-dashed border-border bg-surface py-20 text-center text-fg-subtle">
             <p className="text-lg text-fg-muted">No library folder selected</p>
@@ -996,67 +767,6 @@ export default function LibraryView({
         <div className="mb-4 rounded-lg border border-danger-500/30 bg-danger-500/10 px-4 py-2 text-sm text-danger-500">
           {error}
         </div>
-      )}
-
-      {/* Missing in library */}
-      {sync && sync.missing.length > 0 && !missingDismissed && (
-        <section className="mb-6 rounded-xl border border-accent-500/30 bg-accent-500/5 p-4">
-          <div className="mb-3 flex items-center justify-between">
-            <h2 className="text-sm font-semibold text-accent-300">
-              Missing in library ({sync.missing.length})
-            </h2>
-            <button
-              onClick={() => setMissingDismissed(true)}
-              className="flex h-7 w-7 items-center justify-center rounded-md text-fg-subtle hover:bg-surface-2 hover:text-fg"
-              title="Close"
-              aria-label="Close"
-            >
-              ✕
-            </button>
-          </div>
-          <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-            {sync.missing.map((item) => {
-              const state = dl[item.key] ?? "idle";
-              return (
-                <div
-                  key={item.key}
-                  className="flex items-center gap-3 rounded-lg border border-border bg-surface p-2"
-                >
-                  {item.art_url ? (
-                    <img
-                      src={item.art_url}
-                      className="h-12 w-12 shrink-0 rounded object-cover"
-                      alt=""
-                    />
-                  ) : (
-                    <div className="h-12 w-12 shrink-0 rounded bg-surface-2" />
-                  )}
-                  <div className="min-w-0 flex-1">
-                    <p className="truncate text-sm text-fg" title={item.title}>
-                      {item.title}
-                    </p>
-                    <p className="truncate text-xs text-fg-subtle">
-                      {item.band_name}
-                    </p>
-                  </div>
-                  <button
-                    onClick={() => void downloadMissing(item)}
-                    disabled={!item.download_page_url || state === "loading"}
-                    className="shrink-0 rounded-lg bg-accent-600 px-3 py-1.5 text-xs font-medium hover:bg-accent-500 disabled:opacity-40"
-                  >
-                    {state === "loading"
-                      ? "Loading…"
-                      : state === "done"
-                        ? "✓ Downloaded"
-                        : state === "error"
-                          ? "Error"
-                          : "Download"}
-                  </button>
-                </div>
-              );
-            })}
-          </div>
-        </section>
       )}
 
       {/* Filter bar (sticky below the header) */}
@@ -1191,7 +901,7 @@ export default function LibraryView({
                 const renderTrackRow = (t: TrackAnalysis, index: number) => {
                 const prog = progress[t.id];
                 const result = results[t.id];
-                const fromBandcamp = !!sync?.originById[t.id];
+                const fromBandcamp = !!originById[t.id];
                 // Show confirmed edits in the list immediately.
                 const md = edits[t.id]?.metadata ?? t.metadata;
                 return (

@@ -8,7 +8,11 @@ import {
   pickOutputDir,
 } from "../lib/api";
 import { checkForUpdate, installUpdate, type UpdateInfo } from "../lib/updater";
-import type { Settings } from "../lib/settings";
+import {
+  DOWNLOAD_FORMAT_LABELS,
+  type DownloadFormat,
+  type Settings,
+} from "../lib/settings";
 import {
   FORMAT_LABELS,
   NEWER_PLAYERS_ONLY,
@@ -247,6 +251,33 @@ export default function SettingsView({
             compatibility.
           </div>
         )}
+      </section>
+
+      {/* Downloads */}
+      <section className="rounded-xl border border-border bg-surface p-5">
+        <h2 className="text-sm font-semibold text-fg">Downloads</h2>
+        <p className="mt-1 text-sm text-fg-subtle">
+          Format requested from Bandcamp downloads. Files are kept as downloaded –
+          convert them to your target format in the library when needed.
+        </p>
+        <label className="mt-4 flex max-w-xs flex-col gap-1 text-sm">
+          <span className="text-fg-muted">Download format</span>
+          <select
+            value={settings.download_format}
+            onChange={(e) =>
+              onSettingsChange({
+                download_format: e.target.value as DownloadFormat,
+              })
+            }
+            className="rounded-lg border border-border-strong bg-surface-2 px-3 py-2 outline-none focus:border-accent-500"
+          >
+            {(Object.keys(DOWNLOAD_FORMAT_LABELS) as DownloadFormat[]).map((f) => (
+              <option key={f} value={f}>
+                {DOWNLOAD_FORMAT_LABELS[f]}
+              </option>
+            ))}
+          </select>
+        </label>
       </section>
 
       {/* About / updates */}
