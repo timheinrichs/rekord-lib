@@ -245,8 +245,6 @@ pub struct DupCandidate {
     pub album_artist: Option<String>,
     #[serde(default)]
     pub album: Option<String>,
-    #[serde(default)]
-    pub track_number: Option<u32>,
 }
 
 /// A file within a duplicate group, including quality/size info.

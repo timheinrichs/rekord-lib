@@ -499,7 +499,6 @@ mod tests {
             artist: Some(artist.into()),
             album_artist: Some(artist.into()),
             album: Some(album.into()),
-            track_number: None,
         }
     }
 
