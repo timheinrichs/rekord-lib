@@ -1041,6 +1041,24 @@ export default function LibraryView({
                     const needConvert = gTracks.filter(
                       (t) => !t.compat.compatible,
                     ).length;
+                    const needIncomplete = gTracks.filter(isIncomplete).length;
+                    // Format: shared value, else "Mixed".
+                    const formats = new Set(
+                      gTracks.map(
+                        (t) =>
+                          `${formatLabel(
+                            t.audio.codec,
+                            t.audio.container,
+                            t.audio.bits_per_sample,
+                          )}, ${formatSampleRate(t.audio.sample_rate)}`,
+                      ),
+                    );
+                    const albumFormat =
+                      formats.size === 1 ? [...formats][0] : "Mixed";
+                    const albumLength = gTracks.reduce(
+                      (s, t) => s + t.audio.duration_secs,
+                      0,
+                    );
                     rows.push(
                       <tr
                         key={`g-${it.key}`}
@@ -1079,14 +1097,35 @@ export default function LibraryView({
                             />
                             <span className="shrink-0 whitespace-nowrap pl-2 text-xs text-fg-subtle">
                               {gTracks.length} tracks
-                              {needConvert ? ` · ${needConvert} to convert` : ""}
                             </span>
                           </div>
                         </td>
                         <td className="max-w-[10rem] truncate px-4 py-2.5 text-fg-muted">
                           {albumArtist || "–"}
                         </td>
-                        <td colSpan={4} className="px-4 py-2.5"></td>
+                        <td className="truncate px-4 py-2.5 text-fg-muted">
+                          {it.key}
+                        </td>
+                        <td className="truncate whitespace-nowrap px-4 py-2.5 text-fg-muted">
+                          {albumFormat}
+                        </td>
+                        <td className="whitespace-nowrap px-4 py-2.5 text-fg-muted">
+                          {formatDuration(albumLength)}
+                        </td>
+                        <td className="px-4 py-2.5">
+                          <div className="flex flex-wrap gap-1.5">
+                            {needConvert > 0 && (
+                              <span className="rounded-full bg-warning-500/15 px-2 py-0.5 text-xs text-warning-500 ring-1 ring-warning-500/30">
+                                Convert ({needConvert})
+                              </span>
+                            )}
+                            {needIncomplete > 0 && (
+                              <span className="rounded-full bg-warning-500/15 px-2 py-0.5 text-xs text-warning-500 ring-1 ring-warning-500/30">
+                                Metadata incomplete ({needIncomplete})
+                              </span>
+                            )}
+                          </div>
+                        </td>
                         <td className="px-4 py-2.5"></td>
                       </tr>,
                     );
