@@ -1,5 +1,7 @@
+import { useState, type ReactNode } from "react";
 import AppHeader from "./AppHeader";
 import HeaderNav from "./HeaderNav";
+import { GridIcon, ListIcon } from "./icons";
 import type { BulkProgress, DownloadEntry } from "../lib/useBandcamp";
 import type { BandcampAccount, BandcampItem } from "../types";
 
@@ -44,6 +46,7 @@ export default function BandcampView({
   updateAvailable,
   onTitleClick,
 }: Props) {
+  const [viewMode, setViewMode] = useState<"list" | "grid">("list");
   const nav = (
     <HeaderNav
       view="bandcamp"
@@ -122,6 +125,23 @@ export default function BandcampView({
               >
                 {refreshing ? "Refreshing…" : "Refresh"}
               </button>
+              {/* List / grid toggle, right of Refresh. */}
+              <div className="flex items-center gap-0.5 rounded-lg border border-border-strong p-0.5">
+                <ViewToggle
+                  active={viewMode === "list"}
+                  onClick={() => setViewMode("list")}
+                  label="List view"
+                >
+                  <ListIcon />
+                </ViewToggle>
+                <ViewToggle
+                  active={viewMode === "grid"}
+                  onClick={() => setViewMode("grid")}
+                  label="Grid view"
+                >
+                  <GridIcon />
+                </ViewToggle>
+              </div>
             </div>
 
             {error && (
@@ -136,10 +156,23 @@ export default function BandcampView({
                   {refreshing ? "Loading collection…" : "No purchases found."}
                 </p>
               </div>
-            ) : (
-              <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+            ) : viewMode === "list" ? (
+              <div className="flex flex-col gap-2">
                 {collection.map((item) => (
                   <BandcampRow
+                    key={item.key}
+                    item={item}
+                    inLibrary={presentKeys.has(item.key)}
+                    state={downloads[item.key]?.state}
+                    disabled={!libraryDir || !!bulk}
+                    onDownload={() => onDownloadItem(item)}
+                  />
+                ))}
+              </div>
+            ) : (
+              <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
+                {collection.map((item) => (
+                  <BandcampCard
                     key={item.key}
                     item={item}
                     inLibrary={presentKeys.has(item.key)}
@@ -198,14 +231,89 @@ function BandcampRow({
         disabled={!item.download_page_url || disabled || state === "loading"}
         className="shrink-0 rounded-lg bg-accent-600 px-3 py-1.5 text-xs font-medium hover:bg-accent-500 disabled:opacity-40"
       >
-        {state === "loading"
-          ? "Loading…"
-          : state === "done"
-            ? "✓ Downloaded"
-            : state === "error"
-              ? "Retry"
-              : "Download"}
+        {downloadLabel(state)}
       </button>
     </div>
+  );
+}
+
+function BandcampCard({
+  item,
+  inLibrary,
+  state,
+  disabled,
+  onDownload,
+}: {
+  item: BandcampItem;
+  inLibrary: boolean;
+  state?: DownloadEntry["state"];
+  disabled: boolean;
+  onDownload: () => void;
+}) {
+  return (
+    <div className="flex flex-col overflow-hidden rounded-lg border border-border bg-surface">
+      <div className="relative aspect-square w-full bg-surface-2">
+        {item.art_url && (
+          <img src={item.art_url} className="h-full w-full object-cover" alt="" />
+        )}
+        <span className="absolute left-1.5 top-1.5 rounded-full bg-black/60 px-1.5 py-0.5 text-[10px] uppercase text-white backdrop-blur">
+          {item.item_type}
+        </span>
+        {inLibrary && (
+          <span className="absolute right-1.5 top-1.5 rounded-full bg-success-500/90 px-1.5 py-0.5 text-[10px] font-medium text-white">
+            In library
+          </span>
+        )}
+      </div>
+      <div className="flex flex-col gap-1 p-2">
+        <p className="truncate text-sm text-fg" title={item.title}>
+          {item.title}
+        </p>
+        <p className="truncate text-xs text-fg-subtle">{item.band_name}</p>
+        <button
+          onClick={onDownload}
+          disabled={!item.download_page_url || disabled || state === "loading"}
+          className="mt-1 w-full rounded-lg bg-accent-600 px-3 py-1.5 text-xs font-medium hover:bg-accent-500 disabled:opacity-40"
+        >
+          {downloadLabel(state)}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function downloadLabel(state?: DownloadEntry["state"]): string {
+  return state === "loading"
+    ? "Loading…"
+    : state === "done"
+      ? "✓ Downloaded"
+      : state === "error"
+        ? "Retry"
+        : "Download";
+}
+
+function ViewToggle({
+  active,
+  onClick,
+  label,
+  children,
+}: {
+  active: boolean;
+  onClick: () => void;
+  label: string;
+  children: ReactNode;
+}) {
+  return (
+    <button
+      onClick={onClick}
+      title={label}
+      aria-label={label}
+      aria-pressed={active}
+      className={`flex h-7 w-7 items-center justify-center rounded-md ${
+        active ? "bg-accent-600/20 text-accent-200" : "text-fg-muted hover:text-fg"
+      }`}
+    >
+      {children}
+    </button>
   );
 }

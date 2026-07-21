@@ -55,6 +55,16 @@ describe("BandcampView", () => {
     expect(screen.getAllByText("In library")).toHaveLength(1);
   });
 
+  it("switches to grid view and still renders items + per-item download", async () => {
+    const p = baseProps();
+    render(<BandcampView {...p} />);
+    await userEvent.click(screen.getByRole("button", { name: "Grid view" }));
+    expect(screen.getByText("Album A")).toBeInTheDocument();
+    expect(screen.getByText("Track B")).toBeInTheDocument();
+    await userEvent.click(screen.getAllByRole("button", { name: "Download" })[0]);
+    expect(p.onDownloadItem).toHaveBeenCalledWith(p.collection[0]);
+  });
+
   it("triggers per-item, download-all and sync actions", async () => {
     const p = baseProps();
     render(<BandcampView {...p} />);
