@@ -236,6 +236,17 @@ pub struct DupCandidate {
     pub lossless: bool,
     pub duration_secs: f64,
     pub compatible: bool,
+    // Structured metadata for the metadata-based match tier (may be absent).
+    #[serde(default)]
+    pub title: Option<String>,
+    #[serde(default)]
+    pub artist: Option<String>,
+    #[serde(default)]
+    pub album_artist: Option<String>,
+    #[serde(default)]
+    pub album: Option<String>,
+    #[serde(default)]
+    pub track_number: Option<u32>,
 }
 
 /// A file within a duplicate group, including quality/size info.
@@ -252,6 +263,10 @@ pub struct DuplicateFile {
     pub duration_secs: f64,
     pub compatible: bool,
     pub size_bytes: u64,
+    // Metadata for display + album clustering in the UI.
+    pub title: Option<String>,
+    pub artist: Option<String>,
+    pub album: Option<String>,
 }
 
 /// A group of detected duplicates (the same track across multiple files).

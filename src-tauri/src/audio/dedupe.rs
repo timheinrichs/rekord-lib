@@ -34,6 +34,9 @@ const EXT_TOKENS: &[&str] = &[
 /// (even across formats) nearly identical length - keeping this tight saves a
 /// massive number of fingerprints in large libraries.
 const DURATION_TOLERANCE: f64 = 1.0;
+/// Looser tolerance for the metadata tier: a foreign convert may shift the
+/// length a bit more, but artist + normalized title must match exactly.
+const METADATA_DURATION_TOLERANCE: f64 = 4.0;
 /// How many files are fingerprinted in parallel (one ffmpeg process each).
 const FP_CONCURRENCY: usize = 8;
 
@@ -103,6 +106,77 @@ fn token_overlap(a: &Tokens, b: &Tokens) -> f64 {
         return 0.0;
     }
     a.intersection(b).count() as f64 / union as f64
+}
+
+// --- Metadata normalization (for the metadata match tier) ---
+
+/// Lowercase, keep only alphanumerics, collapse the rest to single spaces.
+/// "Alone (Paradise Version)" -> "alone paradise version".
+fn norm_text(s: &str) -> String {
+    let mut out = String::with_capacity(s.len());
+    let mut prev_space = false;
+    for c in s.chars().flat_map(char::to_lowercase) {
+        if c.is_alphanumeric() {
+            out.push(c);
+            prev_space = false;
+        } else if !prev_space && !out.is_empty() {
+            out.push(' ');
+            prev_space = true;
+        }
+    }
+    out.trim().to_string()
+}
+
+/// Normalized album name with a leading "Label - " prefix removed, e.g.
+/// "Z Records - Italo House …" -> "italo house …".
+fn norm_album(album: &str) -> String {
+    if let Some(idx) = album.find(" - ") {
+        let after = &album[idx + 3..];
+        // Only strip when a substantial album name remains (avoid eating titles).
+        if after.split_whitespace().count() >= 2 {
+            return norm_text(after);
+        }
+    }
+    norm_text(album)
+}
+
+/// Strips a leading track number ("01 ", "1. ", "07_") from a title fragment.
+fn strip_leading_track_number(s: &str) -> String {
+    let t = s.trim_start();
+    let digits: String = t.chars().take_while(|c| c.is_ascii_digit()).collect();
+    if digits.is_empty() || digits.len() > 3 {
+        return t.to_string();
+    }
+    let after = &t[digits.len()..];
+    let trimmed = after.trim_start_matches([' ', '.', '_', '-']);
+    if after.len() != trimmed.len() {
+        trimmed.to_string()
+    } else {
+        t.to_string()
+    }
+}
+
+/// Extracts the normalized "core" title from a possibly mangled title such as
+/// "Artist - Album - 01 Title" -> "title", using the known artist/album tags to
+/// drop leading segments. Falls back to the whole (normalized) title.
+fn core_title(title: &str, artist: &str, album: &str) -> String {
+    let na = norm_text(artist);
+    let nal = norm_album(album);
+    let segments: Vec<&str> = title.split(" - ").collect();
+    let mut start = 0;
+    // Drop leading segments equal to the artist or album (but keep the last one).
+    while start < segments.len().saturating_sub(1) {
+        let seg = norm_text(segments[start]);
+        if !na.is_empty() && seg == na {
+            start += 1;
+        } else if !nal.is_empty() && (seg == nal || norm_album(segments[start]) == nal) {
+            start += 1;
+        } else {
+            break;
+        }
+    }
+    let rest = segments[start..].join(" - ");
+    norm_text(&strip_leading_track_number(&rest))
 }
 
 /// Do two files count as the same track based on the audio? A strong match
@@ -187,12 +261,62 @@ pub async fn find_duplicates(
 
     let mut parent: Vec<usize> = (0..n).collect();
 
+    // Tier 0: metadata match. Group by (normalized artist, normalized core
+    // title) and union files with a similar length. This catches tracks whose
+    // titles were mangled by a foreign convert (e.g. "Artist - Album - 01 Title")
+    // even when the acoustic fingerprint fails, because the artist tag and the
+    // real title (at the end of the mangled string) still line up.
+    let meta_key: Vec<Option<(String, String)>> = candidates
+        .iter()
+        .map(|c| {
+            let artist = norm_text(
+                c.album_artist
+                    .as_deref()
+                    .filter(|s| !s.trim().is_empty())
+                    .or(c.artist.as_deref())
+                    .unwrap_or(""),
+            );
+            let title = core_title(
+                c.title.as_deref().unwrap_or(&c.name),
+                c.artist.as_deref().unwrap_or(""),
+                c.album.as_deref().unwrap_or(""),
+            );
+            if artist.is_empty() || title.is_empty() {
+                None
+            } else {
+                Some((artist, title))
+            }
+        })
+        .collect();
+    let mut meta_buckets: HashMap<(String, String), Vec<usize>> = HashMap::new();
+    for (i, key) in meta_key.iter().enumerate() {
+        if let Some(k) = key {
+            meta_buckets.entry(k.clone()).or_default().push(i);
+        }
+    }
+    for members in meta_buckets.values() {
+        for a in 0..members.len() {
+            for b in (a + 1)..members.len() {
+                let (i, j) = (members[a], members[b]);
+                if (candidates[i].duration_secs - candidates[j].duration_secs).abs()
+                    <= METADATA_DURATION_TOLERANCE
+                {
+                    uf_union(&mut parent, i, j);
+                }
+            }
+        }
+    }
+
     // Tier 1: meaningfully equal name + equal length = duplicate, entirely
     // without a fingerprint (e.g. same title, different format). The remaining
     // equal-length pairs go into the audio check.
     let mut needs_fp = vec![false; n];
     let mut audio_pairs: Vec<(usize, usize)> = Vec::new();
     for &(i, j) in &pairs {
+        // Already connected (via metadata or an earlier pair)? No fingerprint needed.
+        if uf_find(&mut parent, i) == uf_find(&mut parent, j) {
+            continue;
+        }
         let inter = tokens[i].intersection(&tokens[j]).count();
         if inter >= 2 && token_overlap(&tokens[i], &tokens[j]) >= NAME_HIGH {
             uf_union(&mut parent, i, j);
@@ -310,7 +434,120 @@ mod tests {
             duration_secs: 100.0,
             compatible: true,
             size_bytes: size,
+            title: None,
+            artist: None,
+            album: None,
         }
+    }
+
+    #[test]
+    fn norm_text_keeps_alphanumerics_only() {
+        assert_eq!(norm_text("Alone (Paradise Version)"), "alone paradise version");
+        assert_eq!(
+            norm_text("Move Your Body (To The Sound) [Club Mix]"),
+            "move your body to the sound club mix"
+        );
+    }
+
+    #[test]
+    fn norm_album_strips_label_prefix() {
+        assert_eq!(
+            norm_album("Z Records - Italo House compiled by Joey Negro"),
+            "italo house compiled by joey negro"
+        );
+        assert_eq!(
+            norm_album("Italo House compiled by Joey Negro"),
+            "italo house compiled by joey negro"
+        );
+    }
+
+    #[test]
+    fn core_title_unmangles_the_screenshot_case() {
+        // Clean vs. mangled title of the same track resolve to the same core.
+        let clean = core_title(
+            "Alone (Paradise Version)",
+            "Don Carlos",
+            "Italo House compiled by Joey Negro",
+        );
+        let mangled = core_title(
+            "Don Carlos - Italo House compiled by Joey Negro - 01 Alone (Paradise Version)",
+            "Don Carlos",
+            "Z Records - Italo House compiled by Joey Negro",
+        );
+        assert_eq!(clean, "alone paradise version");
+        assert_eq!(clean, mangled);
+    }
+
+    #[test]
+    fn core_title_plain_title_without_separators() {
+        assert_eq!(core_title("Just A Title", "Some Artist", "Some Album"), "just a title");
+    }
+
+    fn cand(id: &str, dur: f64, title: &str, artist: &str, album: &str) -> DupCandidate {
+        DupCandidate {
+            id: id.into(),
+            path: format!("/lib/{id}.aiff"),
+            name: title.into(),
+            codec: "pcm_s16be".into(),
+            container: "aiff".into(),
+            sample_rate: 44_100,
+            bits_per_sample: 16,
+            lossless: true,
+            duration_secs: dur,
+            compatible: true,
+            title: Some(title.into()),
+            artist: Some(artist.into()),
+            album_artist: Some(artist.into()),
+            album: Some(album.into()),
+            track_number: None,
+        }
+    }
+
+    // The metadata-tier logic, mirrored as a pure helper for testing (the real
+    // one is inlined in find_duplicates which needs an AppHandle).
+    fn meta_matches(a: &DupCandidate, b: &DupCandidate) -> bool {
+        let ka = (
+            norm_text(a.album_artist.as_deref().or(a.artist.as_deref()).unwrap_or("")),
+            core_title(
+                a.title.as_deref().unwrap_or(&a.name),
+                a.artist.as_deref().unwrap_or(""),
+                a.album.as_deref().unwrap_or(""),
+            ),
+        );
+        let kb = (
+            norm_text(b.album_artist.as_deref().or(b.artist.as_deref()).unwrap_or("")),
+            core_title(
+                b.title.as_deref().unwrap_or(&b.name),
+                b.artist.as_deref().unwrap_or(""),
+                b.album.as_deref().unwrap_or(""),
+            ),
+        );
+        !ka.0.is_empty()
+            && !ka.1.is_empty()
+            && ka == kb
+            && (a.duration_secs - b.duration_secs).abs() <= METADATA_DURATION_TOLERANCE
+    }
+
+    #[test]
+    fn metadata_tier_matches_clean_and_mangled() {
+        let clean = cand("clean", 405.0, "Alone (Paradise Version)", "Don Carlos", "Italo House compiled by Joey Negro");
+        let mangled = cand(
+            "mangled",
+            405.0,
+            "Don Carlos - Italo House compiled by Joey Negro - 01 Alone (Paradise Version)",
+            "Don Carlos",
+            "Z Records - Italo House compiled by Joey Negro",
+        );
+        assert!(meta_matches(&clean, &mangled));
+    }
+
+    #[test]
+    fn metadata_tier_rejects_different_artist_or_length() {
+        let a = cand("a", 405.0, "Alone (Paradise Version)", "Don Carlos", "X");
+        let other_artist = cand("b", 405.0, "Alone (Paradise Version)", "Someone Else", "X");
+        let far_length = cand("c", 460.0, "Alone (Paradise Version)", "Don Carlos", "X");
+        assert!(!meta_matches(&a, &other_artist));
+        assert!(!meta_matches(&a, &far_length));
     }
 
     #[test]
@@ -383,5 +620,8 @@ fn to_duplicate_file(c: &DupCandidate) -> DuplicateFile {
         duration_secs: c.duration_secs,
         compatible: c.compatible,
         size_bytes,
+        title: c.title.clone(),
+        artist: c.artist.clone(),
+        album: c.album.clone(),
     }
 }

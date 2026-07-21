@@ -450,6 +450,39 @@ pub async fn delete_files(paths: Vec<String>) -> Vec<DeleteResult> {
         .collect()
 }
 
+/// Trashes directories that no longer contain any audio files (re-checked here
+/// for safety, recursively). Used to clean up an album folder after its
+/// duplicate tracks were deleted. Folders that still hold audio (e.g. bonus
+/// tracks) are left untouched.
+#[tauri::command]
+pub async fn prune_empty_dirs(dirs: Vec<String>) -> Vec<DeleteResult> {
+    dirs.into_iter()
+        .map(|d| {
+            let mut audio = Vec::new();
+            collect_audio_files(std::path::Path::new(&d), &mut audio);
+            if !audio.is_empty() {
+                return DeleteResult {
+                    path: d,
+                    success: false,
+                    error: Some("directory still contains audio files".into()),
+                };
+            }
+            match trash::delete(&d) {
+                Ok(()) => DeleteResult {
+                    path: d,
+                    success: true,
+                    error: None,
+                },
+                Err(e) => DeleteResult {
+                    path: d,
+                    success: false,
+                    error: Some(e.to_string()),
+                },
+            }
+        })
+        .collect()
+}
+
 // ---------------------------------------------------------------------------
 // Bandcamp (Phase 3)
 // ---------------------------------------------------------------------------
@@ -558,5 +591,19 @@ mod tests {
         assert!(names.contains(&"c.opus".to_string()));
         assert!(!names.iter().any(|n| n.ends_with(".jpg") || n.ends_with(".txt")));
         assert_eq!(out.len(), 3);
+    }
+
+    #[test]
+    fn prune_empty_dirs_keeps_folders_with_audio() {
+        let dir = tempfile::tempdir().unwrap();
+        let with_audio = dir.path().join("has_audio");
+        fs::create_dir_all(&with_audio).unwrap();
+        fs::write(with_audio.join("bonus.mp3"), b"x").unwrap();
+
+        let p = with_audio.to_string_lossy().to_string();
+        let res = tauri::async_runtime::block_on(prune_empty_dirs(vec![p.clone()]));
+        assert_eq!(res.len(), 1);
+        assert!(!res[0].success, "folder with audio must not be deleted");
+        assert!(with_audio.exists(), "folder must still exist");
     }
 }

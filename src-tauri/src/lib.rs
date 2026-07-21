@@ -44,6 +44,7 @@ pub fn run() {
             commands::dedupe_result,
             commands::cancel_dedupe,
             commands::delete_files,
+            commands::prune_empty_dirs,
             commands::bandcamp_login,
             commands::bandcamp_connect,
             commands::bandcamp_disconnect,
