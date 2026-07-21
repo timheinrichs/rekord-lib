@@ -1,0 +1,47 @@
+name: Release
+
+# Build and publish a signed macOS release (dmg + self-updater artifacts +
+# latest.json) whenever a version tag is pushed, e.g. `git tag v0.3.0`.
+on:
+  push:
+    tags:
+      - "v*"
+
+jobs:
+  release:
+    name: Build & publish (macOS arm64)
+    runs-on: macos-14 # Apple Silicon runner (matches the aarch64 sidecars)
+    permissions:
+      contents: write # create the GitHub Release and upload assets
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-apple-darwin
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+
+      - run: npm ci
+
+      - name: Build, sign and publish
+        uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # Updater signing keypair (generated with `tauri signer generate`).
+          # Store the private key and its password as repository secrets.
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        with:
+          tagName: ${{ github.ref_name }}
+          releaseName: "rekord-lib ${{ github.ref_name }}"
+          releaseDraft: false
+          prerelease: false
+          args: --target aarch64-apple-darwin

@@ -23,24 +23,19 @@ jobs:
 
   backend:
     name: Backend (cargo test + check)
-    runs-on: ubuntu-latest
+    # macOS arm64: matches the only supported target and the bundled
+    # aarch64-apple-darwin ffmpeg/ffprobe sidecars (the build script requires a
+    # sidecar for the build target, which does not exist for Linux/x86_64).
+    runs-on: macos-14
     steps:
       - uses: actions/checkout@v4
-      - name: Install Tauri system dependencies
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y \
-            libwebkit2gtk-4.1-dev \
-            libgtk-3-dev \
-            librsvg2-dev \
-            libayatana-appindicator3-dev \
-            build-essential \
-            libssl-dev
       - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-apple-darwin
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: src-tauri
       - name: cargo test
-        run: cargo test --manifest-path src-tauri/Cargo.toml
+        run: cargo test --manifest-path src-tauri/Cargo.toml --target aarch64-apple-darwin
       - name: cargo check
-        run: cargo check --manifest-path src-tauri/Cargo.toml
+        run: cargo check --manifest-path src-tauri/Cargo.toml --target aarch64-apple-darwin
