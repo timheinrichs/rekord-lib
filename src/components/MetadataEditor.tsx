@@ -200,26 +200,6 @@ export default function MetadataEditor({
         <div className="grid flex-1 grid-cols-1 gap-5 overflow-y-auto p-5 md:grid-cols-[1fr_220px]">
           {/* Fields */}
           <div className="flex flex-col gap-3">
-            {/* File path (read-only) + reveal in Finder */}
-            <label className="flex flex-col gap-1 text-sm">
-              <span className="text-fg-muted">Path</span>
-              <div className="flex gap-2">
-                <input
-                  value={track.path}
-                  disabled
-                  readOnly
-                  className="flex-1 truncate rounded-lg border border-border-strong bg-surface-2 px-3 py-2 text-fg-subtle outline-none"
-                  title={track.path}
-                />
-                <button
-                  onClick={() => void revealItemInDir(track.path)}
-                  className="shrink-0 rounded-lg border border-border-strong px-3 py-2 text-xs text-fg-muted hover:border-accent-500 hover:text-accent-400"
-                >
-                  Open in Finder
-                </button>
-              </div>
-            </label>
-
             {FIELDS.map(({ key, label, required }) => {
               const guess = guesses[key];
               const showGuess = guess && guess !== form[key];
@@ -261,6 +241,26 @@ export default function MetadataEditor({
                 </label>
               );
             })}
+
+            {/* File path (read-only) + reveal in Finder — last field */}
+            <label className="flex flex-col gap-1 text-sm">
+              <span className="text-fg-muted">Path</span>
+              <div className="flex gap-2">
+                <input
+                  value={track.path}
+                  disabled
+                  readOnly
+                  className="flex-1 truncate rounded-lg border border-border-strong bg-surface-2 px-3 py-2 text-fg-subtle outline-none"
+                  title={track.path}
+                />
+                <button
+                  onClick={() => void revealItemInDir(track.path)}
+                  className="shrink-0 rounded-lg border border-border-strong px-3 py-2 text-xs text-fg-muted hover:border-accent-500 hover:text-accent-400"
+                >
+                  Open in Finder
+                </button>
+              </div>
+            </label>
           </div>
 
           {/* Cover */}

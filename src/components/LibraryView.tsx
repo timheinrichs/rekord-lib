@@ -847,7 +847,7 @@ export default function LibraryView({
           </div>
         ) : (
           <div className="overflow-x-auto">
-          <table className="w-full min-w-[60rem] text-sm">
+          <table className="w-full min-w-[60rem] table-fixed text-sm">
             <thead className="text-left text-fg-muted">
               <tr className="border-b border-border">
                 <th className="w-10 px-4 py-3">
@@ -866,7 +866,7 @@ export default function LibraryView({
                   activeKey={sortKey}
                   dir={sortDir}
                   onSort={toggleSort}
-                  className="w-56"
+                  className="w-48"
                 />
                 <SortableHeader
                   label="Artist"
@@ -895,6 +895,8 @@ export default function LibraryView({
                 />
                 <th className="w-56 px-4 py-3 font-medium">Status</th>
                 <th className="w-28 px-4 py-3 font-medium"></th>
+                {/* Spacer: absorbs extra width so data columns keep their size. */}
+                <th aria-hidden="true" />
               </tr>
             </thead>
             <tbody>
@@ -943,7 +945,7 @@ export default function LibraryView({
                     <td className="max-w-[10rem] truncate px-4 py-3 text-fg-muted">
                       {md.album || "–"}
                     </td>
-                    <td className="whitespace-nowrap px-4 py-3 text-fg-muted">
+                    <td className="truncate whitespace-nowrap px-4 py-3 text-fg-muted">
                       {t.audio.codec.toUpperCase()}
                       <span className="text-fg-subtle">
                         {" "}
@@ -1014,6 +1016,7 @@ export default function LibraryView({
                         </button>
                       </div>
                     </td>
+                    <td aria-hidden="true" />
                   </tr>
                 );
                 };
@@ -1083,6 +1086,7 @@ export default function LibraryView({
                         </td>
                         <td colSpan={4} className="px-4 py-2.5"></td>
                         <td className="px-4 py-2.5"></td>
+                        <td aria-hidden="true" />
                       </tr>,
                     );
                     if (expanded) {
