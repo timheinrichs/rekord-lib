@@ -1042,15 +1042,14 @@ export default function LibraryView({
                       (t) => !t.compat.compatible,
                     ).length;
                     const needIncomplete = gTracks.filter(isIncomplete).length;
-                    // Format: shared value, else "Mixed".
+                    // Format: shared label (without sample rate), else "Mixed".
                     const formats = new Set(
-                      gTracks.map(
-                        (t) =>
-                          `${formatLabel(
-                            t.audio.codec,
-                            t.audio.container,
-                            t.audio.bits_per_sample,
-                          )}, ${formatSampleRate(t.audio.sample_rate)}`,
+                      gTracks.map((t) =>
+                        formatLabel(
+                          t.audio.codec,
+                          t.audio.container,
+                          t.audio.bits_per_sample,
+                        ),
                       ),
                     );
                     const albumFormat =
