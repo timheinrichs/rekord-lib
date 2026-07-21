@@ -42,11 +42,11 @@ jobs:
         with:
           tagName: ${{ github.ref_name }}
           releaseName: "rekord-lib ${{ github.ref_name }}"
-          # Create the release as a draft first so assets can be attached — a
-          # published release is immediately immutable (if the repo enforces
-          # immutable releases) and would reject asset uploads. Publish the
-          # draft afterwards (manually, or set releaseDraft: false only if the
-          # repo does NOT enforce immutable releases).
-          releaseDraft: true
+          # Publish directly (fully automatic). This REQUIRES "Immutable
+          # releases" to be OFF in repo Settings → General — otherwise the
+          # published release becomes read-only before assets are attached and
+          # the upload fails. If you re-enable immutable releases, switch this
+          # back to `true` and publish the draft manually.
+          releaseDraft: false
           prerelease: false
           args: --target aarch64-apple-darwin
