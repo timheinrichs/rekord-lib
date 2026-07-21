@@ -6,6 +6,9 @@
 use std::sync::atomic::{AtomicBool, AtomicU64, AtomicUsize};
 use std::sync::Mutex;
 
+use notify_debouncer_full::notify::RecommendedWatcher;
+use notify_debouncer_full::{Debouncer, RecommendedCache};
+
 use crate::models::DuplicateGroup;
 
 /// State of the library scan.
@@ -29,4 +32,11 @@ pub struct DedupeState {
     pub stage: Mutex<String>,
     /// Result of the last completed run (for reopening).
     pub result: Mutex<Option<Vec<DuplicateGroup>>>,
+}
+
+/// Holds the active recursive folder watcher. Dropping the debouncer stops it,
+/// so replacing the value here switches the watched directory.
+#[derive(Default)]
+pub struct WatchState {
+    pub debouncer: Mutex<Option<Debouncer<RecommendedWatcher, RecommendedCache>>>,
 }

@@ -7,8 +7,8 @@ use crate::audio::convert::ConvertProgress;
 use crate::audio::{compat, convert, dedupe, probe};
 use crate::bandcamp::session::BandcampState;
 use crate::bandcamp::{collection, download, session};
-use crate::error::AppResult;
-use crate::jobs::{DedupeState, ScanState};
+use crate::error::{AppError, AppResult};
+use crate::jobs::{DedupeState, ScanState, WatchState};
 use crate::metadata::read::read_metadata;
 use crate::metadata::{artwork, suggest, write};
 use crate::models::{
@@ -206,6 +206,56 @@ pub fn cancel_scan(state: State<'_, ScanState>) {
     if state.running.load(Ordering::SeqCst) {
         state.cancel.store(true, Ordering::SeqCst);
     }
+}
+
+/// Lists all audio files under `dir` (recursive) without probing them — cheap,
+/// used for the incremental library sync.
+#[tauri::command]
+pub fn list_audio_files(dir: String) -> Vec<String> {
+    let mut out = Vec::new();
+    collect_audio_files(std::path::Path::new(&dir), &mut out);
+    out
+}
+
+/// Starts (or restarts) a debounced recursive watcher on `dir`. Any change emits
+/// `library://changed`; the frontend then runs an incremental sync. An empty dir
+/// stops watching.
+#[tauri::command]
+pub fn start_library_watch(
+    app: AppHandle,
+    state: State<'_, WatchState>,
+    dir: String,
+) -> AppResult<()> {
+    use notify_debouncer_full::notify::RecursiveMode;
+    use notify_debouncer_full::{new_debouncer, DebounceEventResult};
+    use std::time::Duration;
+
+    // Drop any existing watcher first (stops it).
+    *state.debouncer.lock().unwrap() = None;
+    if dir.trim().is_empty() {
+        return Ok(());
+    }
+
+    let app = app.clone();
+    let mut debouncer = new_debouncer(
+        Duration::from_millis(700),
+        None,
+        move |res: DebounceEventResult| {
+            if let Ok(events) = res {
+                if !events.is_empty() {
+                    let _ = app.emit("library://changed", ());
+                }
+            }
+        },
+    )
+    .map_err(|e| AppError::Metadata(format!("watcher init: {e}")))?;
+
+    debouncer
+        .watch(std::path::Path::new(&dir), RecursiveMode::Recursive)
+        .map_err(|e| AppError::Metadata(format!("watch {dir}: {e}")))?;
+
+    *state.debouncer.lock().unwrap() = Some(debouncer);
+    Ok(())
 }
 
 /// Returns metadata suggestions (existing tags, file name guess,

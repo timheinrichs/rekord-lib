@@ -28,6 +28,7 @@ pub fn run() {
         .manage(bandcamp::session::BandcampState::default())
         .manage(jobs::ScanState::default())
         .manage(jobs::DedupeState::default())
+        .manage(jobs::WatchState::default())
         .setup(|app| {
             // The self-updater only exists on desktop targets.
             #[cfg(desktop)]
@@ -44,6 +45,8 @@ pub fn run() {
             commands::start_scan,
             commands::scan_status,
             commands::cancel_scan,
+            commands::list_audio_files,
+            commands::start_library_watch,
             commands::suggest_metadata,
             commands::cover_preview,
             commands::cover_thumbnail,
