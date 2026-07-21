@@ -143,15 +143,20 @@ export default function DuplicatesModal({
                     const isOpen = expanded[a.id] ?? false;
                     return (
                       <div key={a.id} className="overflow-hidden rounded-xl border border-border">
-                        <div className="border-b border-border bg-surface px-4 py-2.5">
-                          <div className="flex items-center gap-2">
-                            <span className="truncate text-sm font-medium text-fg" title={a.title}>
-                              {a.title}
-                            </span>
-                            <span className="whitespace-nowrap text-xs text-fg-subtle">
-                              {a.versions.length} versions · {a.tracks.length} matching tracks
-                            </span>
-                          </div>
+                        <div className="flex items-center gap-2 border-b border-border bg-surface px-4 py-2.5">
+                          <span className="truncate text-sm font-medium text-fg" title={a.title}>
+                            {a.title}
+                          </span>
+                          <span className="whitespace-nowrap text-xs text-fg-subtle">
+                            {a.versions.length} versions · {a.tracks.length} matching tracks
+                          </span>
+                          <button
+                            onClick={() => a.tracks.forEach((g) => onDismissGroup(g.id))}
+                            title="These albums are not duplicates – remove them from the list"
+                            className="ml-auto shrink-0 rounded-md border border-border-strong px-2 py-1 text-xs text-fg-muted hover:border-warning-500 hover:text-warning-500"
+                          >
+                            Not a duplicate
+                          </button>
                         </div>
 
                         <div className="grid grid-cols-1 gap-2 p-3 sm:grid-cols-2">
