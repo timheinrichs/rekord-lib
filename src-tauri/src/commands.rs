@@ -211,8 +211,17 @@ pub fn cancel_scan(state: State<'_, ScanState>) {
 /// Returns metadata suggestions (existing tags, file name guess,
 /// MusicBrainz candidates) for manual confirmation.
 #[tauri::command]
-pub async fn suggest_metadata(path: String) -> AppResult<MetadataSuggestions> {
-    suggest::suggest(&path).await
+pub async fn suggest_metadata(
+    path: String,
+    discogs_key: Option<String>,
+    discogs_secret: Option<String>,
+) -> AppResult<MetadataSuggestions> {
+    suggest::suggest(
+        &path,
+        discogs_key.as_deref().unwrap_or(""),
+        discogs_secret.as_deref().unwrap_or(""),
+    )
+    .await
 }
 
 /// Returns a cover preview as a data: URL (already resized to <=800px/<100KB).

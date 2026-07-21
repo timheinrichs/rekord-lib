@@ -23,6 +23,10 @@ pub fn read_metadata(path: &str) -> AppResult<TrackMetadata> {
         md.catalog_number =
             non_empty(tag.get_string(&ItemKey::CatalogNumber).map(|s| s.to_string()));
         md.label = non_empty(tag.get_string(&ItemKey::Label).map(|s| s.to_string()));
+        md.country = non_empty(
+            tag.get_string(&ItemKey::from_key(tag.tag_type(), "RELEASECOUNTRY"))
+                .map(|s| s.to_string()),
+        );
         md.has_cover = !tag.pictures().is_empty();
     }
 

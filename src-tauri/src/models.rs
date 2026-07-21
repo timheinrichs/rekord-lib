@@ -73,6 +73,9 @@ pub struct TrackMetadata {
     /// Record label / publisher.
     #[serde(default)]
     pub label: Option<String>,
+    /// Release country (e.g. "Germany"). Stored as a RELEASECOUNTRY tag.
+    #[serde(default)]
+    pub country: Option<String>,
     pub has_cover: bool,
 }
 
@@ -199,6 +202,15 @@ pub struct MbCandidate {
     pub score: u32,
 }
 
+/// Per-field suggestion lists (aggregated from Discogs + MusicBrainz).
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct FieldSuggestions {
+    pub genres: Vec<String>,
+    pub years: Vec<String>,
+    pub labels: Vec<String>,
+    pub countries: Vec<String>,
+}
+
 /// Suggestions for a file's metadata for manual confirmation.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct MetadataSuggestions {
@@ -209,6 +221,8 @@ pub struct MetadataSuggestions {
     pub filename_guess: TrackMetadata,
     /// Matches from the MusicBrainz database (may be empty).
     pub candidates: Vec<MbCandidate>,
+    /// Clickable per-field suggestions (Discogs + MusicBrainz).
+    pub field_suggestions: FieldSuggestions,
 }
 
 /// Result per converted file.
@@ -331,6 +345,7 @@ mod tests {
             track_number: Some(1),
             catalog_number: None,
             label: None,
+            country: None,
             has_cover: true,
         }
     }

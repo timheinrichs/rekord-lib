@@ -3,9 +3,17 @@ use std::path::Path;
 use serde_json::Value;
 
 use crate::error::{AppError, AppResult};
-use crate::metadata::net;
 use crate::metadata::read::read_metadata;
-use crate::models::{MbCandidate, MetadataSuggestions, TrackMetadata};
+use crate::metadata::{discogs, net};
+use crate::models::{FieldSuggestions, MbCandidate, MetadataSuggestions, TrackMetadata};
+
+/// Appends a trimmed, non-empty, case-insensitively-unique value.
+fn push_unique(list: &mut Vec<String>, value: &str) {
+    let v = value.trim();
+    if !v.is_empty() && !list.iter().any(|e| e.eq_ignore_ascii_case(v)) {
+        list.push(v.to_string());
+    }
+}
 
 /// Derives a metadata guess from the filename and parent folder.
 ///
@@ -211,9 +219,13 @@ fn parse_recording(rec: &Value) -> MbCandidate {
     }
 }
 
-/// Builds suggestions for a file: existing tags, filename guess and
-/// MusicBrainz candidates.
-pub async fn suggest(path: &str) -> AppResult<MetadataSuggestions> {
+/// Builds suggestions for a file: existing tags, filename guess, MusicBrainz
+/// candidates and aggregated per-field suggestions (Discogs + MusicBrainz).
+pub async fn suggest(
+    path: &str,
+    discogs_key: &str,
+    discogs_secret: &str,
+) -> AppResult<MetadataSuggestions> {
     let current = read_metadata(path).unwrap_or_default();
     let filename_guess = parse_filename(path);
 
@@ -226,6 +238,10 @@ pub async fn suggest(path: &str) -> AppResult<MetadataSuggestions> {
         .artist
         .clone()
         .or_else(|| filename_guess.artist.clone());
+    let album = current
+        .album
+        .clone()
+        .or_else(|| filename_guess.album.clone());
 
     let candidates = match net::client() {
         Ok(client) => search_musicbrainz(&client, artist.as_deref(), title.as_deref())
@@ -234,11 +250,38 @@ pub async fn suggest(path: &str) -> AppResult<MetadataSuggestions> {
         Err(_) => Vec::new(),
     };
 
+    // Discogs per-field suggestions (empty without credentials / on error).
+    let dc = discogs::search(
+        discogs_key,
+        discogs_secret,
+        artist.as_deref(),
+        title.as_deref(),
+        album.as_deref(),
+    )
+    .await;
+
+    // Discogs first, then MusicBrainz genre/year folded in as extra chips.
+    let mut field_suggestions = FieldSuggestions {
+        genres: dc.genres,
+        years: dc.years,
+        labels: dc.labels,
+        countries: dc.countries,
+    };
+    for c in &candidates {
+        if let Some(g) = c.genre.as_deref() {
+            push_unique(&mut field_suggestions.genres, g);
+        }
+        if let Some(y) = c.year.as_deref() {
+            push_unique(&mut field_suggestions.years, y);
+        }
+    }
+
     Ok(MetadataSuggestions {
         id: path.to_string(),
         current,
         filename_guess,
         candidates,
+        field_suggestions,
     })
 }
 

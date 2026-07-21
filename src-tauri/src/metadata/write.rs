@@ -155,6 +155,10 @@ pub async fn finalize(
         if let Some(v) = clean(&md.label) {
             tag.insert_text(ItemKey::Label, v);
         }
+        if let Some(v) = clean(&md.country) {
+            let tt = tag.tag_type();
+            tag.insert_text(ItemKey::from_key(tt, "RELEASECOUNTRY"), v);
+        }
         if let Some(y) = md.year.as_ref().and_then(|s| s.trim().parse::<u32>().ok()) {
             tag.set_year(y);
         }

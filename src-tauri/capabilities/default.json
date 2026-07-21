@@ -7,6 +7,7 @@
     "core:default",
     "core:event:default",
     "core:window:default",
+    "core:window:allow-set-title",
     "core:webview:allow-internal-toggle-devtools",
     "opener:default",
     "opener:allow-reveal-item-in-dir",
