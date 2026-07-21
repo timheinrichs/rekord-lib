@@ -62,3 +62,31 @@ tokens, status color = state, mono for technical data. When in doubt, check
 - Before finishing, in addition to `tsc --noEmit` / `cargo check`, both
   **`npm test`** and **`cd src-tauri && cargo test`** must be green. CI
   (`.github/workflows/ci.yml`) enforces this on every push/PR.
+
+## Releasing & auto-update
+
+**Never bump the version or cut a release without the maintainer's explicit
+go.** Feature work and fixes land on `main` normally; a release is a separate,
+deliberate step that only happens when the maintainer says so.
+
+- **Distribution:** macOS **Apple Silicon only** (`aarch64-apple-darwin`; the
+  bundled `ffmpeg`/`ffprobe` sidecars in `src-tauri/binaries/` exist only for
+  that target — this is also why the backend CI job runs on `macos-14`, not
+  Linux). The app is **not** Apple-signed/notarized (Gatekeeper warning on
+  first launch / after updates).
+- **Self-update:** Tauri updater + process plugins. Endpoint + public key in
+  `src-tauri/tauri.conf.json` (`plugins.updater`), pure wrapper in
+  `src/lib/updater.ts`, UI in `SettingsView` (About) + gear badge. The updater
+  minisign keypair is separate from Apple signing; the private key is a GitHub
+  secret (`TAURI_SIGNING_PRIVATE_KEY`, empty password), never committed.
+- **Cutting a release** (only on go): bump the version in **three** places —
+  `package.json`, `src-tauri/tauri.conf.json`, `src-tauri/Cargo.toml` — run
+  `cargo check` to sync `Cargo.lock`, add a `CHANGELOG.md` entry, commit, then
+  `git tag -a vX.Y.Z -m vX.Y.Z && git push origin vX.Y.Z`.
+  `.github/workflows/release.yml` (tauri-action on `macos-14`) builds the dmg +
+  updater artifacts + `latest.json` and publishes the GitHub Release.
+- **Immutable releases must stay OFF** (repo *Settings → General*) for the
+  fully automatic publish (`releaseDraft: false`). If turned on, a published
+  release rejects asset uploads — then use `releaseDraft: true` and publish the
+  draft manually. A version tag, once used, cannot be reused (bump to the next
+  patch instead).

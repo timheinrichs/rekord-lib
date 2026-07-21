@@ -113,18 +113,16 @@ docs/brand/             styleguide + design tokens
   updates `Cargo.lock`), add a CHANGELOG entry, commit.
 - **Cut a release** by pushing a tag — this triggers
   `.github/workflows/release.yml`, which builds the `.dmg`, the self-updater
-  artifacts and `latest.json` and attaches them to a **draft** GitHub Release.
+  artifacts and `latest.json`, publishes a GitHub Release and thereby makes the
+  update available to installed apps — **fully automatic**.
   ```sh
   git tag -a vX.Y.Z -m "vX.Y.Z"
   git push origin vX.Y.Z
   ```
-  Then **publish the draft** on the
-  [Releases page](https://github.com/timheinrichs/rekord-lib/releases) — only a
-  published release is served at `releases/latest`, so installed apps pick up
-  the update once it's published. The release is created as a draft because this
-  repo enforces **immutable releases** (a published release can't have assets
-  added afterwards); if you disable that setting you can set
-  `releaseDraft: false` for a fully automatic publish.
+  This requires **"Immutable releases" to be OFF** (repo *Settings → General*).
+  With it enabled, a published release becomes read-only before assets are
+  attached and the upload fails; in that case set `releaseDraft: true` in the
+  workflow and publish the draft manually instead.
 
 ### Updater signing (one-time setup)
 
