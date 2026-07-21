@@ -170,7 +170,7 @@ export default function BandcampView({
                 ))}
               </div>
             ) : (
-              <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
+              <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
                 {collection.map((item) => (
                   <BandcampCard
                     key={item.key}
