@@ -9,6 +9,11 @@ contain incompatible changes.
 
 ## [Unreleased]
 
+## [0.3.1] - 2026-07-21
+
+Maintenance release — first published GitHub Release, used to validate the
+end-to-end auto-update flow (no functional changes over 0.3.0).
+
 ## [0.3.0] - 2026-07-21
 
 First production release: installable macOS app that keeps itself up to date.
