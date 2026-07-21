@@ -63,6 +63,7 @@ async fn analyze_path(app: &AppHandle, path: String) -> Option<TrackAnalysis> {
     let compat = compat::evaluate(&audio);
     let metadata = read_metadata(&path).unwrap_or_default();
     let metadata_incomplete = !metadata.is_complete();
+    let download_date = file_created_millis(&path);
 
     Some(TrackAnalysis {
         id: path.clone(),
@@ -72,7 +73,17 @@ async fn analyze_path(app: &AppHandle, path: String) -> Option<TrackAnalysis> {
         metadata,
         compat,
         metadata_incomplete,
+        download_date,
     })
+}
+
+/// File creation time (falling back to modified time) as Unix millis.
+fn file_created_millis(path: &str) -> Option<i64> {
+    let meta = std::fs::metadata(path).ok()?;
+    let time = meta.created().or_else(|_| meta.modified()).ok()?;
+    time.duration_since(std::time::UNIX_EPOCH)
+        .ok()
+        .map(|d| d.as_millis() as i64)
 }
 
 /// Analyzes a list of files: audio properties, CDJ compatibility

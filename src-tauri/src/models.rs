@@ -128,6 +128,8 @@ pub struct TrackAnalysis {
     pub compat: CompatReport,
     /// true if required metadata is missing and suggestions would be useful.
     pub metadata_incomplete: bool,
+    /// File creation time (Unix millis) — used as the "downloaded/added" date.
+    pub download_date: Option<i64>,
 }
 
 /// Options for a conversion run.
