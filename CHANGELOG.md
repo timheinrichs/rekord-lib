@@ -9,6 +9,29 @@ contain incompatible changes.
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-07-21
+
+### Added
+- **Stronger duplicate detection**: metadata-based matching (artist + normalized
+  core title + length) that also catches tracks whose titles were mangled by a
+  foreign convert; a new **album-duplicate view** to keep one version and delete
+  the others in one action, with now-empty album folders cleaned up.
+- **Dedicated Bandcamp page**: the full purchased collection is shown
+  persistently (cached, refreshed in the background) with **Download all**,
+  **Sync library** (only what's missing locally) and per-item downloads.
+- **Navigation**: Library and Bandcamp as header tabs; settings closes with an
+  X icon.
+- **Download format** setting for Bandcamp downloads (default AIFF).
+- **Metadata dialog**: wider, a read-only Path field with **Open in Finder**,
+  and a Format / Length / Status details block.
+- **Window state**: the app remembers its size/position across restarts.
+- Hover **marquee** for long titles/albums; friendlier format labels
+  (e.g. "AIFF 24-bit" instead of PCM_S16BE).
+
+### Changed
+- Genre is no longer required for the "metadata incomplete" check; the green
+  "Compatible" badge was removed (only files needing conversion are flagged).
+
 ## [0.3.3] - 2026-07-21
 
 Maintenance release — confirms the fully automatic release/publish pipeline
