@@ -9,6 +9,21 @@ contain incompatible changes.
 
 ## [Unreleased]
 
+## [0.4.1] - 2026-07-22
+
+### Added
+- Album rows now carry the **Bandcamp** origin badge when any of their tracks
+  came from a Bandcamp download, matching the per-track badge.
+
+### Changed
+- Track and album row actions (Convert / Edit / Delete) now appear in a
+  right-aligned overlay that fades in only on row hover, keeping idle rows clean.
+
+### Fixed
+- After a conversion the row now refreshes on its own — status (e.g. "Convert"),
+  format and length update immediately without a manual rescan, including
+  in-place conversions (resample / bit-depth change) that keep the same path.
+
 ## [0.4.0] - 2026-07-21
 
 ### Added
