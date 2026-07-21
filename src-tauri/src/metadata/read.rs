@@ -20,6 +20,9 @@ pub fn read_metadata(path: &str) -> AppResult<TrackMetadata> {
         md.year = tag.year().map(|y| y.to_string());
         md.track_number = tag.track();
         md.album_artist = non_empty(tag.get_string(&ItemKey::AlbumArtist).map(|s| s.to_string()));
+        md.catalog_number =
+            non_empty(tag.get_string(&ItemKey::CatalogNumber).map(|s| s.to_string()));
+        md.label = non_empty(tag.get_string(&ItemKey::Label).map(|s| s.to_string()));
         md.has_cover = !tag.pictures().is_empty();
     }
 

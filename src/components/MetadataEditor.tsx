@@ -30,6 +30,8 @@ interface FormState {
   genre: string;
   year: string;
   track_number: string;
+  catalog_number: string;
+  label: string;
 }
 
 function toForm(md: TrackMetadata): FormState {
@@ -41,6 +43,8 @@ function toForm(md: TrackMetadata): FormState {
     genre: md.genre ?? "",
     year: md.year ?? "",
     track_number: md.track_number != null ? String(md.track_number) : "",
+    catalog_number: md.catalog_number ?? "",
+    label: md.label ?? "",
   };
 }
 
@@ -58,6 +62,8 @@ function toMetadata(f: FormState, hasCover: boolean): TrackMetadata {
     genre: s(f.genre),
     year: s(f.year),
     track_number: n(f.track_number),
+    catalog_number: s(f.catalog_number),
+    label: s(f.label),
     has_cover: hasCover,
   };
 }
@@ -70,6 +76,8 @@ const FIELDS: { key: keyof FormState; label: string; required?: boolean }[] = [
   { key: "genre", label: "Genre" },
   { key: "year", label: "Year" },
   { key: "track_number", label: "Track No." },
+  { key: "label", label: "Label" },
+  { key: "catalog_number", label: "Catalog no." },
 ];
 
 export default function MetadataEditor({

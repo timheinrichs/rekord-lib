@@ -67,6 +67,12 @@ pub struct TrackMetadata {
     pub genre: Option<String>,
     pub year: Option<String>,
     pub track_number: Option<u32>,
+    /// Release catalog number (e.g. "STROOM-007").
+    #[serde(default)]
+    pub catalog_number: Option<String>,
+    /// Record label / publisher.
+    #[serde(default)]
+    pub label: Option<String>,
     pub has_cover: bool,
 }
 

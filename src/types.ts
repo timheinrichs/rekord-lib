@@ -22,6 +22,8 @@ export interface TrackMetadata {
   genre: string | null;
   year: string | null;
   track_number: number | null;
+  catalog_number: string | null;
+  label: string | null;
   has_cover: boolean;
 }
 

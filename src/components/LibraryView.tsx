@@ -711,6 +711,8 @@ export default function LibraryView({ settings, account, onOpenSettings }: Props
       album_artist: collect((m) => m.album_artist),
       genre: collect((m) => m.genre),
       year: collect((m) => m.year),
+      label: collect((m) => m.label),
+      catalog_number: collect((m) => m.catalog_number),
     } as Record<string, string[]>;
   }, [tracks, edits]);
 

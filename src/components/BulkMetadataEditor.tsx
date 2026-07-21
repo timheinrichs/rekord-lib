@@ -3,7 +3,10 @@ import type { TrackMetadata } from "../types";
 
 /** Fields that can be set via bulk edit. */
 export type BulkPatch = Partial<
-  Pick<TrackMetadata, "artist" | "album" | "album_artist" | "genre" | "year">
+  Pick<
+    TrackMetadata,
+    "artist" | "album" | "album_artist" | "genre" | "year" | "label" | "catalog_number"
+  >
 >;
 
 interface Props {
@@ -22,6 +25,8 @@ const FIELDS: { key: FieldKey; label: string }[] = [
   { key: "artist", label: "Artist" },
   { key: "genre", label: "Genre" },
   { key: "year", label: "Year" },
+  { key: "label", label: "Label" },
+  { key: "catalog_number", label: "Catalog no." },
 ];
 
 /**
@@ -40,6 +45,8 @@ export default function BulkMetadataEditor({
     artist: false,
     genre: false,
     year: false,
+    label: false,
+    catalog_number: false,
   });
   const [values, setValues] = useState<Record<FieldKey, string>>({
     album: "",
@@ -47,6 +54,8 @@ export default function BulkMetadataEditor({
     artist: "",
     genre: "",
     year: "",
+    label: "",
+    catalog_number: "",
   });
 
   const anyEnabled = FIELDS.some((f) => enabled[f.key]);
