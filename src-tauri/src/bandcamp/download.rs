@@ -313,3 +313,83 @@ fn html_unescape(s: &str) -> String {
         .replace("&gt;", ">")
         .replace("&amp;", "&")
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::io::Write;
+    use zip::write::SimpleFileOptions;
+
+    #[test]
+    fn html_unescape_decodes_entities() {
+        assert_eq!(html_unescape("a&quot;b&amp;c&#39;d"), "a\"b&c'd");
+    }
+
+    #[test]
+    fn extract_blob_reads_escaped_json() {
+        let html = r#"<div id="x" data-blob="{&quot;digital_items&quot;:[{&quot;title&quot;:&quot;T&quot;}]}"></div>"#;
+        let blob = extract_blob(html).unwrap();
+        assert_eq!(blob["digital_items"][0]["title"], "T");
+    }
+
+    #[test]
+    fn extract_blob_missing_marker_errors() {
+        assert!(extract_blob("<div>no blob here</div>").is_err());
+    }
+
+    #[test]
+    fn sanitize_replaces_path_chars() {
+        assert_eq!(sanitize("A/B:C?"), "A_B_C_");
+    }
+
+    #[test]
+    fn looks_like_zip_detects_pk_header() {
+        assert!(looks_like_zip(b"PK\x03\x04rest"));
+        assert!(!looks_like_zip(b"ID3 mp3 data"));
+        assert!(!looks_like_zip(b"P"));
+    }
+
+    #[test]
+    fn extension_for_format_maps_known_and_defaults() {
+        assert_eq!(extension_for_format("flac"), "flac");
+        assert_eq!(extension_for_format("aiff-lossless"), "aiff");
+        assert_eq!(extension_for_format("wav"), "wav");
+        assert_eq!(extension_for_format("alac"), "m4a");
+        assert_eq!(extension_for_format("mp3-320"), "mp3"); // fallback
+    }
+
+    fn build_zip(entries: &[(&str, &[u8])]) -> Vec<u8> {
+        let mut buf = Vec::new();
+        {
+            let mut zw = zip::ZipWriter::new(Cursor::new(&mut buf));
+            for (name, data) in entries {
+                zw.start_file(*name, SimpleFileOptions::default()).unwrap();
+                zw.write_all(data).unwrap();
+            }
+            zw.finish().unwrap();
+        }
+        buf
+    }
+
+    #[test]
+    fn extract_zip_keeps_only_audio_files() {
+        let bytes = build_zip(&[
+            ("01 Song.flac", b"flacdata"),
+            ("cover.jpg", b"img"),
+            ("notes.txt", b"txt"),
+        ]);
+        let dir = tempfile::tempdir().unwrap();
+        let files = extract_zip(&bytes, dir.path(), "My Album").unwrap();
+        assert_eq!(files.len(), 1);
+        let out = &files[0];
+        assert!(out.ends_with("My Album/01 Song.flac"), "got {out}");
+        assert_eq!(std::fs::read(out).unwrap(), b"flacdata");
+    }
+
+    #[test]
+    fn extract_zip_errors_without_audio() {
+        let bytes = build_zip(&[("readme.txt", b"hi")]);
+        let dir = tempfile::tempdir().unwrap();
+        assert!(extract_zip(&bytes, dir.path(), "Album").is_err());
+    }
+}

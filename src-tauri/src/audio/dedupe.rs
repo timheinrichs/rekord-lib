@@ -293,6 +293,77 @@ pub async fn find_duplicates(
     (groups, false)
 }
 
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn dfile(id: &str, lossless: bool, sr: u32, bits: u32, size: u64) -> DuplicateFile {
+        DuplicateFile {
+            id: id.into(),
+            path: id.into(),
+            file_name: id.into(),
+            codec: "x".into(),
+            container: "x".into(),
+            sample_rate: sr,
+            bits_per_sample: bits,
+            lossless,
+            duration_secs: 100.0,
+            compatible: true,
+            size_bytes: size,
+        }
+    }
+
+    #[test]
+    fn name_tokens_drops_extension_single_char_and_numbers() {
+        let a = name_tokens("01 - Artist - Song Title.aiff");
+        assert!(a.contains("artist") && a.contains("song") && a.contains("title"));
+        assert!(!a.contains("aiff"), "extension token must be ignored");
+        assert!(!a.contains("01"), "pure-number token must be ignored");
+    }
+
+    #[test]
+    fn name_tokens_equal_across_formats() {
+        assert_eq!(name_tokens("Song.aiff"), name_tokens("Song.wav"));
+    }
+
+    #[test]
+    fn token_overlap_is_jaccard() {
+        let a = name_tokens("alpha beta gamma");
+        let b = name_tokens("alpha beta delta");
+        // intersection 2 (alpha,beta), union 4 -> 0.5
+        assert!((token_overlap(&a, &b) - 0.5).abs() < 1e-9);
+        assert_eq!(token_overlap(&a, &a), 1.0);
+    }
+
+    #[test]
+    fn token_overlap_empty_sets_zero() {
+        let empty: Tokens = Tokens::new();
+        assert_eq!(token_overlap(&empty, &empty), 0.0);
+    }
+
+    #[test]
+    fn quality_key_prefers_lossless_then_rate_bits_size() {
+        let lossless = dfile("a", true, 44_100, 16, 1000);
+        let lossy = dfile("b", false, 48_000, 24, 9999);
+        assert!(quality_key(&lossless) > quality_key(&lossy));
+
+        let hi = dfile("c", true, 96_000, 24, 10);
+        let lo = dfile("d", true, 44_100, 16, 10);
+        assert!(quality_key(&hi) > quality_key(&lo));
+    }
+
+    #[test]
+    fn union_find_merges_components() {
+        let mut parent: Vec<usize> = (0..5).collect();
+        uf_union(&mut parent, 0, 1);
+        uf_union(&mut parent, 1, 2);
+        uf_union(&mut parent, 3, 4);
+        assert_eq!(uf_find(&mut parent, 0), uf_find(&mut parent, 2));
+        assert_eq!(uf_find(&mut parent, 3), uf_find(&mut parent, 4));
+        assert_ne!(uf_find(&mut parent, 0), uf_find(&mut parent, 3));
+    }
+}
+
 fn to_duplicate_file(c: &DupCandidate) -> DuplicateFile {
     let file_name = std::path::Path::new(&c.path)
         .file_name()

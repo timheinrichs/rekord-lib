@@ -288,3 +288,97 @@ fn emit_progress(app: &AppHandle, id: &str, percent: u32, stage: &str) {
         },
     );
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn opts(format: TargetFormat, bit_depth: u32, output_dir: Option<&str>, sanitize: bool) -> ConvertOptions {
+        ConvertOptions {
+            format,
+            bit_depth,
+            output_dir: output_dir.map(str::to_string),
+            sanitize_filenames: sanitize,
+            replace_source: false,
+        }
+    }
+
+    #[test]
+    fn target_sample_rate_keeps_supported_and_falls_back() {
+        assert_eq!(target_sample_rate(44_100), 44_100);
+        assert_eq!(target_sample_rate(48_000), 48_000);
+        assert_eq!(target_sample_rate(96_000), 44_100);
+        assert_eq!(target_sample_rate(22_050), 44_100);
+    }
+
+    #[test]
+    fn sanitize_replaces_problem_chars() {
+        assert_eq!(sanitize("a/b:c*?\"<>|"), "a_b_c______");
+        assert_eq!(sanitize("  clean name  "), "clean name");
+    }
+
+    #[test]
+    fn output_path_uses_output_dir_and_extension() {
+        let p = output_path("/music/song.wav", &opts(TargetFormat::Aiff, 16, Some("/out"), false)).unwrap();
+        assert_eq!(p, PathBuf::from("/out/song.aiff"));
+    }
+
+    #[test]
+    fn output_path_defaults_next_to_source() {
+        let p = output_path("/music/sub/song.flac", &opts(TargetFormat::Mp3, 16, None, false)).unwrap();
+        assert_eq!(p, PathBuf::from("/music/sub/song.mp3"));
+    }
+
+    #[test]
+    fn output_path_sanitizes_stem_when_requested() {
+        let p = output_path("/music/a:b?.wav", &opts(TargetFormat::Wav, 16, None, true)).unwrap();
+        assert_eq!(p.file_name().unwrap().to_str().unwrap(), "a_b_.wav");
+    }
+
+    #[test]
+    fn build_args_carries_metadata_and_first_audio_stream() {
+        let args = build_args("in.wav", "out.aiff", &opts(TargetFormat::Aiff, 24, None, false), 44_100);
+        assert!(args.windows(2).any(|w| w == ["-map", "0:a:0"]));
+        assert!(args.windows(2).any(|w| w == ["-map_metadata", "0"]));
+        assert!(args.windows(2).any(|w| w == ["-ar", "44100"]));
+        assert_eq!(args.last().unwrap(), "out.aiff");
+    }
+
+    #[test]
+    fn build_args_selects_codec_and_bit_depth() {
+        let aiff24 = build_args("i", "o", &opts(TargetFormat::Aiff, 24, None, false), 44_100);
+        assert!(aiff24.iter().any(|a| a == "pcm_s24be"));
+        let aiff16 = build_args("i", "o", &opts(TargetFormat::Aiff, 16, None, false), 44_100);
+        assert!(aiff16.iter().any(|a| a == "pcm_s16be"));
+        let mp3 = build_args("i", "o", &opts(TargetFormat::Mp3, 16, None, false), 48_000);
+        assert!(mp3.windows(2).any(|w| w == ["-c:a", "libmp3lame"]));
+        assert!(mp3.windows(2).any(|w| w == ["-b:a", "320k"]));
+        // Unsupported source rate must be downsampled to 44.1 kHz.
+        assert!(mp3.windows(2).any(|w| w == ["-ar", "48000"]));
+        let odd = build_args("i", "o", &opts(TargetFormat::Flac, 16, None, false), 96_000);
+        assert!(odd.windows(2).any(|w| w == ["-ar", "44100"]));
+    }
+
+    #[test]
+    fn parse_progress_computes_percentage() {
+        let total = 100_000_000.0; // 100s
+        assert_eq!(parse_progress("out_time_us=50000000\n", total), Some(50));
+        // clamped to 99 while running
+        assert_eq!(parse_progress("out_time_us=100000000\n", total), Some(99));
+        assert_eq!(parse_progress("progress=end\n", total), Some(99));
+        assert_eq!(parse_progress("frame=10\nfps=25\n", total), None);
+    }
+
+    #[test]
+    fn temp_sibling_keeps_extension() {
+        let t = temp_sibling(Path::new("/music/song.aiff"));
+        assert_eq!(t.extension().and_then(|e| e.to_str()), Some("aiff"));
+        assert!(t.file_name().unwrap().to_str().unwrap().starts_with("song.rekordtmp"));
+    }
+
+    #[test]
+    fn paths_equal_detects_same_path() {
+        assert!(paths_equal("/a/b.wav", Path::new("/a/b.wav")));
+        assert!(!paths_equal("/a/b.wav", Path::new("/a/c.wav")));
+    }
+}

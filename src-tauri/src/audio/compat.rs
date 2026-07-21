@@ -92,3 +92,86 @@ pub fn evaluate(audio: &AudioInfo) -> CompatReport {
 
     CompatReport { compatible, issues }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn audio(container: &str, codec: &str, sample_rate: u32, bits: u32) -> AudioInfo {
+        AudioInfo {
+            container: container.into(),
+            codec: codec.into(),
+            sample_rate,
+            bits_per_sample: bits,
+            channels: 2,
+            duration_secs: 180.0,
+            lossless: codec.starts_with("pcm_") || codec == "flac" || codec == "alac",
+        }
+    }
+
+    fn has(report: &CompatReport, code: &str) -> bool {
+        report.issues.iter().any(|i| i.code == code)
+    }
+
+    #[test]
+    fn clean_aiff_pcm_is_compatible() {
+        let r = evaluate(&audio("aiff", "pcm_s16be", 44_100, 16));
+        assert!(r.compatible);
+        assert!(r.issues.is_empty());
+    }
+
+    #[test]
+    fn universal_lossy_is_compatible() {
+        assert!(evaluate(&audio("mp3", "mp3", 44_100, 0)).compatible);
+        assert!(evaluate(&audio("mov,mp4,m4a", "aac", 48_000, 0)).compatible);
+    }
+
+    #[test]
+    fn unsupported_sample_rate_is_error() {
+        let r = evaluate(&audio("wav", "pcm_s16le", 96_000, 16));
+        assert!(!r.compatible);
+        assert!(has(&r, "SAMPLE_RATE"));
+    }
+
+    #[test]
+    fn zero_sample_rate_is_warning_not_error() {
+        let r = evaluate(&audio("aiff", "pcm_s16be", 0, 16));
+        assert!(has(&r, "SAMPLE_RATE_UNKNOWN"));
+        assert!(r.compatible, "unknown sample rate is only a warning");
+    }
+
+    #[test]
+    fn compressed_pcm_container_is_error() {
+        // AIFF-C style: aiff container but a non-PCM codec.
+        let r = evaluate(&audio("aiff", "sowt", 44_100, 16));
+        assert!(!r.compatible);
+        assert!(has(&r, "COMPRESSED_PCM_CONTAINER"));
+    }
+
+    #[test]
+    fn bit_depth_over_24_is_error() {
+        let r = evaluate(&audio("wav", "pcm_s32le", 44_100, 32));
+        assert!(!r.compatible);
+        assert!(has(&r, "BIT_DEPTH"));
+    }
+
+    #[test]
+    fn flac_and_alac_are_warning_but_compatible() {
+        let flac = evaluate(&audio("flac", "flac", 44_100, 16));
+        assert!(flac.compatible);
+        assert!(has(&flac, "NEWER_PLAYERS_ONLY"));
+
+        let alac = evaluate(&audio("mov,mp4,m4a", "alac", 44_100, 16));
+        assert!(alac.compatible);
+        assert!(has(&alac, "NEWER_PLAYERS_ONLY"));
+    }
+
+    #[test]
+    fn unknown_codec_is_error() {
+        for codec in ["opus", "vorbis", "wmav2"] {
+            let r = evaluate(&audio("ogg", codec, 48_000, 0));
+            assert!(!r.compatible, "{codec} should be incompatible");
+            assert!(has(&r, "UNSUPPORTED_CODEC"));
+        }
+    }
+}

@@ -522,3 +522,41 @@ pub async fn bandcamp_download(
         }),
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::fs;
+
+    #[test]
+    fn file_name_extracts_basename() {
+        assert_eq!(file_name("/a/b/c.mp3"), "c.mp3");
+        assert_eq!(file_name("song.flac"), "song.flac");
+    }
+
+    #[test]
+    fn collect_audio_files_recurses_and_filters() {
+        let dir = tempfile::tempdir().unwrap();
+        let sub = dir.path().join("album");
+        fs::create_dir_all(&sub).unwrap();
+        fs::write(dir.path().join("a.mp3"), b"x").unwrap();
+        fs::write(dir.path().join("cover.jpg"), b"x").unwrap();
+        fs::write(dir.path().join("notes.txt"), b"x").unwrap();
+        fs::write(sub.join("b.FLAC"), b"x").unwrap(); // uppercase extension
+        fs::write(sub.join("c.opus"), b"x").unwrap();
+
+        let mut out = Vec::new();
+        collect_audio_files(dir.path(), &mut out);
+        out.sort();
+
+        let names: Vec<String> = out
+            .iter()
+            .map(|p| file_name(p))
+            .collect();
+        assert!(names.contains(&"a.mp3".to_string()));
+        assert!(names.contains(&"b.FLAC".to_string()));
+        assert!(names.contains(&"c.opus".to_string()));
+        assert!(!names.iter().any(|n| n.ends_with(".jpg") || n.ends_with(".txt")));
+        assert_eq!(out.len(), 3);
+    }
+}

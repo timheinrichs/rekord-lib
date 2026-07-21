@@ -303,3 +303,77 @@ pub struct BandcampDownloadResult {
     pub success: bool,
     pub error: Option<String>,
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn full_metadata() -> TrackMetadata {
+        TrackMetadata {
+            title: Some("Title".into()),
+            artist: Some("Artist".into()),
+            album: Some("Album".into()),
+            album_artist: Some("Album Artist".into()),
+            genre: Some("Techno".into()),
+            year: Some("2024".into()),
+            track_number: Some(1),
+            catalog_number: None,
+            label: None,
+            has_cover: true,
+        }
+    }
+
+    #[test]
+    fn is_complete_true_when_all_text_fields_set() {
+        assert!(full_metadata().is_complete());
+    }
+
+    #[test]
+    fn is_complete_ignores_optional_catalog_and_label() {
+        // catalog_number and label are intentionally optional.
+        let md = full_metadata();
+        assert!(md.catalog_number.is_none() && md.label.is_none());
+        assert!(md.is_complete());
+    }
+
+    #[test]
+    fn is_complete_false_when_a_field_missing_or_blank() {
+        let mut md = full_metadata();
+        md.genre = None;
+        assert!(!md.is_complete());
+
+        let mut md = full_metadata();
+        md.year = Some("   ".into());
+        assert!(!md.is_complete());
+    }
+
+    #[test]
+    fn is_complete_false_for_default() {
+        assert!(!TrackMetadata::default().is_complete());
+    }
+
+    #[test]
+    fn target_format_extension_maps_containers() {
+        assert_eq!(TargetFormat::Aiff.extension(), "aiff");
+        assert_eq!(TargetFormat::Wav.extension(), "wav");
+        assert_eq!(TargetFormat::Flac.extension(), "flac");
+        assert_eq!(TargetFormat::Alac.extension(), "m4a");
+        assert_eq!(TargetFormat::Mp3.extension(), "mp3");
+        assert_eq!(TargetFormat::Aac.extension(), "m4a");
+    }
+
+    #[test]
+    fn target_format_pcm_and_player_flags() {
+        assert!(TargetFormat::Aiff.is_pcm() && TargetFormat::Wav.is_pcm());
+        assert!(!TargetFormat::Flac.is_pcm() && !TargetFormat::Mp3.is_pcm());
+        assert!(TargetFormat::Flac.newer_players_only());
+        assert!(TargetFormat::Alac.newer_players_only());
+        assert!(!TargetFormat::Aiff.newer_players_only());
+        assert!(!TargetFormat::Mp3.newer_players_only());
+    }
+
+    #[test]
+    fn target_format_default_is_aiff() {
+        assert_eq!(TargetFormat::default(), TargetFormat::Aiff);
+    }
+}

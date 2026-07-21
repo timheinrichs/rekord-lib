@@ -110,3 +110,55 @@ fn parse_item(it: &Value, redownload: &Value) -> Option<BandcampItem> {
         download_page_url,
     })
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    #[test]
+    fn parse_item_full_entry() {
+        let redownload = json!({ "p12345": "https://bandcamp.com/download?id=1" });
+        let it = json!({
+            "sale_item_id": 12345,
+            "sale_item_type": "p",
+            "item_title": "My Album",
+            "band_name": "Some Label",
+            "item_type": "album",
+            "item_art_id": 42
+        });
+        let item = parse_item(&it, &redownload).unwrap();
+        assert_eq!(item.key, "p12345");
+        assert_eq!(item.title, "My Album");
+        assert_eq!(item.band_name, "Some Label");
+        assert_eq!(item.item_type, "album");
+        assert_eq!(
+            item.art_url.as_deref(),
+            Some("https://f4.bcbits.com/img/a0000000042_9.jpg")
+        );
+        assert_eq!(
+            item.download_page_url.as_deref(),
+            Some("https://bandcamp.com/download?id=1")
+        );
+    }
+
+    #[test]
+    fn parse_item_falls_back_to_album_title_and_defaults() {
+        let it = json!({
+            "sale_item_id": 7,
+            "album_title": "Fallback Title"
+        });
+        let item = parse_item(&it, &Value::Null).unwrap();
+        assert_eq!(item.key, "p7"); // default sale_item_type "p"
+        assert_eq!(item.title, "Fallback Title");
+        assert_eq!(item.item_type, "album"); // default
+        assert!(item.art_url.is_none());
+        assert!(item.download_page_url.is_none());
+    }
+
+    #[test]
+    fn parse_item_requires_sale_item_id() {
+        let it = json!({ "item_title": "No id" });
+        assert!(parse_item(&it, &Value::Null).is_none());
+    }
+}

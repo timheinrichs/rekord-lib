@@ -186,3 +186,52 @@ fn clean(v: &Option<String>) -> Option<String> {
         .map(|s| s.trim().to_string())
         .filter(|s| !s.is_empty())
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::fs;
+
+    #[test]
+    fn clean_trims_and_drops_empty() {
+        assert_eq!(clean(&Some("  hi  ".into())), Some("hi".to_string()));
+        assert_eq!(clean(&Some("   ".into())), None);
+        assert_eq!(clean(&None), None);
+    }
+
+    #[test]
+    fn sidecar_prefers_known_cover_name() {
+        let dir = tempfile::tempdir().unwrap();
+        let audio = dir.path().join("track.aiff");
+        fs::write(&audio, b"not really audio").unwrap();
+        fs::write(dir.path().join("aaa.png"), b"other-image").unwrap();
+        fs::write(dir.path().join("cover.jpg"), b"the-cover").unwrap();
+
+        let src = audio.to_string_lossy().to_string();
+        assert!(has_sidecar_cover(&src));
+        assert_eq!(find_sidecar_cover(&src).as_deref(), Some(&b"the-cover"[..]));
+    }
+
+    #[test]
+    fn sidecar_falls_back_to_first_image() {
+        let dir = tempfile::tempdir().unwrap();
+        let audio = dir.path().join("track.wav");
+        fs::write(&audio, b"x").unwrap();
+        fs::write(dir.path().join("zzz.png"), b"only-image").unwrap();
+
+        let src = audio.to_string_lossy().to_string();
+        assert_eq!(find_sidecar_cover(&src).as_deref(), Some(&b"only-image"[..]));
+    }
+
+    #[test]
+    fn sidecar_none_when_no_image() {
+        let dir = tempfile::tempdir().unwrap();
+        let audio = dir.path().join("track.flac");
+        fs::write(&audio, b"x").unwrap();
+        fs::write(dir.path().join("notes.txt"), b"hello").unwrap();
+
+        let src = audio.to_string_lossy().to_string();
+        assert!(!has_sidecar_cover(&src));
+        assert!(find_sidecar_cover(&src).is_none());
+    }
+}

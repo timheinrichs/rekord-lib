@@ -46,3 +46,19 @@ tokens, status color = state, mono for technical data. When in doubt, check
 - After non-trivial changes: `npx tsc --noEmit` (frontend) and
   `cd src-tauri && cargo check` (backend) must be green.
 - Commit/PR conventions as in the existing history (Conventional Commits).
+
+## Testing — mandatory
+
+- **Every new feature or change ships with matching tests.** Cover the new
+  logic, not just the happy path (edge cases, empty/invalid input).
+  - Frontend: Vitest + Testing Library. Test files live next to the code as
+    `*.test.ts(x)`. Run with `npm test` (watch: `npm run test:watch`,
+    coverage: `npm run test:coverage`).
+  - Backend: Rust unit tests in a `#[cfg(test)] mod tests` next to the code.
+    Run with `cd src-tauri && cargo test`.
+- Keep new logic **testable**: put pure logic in `src/lib/` (frontend) or a
+  dedicated `mod`/function (backend) instead of burying it in large components
+  or Tauri commands. Extract if needed (see `src/lib/grouping.ts`).
+- Before finishing, in addition to `tsc --noEmit` / `cargo check`, both
+  **`npm test`** and **`cd src-tauri && cargo test`** must be green. CI
+  (`.github/workflows/ci.yml`) enforces this on every push/PR.

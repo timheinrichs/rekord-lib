@@ -241,3 +241,61 @@ pub async fn suggest(path: &str) -> AppResult<MetadataSuggestions> {
         candidates,
     })
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn parse_track_artist_title_with_number() {
+        let md = parse_filename("/music/Some Album/01 - Aphex Twin - Xtal.flac");
+        assert_eq!(md.track_number, Some(1));
+        assert_eq!(md.artist.as_deref(), Some("Aphex Twin"));
+        assert_eq!(md.title.as_deref(), Some("Xtal"));
+        assert_eq!(md.album.as_deref(), Some("Some Album"));
+    }
+
+    #[test]
+    fn parse_artist_title() {
+        let md = parse_filename("/x/Boards of Canada - Roygbiv.mp3");
+        assert_eq!(md.artist.as_deref(), Some("Boards of Canada"));
+        assert_eq!(md.title.as_deref(), Some("Roygbiv"));
+        assert_eq!(md.track_number, None);
+    }
+
+    #[test]
+    fn parse_artist_album_title_triplet() {
+        let md = parse_filename("/x/Artist - Album - Title.wav");
+        assert_eq!(md.artist.as_deref(), Some("Artist"));
+        assert_eq!(md.album.as_deref(), Some("Album"));
+        assert_eq!(md.title.as_deref(), Some("Title"));
+    }
+
+    #[test]
+    fn parse_title_only_takes_album_from_folder() {
+        let md = parse_filename("/music/(2021) Deep Cuts/Just A Title.aiff");
+        assert_eq!(md.title.as_deref(), Some("Just A Title"));
+        assert_eq!(md.album.as_deref(), Some("Deep Cuts"));
+    }
+
+    #[test]
+    fn split_leading_track_various() {
+        assert_eq!(split_leading_track("01 - Rest"), (Some(1), "Rest".to_string()));
+        assert_eq!(split_leading_track("007_Song"), (Some(7), "Song".to_string()));
+        // too many digits -> not a track number
+        assert_eq!(
+            split_leading_track("123456 Song"),
+            (None, "123456 Song".to_string())
+        );
+        // no separator after the digits -> not a track number
+        assert_eq!(split_leading_track("2step"), (None, "2step".to_string()));
+    }
+
+    #[test]
+    fn clean_folder_strips_year_and_catalog_prefixes() {
+        assert_eq!(clean_folder("(2021) Album"), "Album");
+        assert_eq!(clean_folder("2020 - Album"), "Album");
+        assert_eq!(clean_folder("[001] Album"), "Album");
+        assert_eq!(clean_folder("Album"), "Album");
+    }
+}
