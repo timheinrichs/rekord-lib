@@ -950,8 +950,7 @@ export default function LibraryView({
                         t.audio.bits_per_sample,
                       )}
                       <span className="text-fg-subtle">
-                        {" "}
-                        · {formatSampleRate(t.audio.sample_rate)}
+                        , {formatSampleRate(t.audio.sample_rate)}
                       </span>
                     </td>
                     <td className="whitespace-nowrap px-4 py-3 text-fg-muted">
@@ -1073,10 +1072,11 @@ export default function LibraryView({
                             <span className="shrink-0 text-fg-subtle">
                               <ChevronIcon open={expanded} />
                             </span>
-                            <span className="min-w-0 truncate font-medium text-fg">
-                              {it.key}
-                            </span>
-                            <span className="ml-auto shrink-0 whitespace-nowrap pl-2 text-xs text-fg-subtle">
+                            <MarqueeText
+                              text={it.key}
+                              className="min-w-0 font-medium text-fg"
+                            />
+                            <span className="shrink-0 whitespace-nowrap pl-2 text-xs text-fg-subtle">
                               {gTracks.length} tracks
                               {needConvert ? ` · ${needConvert} to convert` : ""}
                             </span>

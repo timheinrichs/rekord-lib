@@ -313,19 +313,26 @@ export default function MetadataEditor({
             </div>
 
             {/* Read-only track info (same as the library table columns). */}
-            <div className="flex flex-col gap-2 border-t border-border pt-3 text-sm">
-              <InfoRow
-                label="Format"
-                value={`${formatLabel(
-                  track.audio.codec,
-                  track.audio.container,
-                  track.audio.bits_per_sample,
-                )} · ${formatSampleRate(track.audio.sample_rate)}`}
-              />
-              <InfoRow
-                label="Length"
-                value={formatDuration(track.audio.duration_secs)}
-              />
+            <div className="flex flex-col gap-3 border-t border-border pt-3 text-sm">
+              <div className="flex flex-col gap-0.5">
+                <span className="text-fg-muted">Format</span>
+                <span className="text-fg">
+                  {formatLabel(
+                    track.audio.codec,
+                    track.audio.container,
+                    track.audio.bits_per_sample,
+                  )}
+                </span>
+                <span className="text-fg">
+                  {formatSampleRate(track.audio.sample_rate)}
+                </span>
+              </div>
+              <div className="flex flex-col gap-0.5">
+                <span className="text-fg-muted">Length</span>
+                <span className="text-fg">
+                  {formatDuration(track.audio.duration_secs)}
+                </span>
+              </div>
               <div className="flex flex-col gap-1">
                 <span className="text-fg-muted">Status</span>
                 <div className="flex flex-wrap gap-1.5">
@@ -402,17 +409,6 @@ export default function MetadataEditor({
           </button>
         </footer>
       </div>
-    </div>
-  );
-}
-
-function InfoRow({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="flex items-baseline justify-between gap-3">
-      <span className="shrink-0 text-fg-muted">{label}</span>
-      <span className="truncate text-right text-fg" title={value}>
-        {value}
-      </span>
     </div>
   );
 }
