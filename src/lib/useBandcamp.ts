@@ -3,7 +3,6 @@ import {
   bandcampCollection,
   bandcampDownload,
   onBandcampProgress,
-  startScan,
 } from "./api";
 import {
   loadBandcampCollection,
@@ -160,18 +159,13 @@ export function useBandcamp(
     }
   }, []);
 
-  // Rescan the library so freshly downloaded files show up.
-  const rescanLibrary = useCallback(() => {
-    const dir = settingsRef.current.library_dir;
-    if (dir) void startScan(dir);
-  }, []);
-
+  // No explicit rescan here: the library folder watcher picks up new files
+  // incrementally once a download finishes.
   const downloadItem = useCallback(
     async (item: BandcampItem) => {
-      const ok = await runDownload(item);
-      if (ok) rescanLibrary();
+      await runDownload(item);
     },
-    [runDownload, rescanLibrary],
+    [runDownload],
   );
 
   const runQueue = useCallback(
@@ -179,16 +173,13 @@ export function useBandcamp(
       const queue = items.filter((i) => i.download_page_url);
       if (!queue.length || !settingsRef.current.library_dir) return;
       setBulk({ kind, done: 0, total: queue.length });
-      let any = false;
       for (let i = 0; i < queue.length; i++) {
-        const ok = await runDownload(queue[i]);
-        any = any || ok;
+        await runDownload(queue[i]);
         setBulk({ kind, done: i + 1, total: queue.length });
       }
       setBulk(null);
-      if (any) rescanLibrary();
     },
-    [runDownload, rescanLibrary],
+    [runDownload],
   );
 
   const downloadAll = useCallback(

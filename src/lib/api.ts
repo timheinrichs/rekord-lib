@@ -64,6 +64,21 @@ export function cancelScan(): Promise<void> {
   return invoke("cancel_scan");
 }
 
+/** Lists audio files under a folder (recursive), without probing them. */
+export function listAudioFiles(dir: string): Promise<string[]> {
+  return invoke<string[]>("list_audio_files", { dir });
+}
+
+/** Starts/restarts the recursive folder watcher (empty dir stops it). */
+export function startLibraryWatch(dir: string): Promise<void> {
+  return invoke("start_library_watch", { dir });
+}
+
+/** Subscribes to library folder change events (debounced by the backend). */
+export function onLibraryChanged(cb: () => void): Promise<UnlistenFn> {
+  return listen("library://changed", () => cb());
+}
+
 /** Subscribes to progress events of the library scan. */
 export function onScanProgress(
   cb: (p: ScanProgress) => void,

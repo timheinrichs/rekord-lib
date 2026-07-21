@@ -8,19 +8,21 @@ import {
 } from "react";
 import { getCurrentWebview } from "@tauri-apps/api/webview";
 import {
-  cancelDedupe,
-  cancelScan,
+  analyzeFiles,
   convertTracks,
   dedupeStatus,
   deleteFiles,
+  listAudioFiles,
   onConvertProgress,
   onDedupeDone,
   onDedupeProgress,
+  onLibraryChanged,
   onScanDone,
   onScanProgress,
   pruneEmptyDirs,
   scanStatus,
   startDedupe,
+  startLibraryWatch,
   startScan,
 } from "../lib/api";
 import { loadLibrary, saveLibrary } from "../lib/library";
@@ -39,9 +41,7 @@ import type {
   ConvertProgress,
   ConvertResult,
   CoverInput,
-  DedupeProgress,
   DuplicateGroup,
-  ScanProgress,
   TrackAnalysis,
   TrackEdit,
 } from "../types";
@@ -51,7 +51,7 @@ import CoverThumb from "./CoverThumb";
 import MarqueeText from "./MarqueeText";
 import DuplicatesModal from "./DuplicatesModal";
 import AppHeader from "./AppHeader";
-import { ArrowUpIcon, ChevronIcon, EditIcon } from "./icons";
+import { ArrowUpIcon, ChevronIcon, EditIcon, SpinnerIcon } from "./icons";
 import { useScrolled } from "../lib/useScrolled";
 import {
   albumArtistOf,
@@ -62,6 +62,7 @@ import {
   type SortKey,
 } from "../lib/grouping";
 import { foldersToPrune } from "../lib/dupAlbums";
+import { diffAudioFiles } from "../lib/librarySync";
 
 interface Props {
   settings: Settings;
@@ -85,10 +86,8 @@ export default function LibraryView({
 }: Props) {
   const [tracks, setTracks] = useState<TrackAnalysis[]>([]);
   const [loading, setLoading] = useState(false);
-  const [scanProgress, setScanProgress] = useState<ScanProgress | null>(null);
   const [converting, setConverting] = useState(false);
   const [dupOpen, setDupOpen] = useState(false);
-  const [dedupeProgress, setDedupeProgress] = useState<DedupeProgress | null>(null);
   const [dedupeRunning, setDedupeRunning] = useState(false);
   const [dupGroups, setDupGroups] = useState<DuplicateGroup[]>([]);
   const [dragging, setDragging] = useState(false);
@@ -105,13 +104,22 @@ export default function LibraryView({
   const [sortKey, setSortKey] = useState<SortKey>("artist");
   const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
   const [error, setError] = useState<string | null>(null);
+  // Incremental (auto) sync in progress — drives the inline spinner.
+  const [syncing, setSyncing] = useState(false);
 
   const libraryDir = settings.library_dir;
   // Only persist after the cache has been loaded – otherwise the initial
   // (empty) state overwrites the saved state on mount.
   const hydratedRef = useRef(false);
+  // Latest values for the stable incrementalSync callback.
+  const tracksRef = useRef<TrackAnalysis[]>([]);
+  tracksRef.current = tracks;
+  const loadingRef = useRef(false);
+  loadingRef.current = loading;
+  const syncingRef = useRef(false);
+  const dirtyRef = useRef(false);
 
-  // Starts a (background) scan. If one is already running, the UI just docks onto it.
+  // Starts a (background) full re-scan. If one is already running, the UI just docks onto it.
   const rescan = useCallback(async () => {
     if (!libraryDir) {
       setTracks([]);
@@ -122,13 +130,47 @@ export default function LibraryView({
     void startScan(libraryDir);
   }, [libraryDir]);
 
+  // Incremental sync: analyze only new files, drop deleted ones. Cheap enough to
+  // run automatically on folder changes. Single-flight with a dirty re-run.
+  const incrementalSync = useCallback(async () => {
+    if (!libraryDir || loadingRef.current) return;
+    if (syncingRef.current) {
+      dirtyRef.current = true;
+      return;
+    }
+    syncingRef.current = true;
+    setSyncing(true);
+    try {
+      let current = tracksRef.current;
+      do {
+        dirtyRef.current = false;
+        const disk = await listAudioFiles(libraryDir);
+        const { addedPaths, keptTracks, changed } = diffAudioFiles(disk, current);
+        if (!changed) break;
+        const analyzed = addedPaths.length ? await analyzeFiles(addedPaths) : [];
+        current = [...keptTracks, ...analyzed];
+        setTracks(current);
+        const valid = new Set(current.map((t) => t.path));
+        setDupGroups((prev) => {
+          const pruned = pruneGroups(prev, (p) => valid.has(p));
+          if (pruned !== prev) void saveDuplicates(pruned);
+          return pruned;
+        });
+      } while (dirtyRef.current);
+    } catch (e) {
+      setError(`Sync failed: ${e}`);
+    } finally {
+      syncingRef.current = false;
+      setSyncing(false);
+    }
+  }, [libraryDir]);
+
   // Persistent scan listeners (one-time): progress + result.
   useEffect(() => {
     let unProg: (() => void) | undefined;
     let unDone: (() => void) | undefined;
     void (async () => {
       unProg = await onScanProgress((p) => {
-        setScanProgress(p);
         setLoading(p.running);
       });
       unDone = await onScanDone((d) => {
@@ -150,13 +192,12 @@ export default function LibraryView({
     };
   }, []);
 
-  // Persistent dedupe listeners: progress (into the same bar) + completion.
+  // Persistent dedupe listeners: running state + completion.
   useEffect(() => {
     let unProg: (() => void) | undefined;
     let unDone: (() => void) | undefined;
     void (async () => {
       unProg = await onDedupeProgress((p) => {
-        setDedupeProgress(p);
         setDedupeRunning(p.running);
       });
       unDone = await onDedupeDone((d) => {
@@ -195,22 +236,32 @@ export default function LibraryView({
       const status = await scanStatus();
       if (!active) return;
       if (status.running) {
-        // Dock onto the running scan instead of restarting.
+        // Dock onto a running full scan instead of restarting.
         setLoading(true);
-        setScanProgress({
-          generation: status.generation,
-          done: status.done,
-          total: status.total,
-          running: true,
-        });
       } else {
-        await rescan();
+        // Otherwise just reconcile incrementally against what's on disk.
+        void incrementalSync();
       }
     })();
     return () => {
       active = false;
     };
-  }, [libraryDir, rescan]);
+  }, [libraryDir, incrementalSync]);
+
+  // Keep the library folder watcher pointed at the current dir and run an
+  // incremental sync whenever it reports a change.
+  useEffect(() => {
+    if (!libraryDir) return;
+    void startLibraryWatch(libraryDir);
+    let un: (() => void) | undefined;
+    void onLibraryChanged(() => void incrementalSync()).then((fn) => {
+      un = fn;
+    });
+    return () => {
+      un?.();
+      void startLibraryWatch("");
+    };
+  }, [libraryDir, incrementalSync]);
 
   // Keep the track database persisted (only after hydration, so the initial
   // empty state doesn't overwrite the cache).
@@ -267,14 +318,14 @@ export default function LibraryView({
         setSelected(new Set());
         setProgress({});
         setResults({});
-        await rescan();
+        await incrementalSync();
       } catch (e) {
         unlisten();
         setConverting(false);
         setError(`Conversion failed: ${e}`);
       }
     },
-    [settings, libraryDir, rescan],
+    [settings, libraryDir, incrementalSync],
   );
 
   const jobFor = useCallback(
@@ -631,45 +682,27 @@ export default function LibraryView({
   const showTop = useScrolled(400);
   const scrollToTop = () => window.scrollTo({ top: 0, behavior: "smooth" });
 
-  // One bar for both background jobs (scan & duplicate search).
-  const scanPct =
-    scanProgress && scanProgress.total > 0
-      ? Math.round((scanProgress.done / scanProgress.total) * 100)
-      : 0;
-  const dedupePct =
-    dedupeProgress && dedupeProgress.total > 0
-      ? Math.round((dedupeProgress.done / dedupeProgress.total) * 100)
-      : 0;
-  const showBar = loading || dedupeRunning;
-  const progressBar = dedupeRunning
-    ? {
-        label:
-          dedupeProgress?.stage === "Comparing"
-            ? "Comparing fingerprints…"
-            : "Finding duplicates…",
-        done: dedupeProgress?.done ?? 0,
-        total: dedupeProgress?.total ?? 0,
-        pct: dedupePct,
-        cancel: () => void cancelDedupe(),
-      }
-    : {
-        label: "Scanning…",
-        done: scanProgress?.done ?? 0,
-        total: scanProgress?.total ?? 0,
-        pct: scanPct,
-        cancel: () => void cancelScan(),
-      };
-
   // Primary actions for the header.
   const headerActions = (
     <>
       <button
         onClick={() => void rescan()}
         disabled={loading || converting || dedupeRunning}
-        className="rounded-lg border border-border-strong px-3 py-2 text-sm hover:border-accent-500 disabled:opacity-50"
+        className="inline-flex items-center gap-1.5 rounded-lg border border-border-strong px-3 py-2 text-sm hover:border-accent-500 disabled:opacity-50"
       >
+        {loading && <SpinnerIcon />}
         {loading ? "Scanning…" : "Rescan"}
       </button>
+      {/* Auto-sync indicator (incremental), left of the Duplicates button. */}
+      {syncing && !loading && (
+        <span
+          className="flex h-9 w-9 items-center justify-center text-fg-subtle"
+          title="Updating library…"
+          aria-label="Updating library"
+        >
+          <SpinnerIcon />
+        </span>
+      )}
       <button
         onClick={() => void findDuplicates()}
         disabled={
@@ -678,9 +711,10 @@ export default function LibraryView({
           dedupeRunning ||
           (dupGroups.length === 0 && tracks.length < 2)
         }
-        className="rounded-lg border border-border-strong px-3 py-2 text-sm hover:border-accent-500 disabled:opacity-50"
+        className="inline-flex items-center gap-1.5 rounded-lg border border-border-strong px-3 py-2 text-sm hover:border-accent-500 disabled:opacity-50"
         title="Find duplicate tracks across all formats"
       >
+        {dedupeRunning && <SpinnerIcon />}
         {dedupeRunning
           ? "Finding duplicates…"
           : dupGroups.length > 0
@@ -736,36 +770,6 @@ export default function LibraryView({
     <>
       <AppHeader onTitleClick={scrollToTop} right={headerActions} />
       <main className="w-full px-6 py-6">
-      {/* Progress (scan & duplicate search): scrolls along and disappears. */}
-      <div
-        className={`overflow-hidden transition-all duration-500 ease-out ${
-          showBar ? "mb-4 max-h-24 opacity-100" : "mb-0 max-h-0 opacity-0"
-        }`}
-      >
-        <div className="rounded-lg border border-border bg-surface px-4 py-3">
-          <div className="mb-2 flex items-center gap-3 text-sm">
-            <span className="text-fg-muted">{progressBar.label}</span>
-            <span className="text-fg-subtle">
-              {progressBar.total > 0
-                ? `${progressBar.done} / ${progressBar.total}`
-                : ""}
-            </span>
-            <button
-              onClick={progressBar.cancel}
-              className="ml-auto rounded-md border border-border-strong px-2 py-0.5 text-xs text-fg-muted hover:border-danger-500 hover:text-danger-500"
-            >
-              Cancel
-            </button>
-          </div>
-          <div className="h-2 w-full overflow-hidden rounded-full bg-surface-2">
-            <div
-              className="h-full rounded-full bg-accent-500 transition-all duration-300 ease-out"
-              style={{ width: `${progressBar.pct}%` }}
-            />
-          </div>
-        </div>
-      </div>
-
       {error && (
         <div className="mb-4 rounded-lg border border-danger-500/30 bg-danger-500/10 px-4 py-2 text-sm text-danger-500">
           {error}
