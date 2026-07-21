@@ -38,7 +38,7 @@ export default function AppHeader({ right, onTitleClick }: Props) {
         </button>
         {import.meta.env.DEV && (
           <span
-            className="shrink-0 rounded-full bg-accent-500/15 px-2 py-0.5 text-xs text-accent-300 ring-1 ring-accent-500/30"
+            className="shrink-0 rounded-full bg-warning-500/15 px-2 py-0.5 text-xs text-warning-500 ring-1 ring-warning-500/30"
             title="Development build"
           >
             dev
