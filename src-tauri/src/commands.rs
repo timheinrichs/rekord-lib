@@ -538,9 +538,10 @@ pub async fn bandcamp_download(
     key: String,
     page_url: String,
     dest_dir: String,
+    format: Option<String>,
 ) -> AppResult<BandcampDownloadResult> {
     let session = session::current(&state)?;
-    match download::download(&app, &session, &key, &page_url, &dest_dir).await {
+    match download::download(&app, &session, &key, &page_url, &dest_dir, format.as_deref()).await {
         Ok(files) => Ok(BandcampDownloadResult {
             key,
             files,

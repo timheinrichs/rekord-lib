@@ -72,6 +72,7 @@ pub async fn download(
     key: &str,
     page_url: &str,
     dest_dir: &str,
+    preferred_format: Option<&str>,
 ) -> AppResult<Vec<String>> {
     // Dedicated client without an overall timeout (albums can be large).
     let client = net::download_client()?;
@@ -101,7 +102,17 @@ pub async fn download(
         .and_then(Value::as_object)
         .ok_or_else(|| AppError::Bandcamp("no downloads in the item".into()))?;
 
-    let (fmt, url) = FORMAT_PREFERENCE
+    // Try the user's preferred format first, then the lossless-first fallback.
+    let mut prefs: Vec<&str> = Vec::new();
+    if let Some(p) = preferred_format.filter(|p| !p.is_empty()) {
+        prefs.push(p);
+    }
+    for f in FORMAT_PREFERENCE {
+        if !prefs.contains(&f) {
+            prefs.push(f);
+        }
+    }
+    let (fmt, url) = prefs
         .iter()
         .find_map(|f| {
             downloads
@@ -288,6 +299,7 @@ fn extension_for_format(fmt: &str) -> &'static str {
         "wav" => "wav",
         "alac" => "m4a",
         "aac-hi" => "m4a",
+        "mp3-v0" | "mp3-320" => "mp3",
         _ => "mp3",
     }
 }
@@ -355,7 +367,9 @@ mod tests {
         assert_eq!(extension_for_format("aiff-lossless"), "aiff");
         assert_eq!(extension_for_format("wav"), "wav");
         assert_eq!(extension_for_format("alac"), "m4a");
-        assert_eq!(extension_for_format("mp3-320"), "mp3"); // fallback
+        assert_eq!(extension_for_format("mp3-320"), "mp3");
+        assert_eq!(extension_for_format("mp3-v0"), "mp3");
+        assert_eq!(extension_for_format("something-else"), "mp3"); // fallback
     }
 
     fn build_zip(entries: &[(&str, &[u8])]) -> Vec<u8> {
