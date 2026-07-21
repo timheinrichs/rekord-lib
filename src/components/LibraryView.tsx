@@ -58,6 +58,14 @@ import DuplicatesModal from "./DuplicatesModal";
 import AppHeader from "./AppHeader";
 import { ArrowUpIcon, ChevronIcon, DownloadIcon, EditIcon, GearIcon } from "./icons";
 import { useScrolled } from "../lib/useScrolled";
+import {
+  albumArtistOf,
+  buildAlbumItems,
+  pruneGroups,
+  sortTracks,
+  type AlbumItem,
+  type SortKey,
+} from "../lib/grouping";
 
 interface Props {
   settings: Settings;
@@ -80,31 +88,6 @@ interface DownloadEntry {
   error?: string;
 }
 
-/** Removes files that are no longer valid from duplicate groups, discards groups
- *  with < 2 files and corrects the keep choice. Reference-stable when
- *  nothing changed. */
-function pruneGroups(
-  groups: DuplicateGroup[],
-  isValid: (path: string) => boolean,
-): DuplicateGroup[] {
-  let changed = false;
-  const out: DuplicateGroup[] = [];
-  for (const g of groups) {
-    const files = g.files.filter((f) => isValid(f.path));
-    if (files.length !== g.files.length) changed = true;
-    if (files.length < 2) {
-      changed = true;
-      continue;
-    }
-    const keep_id = files.some((f) => f.id === g.keep_id)
-      ? g.keep_id
-      : files[0].id;
-    if (keep_id !== g.keep_id) changed = true;
-    out.push({ ...g, files, keep_id });
-  }
-  return changed ? out : groups;
-}
-
 export default function LibraryView({ settings, account, onOpenSettings }: Props) {
   const [tracks, setTracks] = useState<TrackAnalysis[]>([]);
   const [loading, setLoading] = useState(false);
@@ -125,6 +108,8 @@ export default function LibraryView({ settings, account, onOpenSettings }: Props
   const [search, setSearch] = useState("");
   const [groupByAlbum, setGroupByAlbum] = useState(true);
   const [expandedAlbums, setExpandedAlbums] = useState<Set<string>>(new Set());
+  const [sortKey, setSortKey] = useState<SortKey>("artist");
+  const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
   const [sync, setSync] = useState<SyncResult | null>(null);
   const [syncing, setSyncing] = useState(false);
   const [missingDismissed, setMissingDismissed] = useState(false);
@@ -475,48 +460,32 @@ export default function LibraryView({ settings, account, onOpenSettings }: Props
     });
   }, [tracks, filter, search, isIncomplete]);
 
-  // Album key of a track (album tag, otherwise folder name).
-  const albumOf = useCallback(
-    (t: TrackAnalysis): string => {
-      const md = edits[t.id]?.metadata ?? t.metadata;
-      if (md.album?.trim()) return md.album.trim();
-      const parts = t.path.split("/");
-      return parts[parts.length - 2] || "(No album)";
-    },
-    [edits],
+  // Grouping by album + top-level sorting (pure logic lives in lib/grouping).
+  const albumItems = useMemo<AlbumItem[] | null>(
+    () =>
+      groupByAlbum
+        ? buildAlbumItems(visibleTracks, edits, sortKey, sortDir)
+        : null,
+    [groupByAlbum, visibleTracks, edits, sortKey, sortDir],
   );
 
-  // Grouping by album (>= 2 tracks = group, otherwise a single row).
-  type AlbumItem =
-    | { type: "group"; key: string; tracks: TrackAnalysis[] }
-    | { type: "track"; track: TrackAnalysis };
-  const albumItems = useMemo<AlbumItem[] | null>(() => {
-    if (!groupByAlbum) return null;
-    const map = new Map<string, TrackAnalysis[]>();
-    for (const t of visibleTracks) {
-      const key = albumOf(t);
-      const list = map.get(key);
-      if (list) list.push(t);
-      else map.set(key, [t]);
-    }
-    const items: AlbumItem[] = [];
-    for (const [key, tr] of map) {
-      if (tr.length >= 2) items.push({ type: "group", key, tracks: tr });
-      else items.push({ type: "track", track: tr[0] });
-    }
-    return items;
-  }, [groupByAlbum, visibleTracks, albumOf]);
+  // Flat (ungrouped) render order, sorted by the active column.
+  const sortedFlat = useMemo(
+    () =>
+      groupByAlbum ? null : sortTracks(visibleTracks, edits, sortKey, sortDir),
+    [groupByAlbum, visibleTracks, edits, sortKey, sortDir],
+  );
 
   // Flat render order (including collapsed) for the shift selection.
   const renderOrder = useMemo(() => {
-    if (!albumItems) return visibleTracks;
+    if (!albumItems) return sortedFlat ?? visibleTracks;
     const arr: TrackAnalysis[] = [];
     for (const it of albumItems) {
       if (it.type === "group") arr.push(...it.tracks);
       else arr.push(it.track);
     }
     return arr;
-  }, [albumItems, visibleTracks]);
+  }, [albumItems, sortedFlat, visibleTracks]);
 
   const allGroupKeys = useMemo(
     () =>
@@ -524,6 +493,19 @@ export default function LibraryView({ settings, account, onOpenSettings }: Props
         .filter((it): it is Extract<AlbumItem, { type: "group" }> => it.type === "group")
         .map((it) => it.key),
     [albumItems],
+  );
+
+  // Column-header sort: same column toggles direction, a new column starts ascending.
+  const toggleSort = useCallback(
+    (key: SortKey) => {
+      if (sortKey === key) {
+        setSortDir((d) => (d === "asc" ? "desc" : "asc"));
+      } else {
+        setSortKey(key);
+        setSortDir("asc");
+      }
+    },
+    [sortKey],
   );
 
   const toggleAlbum = useCallback((key: string) => {
@@ -1138,11 +1120,38 @@ export default function LibraryView({ settings, account, onOpenSettings }: Props
                   />
                 </th>
                 <th className="w-14 px-4 py-3"></th>
-                <th className="px-4 py-3 font-medium">Title</th>
-                <th className="w-40 px-4 py-3 font-medium">Artist</th>
-                <th className="w-40 px-4 py-3 font-medium">Album</th>
+                <SortableHeader
+                  label="Title"
+                  sortKey="title"
+                  activeKey={sortKey}
+                  dir={sortDir}
+                  onSort={toggleSort}
+                />
+                <SortableHeader
+                  label="Artist"
+                  sortKey="artist"
+                  activeKey={sortKey}
+                  dir={sortDir}
+                  onSort={toggleSort}
+                  className="w-40"
+                />
+                <SortableHeader
+                  label="Album"
+                  sortKey="album"
+                  activeKey={sortKey}
+                  dir={sortDir}
+                  onSort={toggleSort}
+                  className="w-40"
+                />
                 <th className="w-44 px-4 py-3 font-medium">Format</th>
-                <th className="w-20 px-4 py-3 font-medium">Length</th>
+                <SortableHeader
+                  label="Length"
+                  sortKey="length"
+                  activeKey={sortKey}
+                  dir={sortDir}
+                  onSort={toggleSort}
+                  className="w-20"
+                />
                 <th className="w-56 px-4 py-3 font-medium">Status</th>
                 <th className="w-28 px-4 py-3 font-medium"></th>
               </tr>
@@ -1283,6 +1292,7 @@ export default function LibraryView({ settings, account, onOpenSettings }: Props
                     const someSel =
                       !allSel && gTracks.some((t) => selected.has(t.id));
                     const cover = gTracks[0];
+                    const albumArtist = albumArtistOf(cover, edits);
                     const needConvert = gTracks.filter(
                       (t) => !t.compat.compatible,
                     ).length;
@@ -1313,7 +1323,7 @@ export default function LibraryView({ settings, account, onOpenSettings }: Props
                             hasCover={cover.metadata.has_cover}
                           />
                         </td>
-                        <td colSpan={6} className="px-4 py-2.5">
+                        <td className="px-4 py-2.5">
                           <div className="flex items-center gap-2">
                             <span className="text-fg-subtle">
                               <ChevronIcon open={expanded} />
@@ -1327,6 +1337,10 @@ export default function LibraryView({ settings, account, onOpenSettings }: Props
                             </span>
                           </div>
                         </td>
+                        <td className="max-w-[10rem] truncate px-4 py-2.5 text-fg-muted">
+                          {albumArtist || "–"}
+                        </td>
+                        <td colSpan={4} className="px-4 py-2.5"></td>
                         <td className="px-4 py-2.5"></td>
                       </tr>,
                     );
@@ -1340,7 +1354,7 @@ export default function LibraryView({ settings, account, onOpenSettings }: Props
                     }
                   }
                 } else {
-                  visibleTracks.forEach((t, i) =>
+                  renderOrder.forEach((t, i) =>
                     rows.push(renderTrackRow(t, i)),
                   );
                 }
@@ -1401,6 +1415,43 @@ export default function LibraryView({ settings, account, onOpenSettings }: Props
         <ArrowUpIcon />
       </button>
     </>
+  );
+}
+
+function SortableHeader({
+  label,
+  sortKey,
+  activeKey,
+  dir,
+  onSort,
+  className,
+}: {
+  label: string;
+  sortKey: SortKey;
+  activeKey: SortKey;
+  dir: "asc" | "desc";
+  onSort: (key: SortKey) => void;
+  className?: string;
+}) {
+  const active = activeKey === sortKey;
+  return (
+    <th className={`px-4 py-3 font-medium ${className ?? ""}`} aria-sort={active ? (dir === "asc" ? "ascending" : "descending") : "none"}>
+      <button
+        onClick={() => onSort(sortKey)}
+        className="group inline-flex items-center gap-1 hover:text-fg"
+      >
+        <span className={active ? "text-fg" : undefined}>{label}</span>
+        <span
+          className={`text-xs ${
+            active
+              ? "text-accent-400"
+              : "text-fg-subtle opacity-0 group-hover:opacity-60"
+          }`}
+        >
+          {active ? (dir === "asc" ? "↑" : "↓") : "↕"}
+        </span>
+      </button>
+    </th>
   );
 }
 
