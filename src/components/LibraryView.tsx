@@ -64,7 +64,11 @@ import {
   type SortKey,
 } from "../lib/grouping";
 import { foldersToPrune } from "../lib/dupAlbums";
-import { diffAudioFiles } from "../lib/librarySync";
+import {
+  convertedOutputs,
+  diffAudioFiles,
+  mergeConverted,
+} from "../lib/librarySync";
 
 interface Props {
   settings: Settings;
@@ -320,6 +324,32 @@ export default function LibraryView({
         setSelected(new Set());
         setProgress({});
         setResults({});
+        // Re-analyze the converted outputs so their status/format refresh in
+        // place — an in-place convert keeps the same path, which the disk diff
+        // in incrementalSync() can't detect on its own.
+        const outputs = convertedOutputs(res);
+        if (outputs.length) {
+          const analyzed = await analyzeFiles(outputs);
+          setTracks((prev) => mergeConverted(prev, res, analyzed));
+          // Drop edits of sources that a format change replaced with a new path
+          // (their metadata is now written into the freshly analyzed output).
+          setEdits((prev) => {
+            let dirty = false;
+            const next = { ...prev };
+            for (const r of res) {
+              if (
+                r.success &&
+                r.output_path &&
+                r.output_path !== r.source_path &&
+                next[r.source_path]
+              ) {
+                delete next[r.source_path];
+                dirty = true;
+              }
+            }
+            return dirty ? next : prev;
+          });
+        }
         await incrementalSync();
       } catch (e) {
         unlisten();
