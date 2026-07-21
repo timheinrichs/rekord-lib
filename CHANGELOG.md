@@ -9,6 +9,29 @@ contain incompatible changes.
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-07-21
+
+First production release: installable macOS app that keeps itself up to date.
+
+### Added
+- **Catalog number** and **label** metadata fields (optional), editable in the
+  single and bulk metadata editors; the label is picked up automatically from
+  Bandcamp downloads via embedded tags.
+- **Sortable track list**: sort the top level (collapsed albums + single
+  tracks) by clicking the Title / Artist / Album / Length column headers; tracks
+  within an album stay ordered by track number. Album group rows now show the
+  album artist.
+- **Self-update**: the app checks for a newer release on start, shows an
+  indicator on the settings gear, and installs updates from **Settings → About**
+  (download progress + restart).
+- **About section** in the settings with the app version and a link to the
+  third-party licenses.
+- **Automated releases** via GitHub Actions (signed macOS build + updater
+  artifacts + `latest.json` on tag push).
+- **Test suite**: Rust unit tests and a Vitest + Testing Library frontend suite,
+  plus a CI workflow (typecheck, tests) on every push/PR.
+- **Licensing**: MIT `LICENSE` and `THIRD_PARTY_LICENSES.md` (incl. FFmpeg).
+
 ## [0.2.0] - 2026-07-19
 
 First complete feature release: the scaffold has grown into a usable
