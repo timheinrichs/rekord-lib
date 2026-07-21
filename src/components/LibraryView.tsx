@@ -7,6 +7,7 @@ import {
   type ReactNode,
 } from "react";
 import { getCurrentWebview } from "@tauri-apps/api/webview";
+import { ask } from "@tauri-apps/plugin-dialog";
 import {
   analyzeFiles,
   convertTracks,
@@ -29,6 +30,7 @@ import { loadLibrary, saveLibrary } from "../lib/library";
 import { loadDuplicates, saveDuplicates } from "../lib/duplicates";
 import {
   editComplete,
+  formatDate,
   formatDuration,
   formatLabel,
   formatSampleRate,
@@ -51,7 +53,7 @@ import CoverThumb from "./CoverThumb";
 import MarqueeText from "./MarqueeText";
 import DuplicatesModal from "./DuplicatesModal";
 import AppHeader from "./AppHeader";
-import { ArrowUpIcon, ChevronIcon, EditIcon, SpinnerIcon } from "./icons";
+import { ArrowUpIcon, ChevronIcon, EditIcon, SpinnerIcon, TrashIcon } from "./icons";
 import { useScrolled } from "../lib/useScrolled";
 import {
   albumArtistOf,
@@ -568,10 +570,10 @@ export default function LibraryView({
     [tracks, selected],
   );
 
-  // Duplicates: move one/several files to the trash and update
-  // groups/library live (the modal stays open). Album folders that end up
-  // without any remaining library track are removed too.
-  const handleDeleteDuplicateFiles = useCallback(
+  // Move files to the trash and update groups/library live. Album folders that
+  // end up without any remaining library track are removed too. Throws if any
+  // deletion failed (the duplicates modal surfaces that).
+  const deleteFilesAndPrune = useCallback(
     async (paths: string[]) => {
       const results = await deleteFiles(paths);
       const gone = new Set(results.filter((r) => r.success).map((r) => r.path));
@@ -602,6 +604,27 @@ export default function LibraryView({
       }
     },
     [tracks],
+  );
+
+  // Delete from the library with a confirmation (files go to the trash).
+  const confirmAndDelete = useCallback(
+    async (paths: string[], message: string) => {
+      if (!paths.length) return;
+      const ok = await ask(message, {
+        title: "Delete",
+        kind: "warning",
+        okLabel: "Move to trash",
+        cancelLabel: "Cancel",
+      });
+      if (!ok) return;
+      setError(null);
+      try {
+        await deleteFilesAndPrune(paths);
+      } catch (e) {
+        setError(`Deletion failed: ${e}`);
+      }
+    },
+    [deleteFilesAndPrune],
   );
 
   // Dismiss a group ("not a duplicate") – persistent.
@@ -737,6 +760,18 @@ export default function LibraryView({
           >
             {converting ? "Converting…" : `Convert selection (${selected.size})`}
           </button>
+          <button
+            onClick={() =>
+              void confirmAndDelete(
+                tracks.filter((t) => selected.has(t.id)).map((t) => t.path),
+                `Move ${selected.size} selected track(s) to the trash? Empty folders are removed too.`,
+              )
+            }
+            disabled={converting}
+            className="rounded-lg border border-border-strong px-3 py-2 text-sm hover:border-danger-500 hover:text-danger-500 disabled:opacity-50"
+          >
+            Delete ({selected.size})
+          </button>
         </>
       )}
       {nav}
@@ -854,7 +889,7 @@ export default function LibraryView({
           </div>
         ) : (
           <div className="overflow-x-auto">
-          <table className="w-full min-w-[101rem] table-fixed text-sm">
+          <table className="w-full min-w-[109rem] table-fixed text-sm">
             <thead className="text-left text-fg-muted">
               <tr className="border-b border-border">
                 <th className="w-10 px-4 py-3">
@@ -902,6 +937,14 @@ export default function LibraryView({
                   className="w-20"
                 />
                 <th className="w-56 px-4 py-3 font-medium">Status</th>
+                <SortableHeader
+                  label="Downloaded"
+                  sortKey="date"
+                  activeKey={sortKey}
+                  dir={sortDir}
+                  onSort={toggleSort}
+                  className="w-32"
+                />
                 <th className="w-28 px-4 py-3 font-medium"></th>
               </tr>
             </thead>
@@ -996,6 +1039,9 @@ export default function LibraryView({
                         </div>
                       )}
                     </td>
+                    <td className="whitespace-nowrap px-4 py-3 text-fg-muted">
+                      {formatDate(t.download_date)}
+                    </td>
                     <td
                       className="px-4 py-3 text-right"
                       onClick={(e) => e.stopPropagation()}
@@ -1019,6 +1065,20 @@ export default function LibraryView({
                           aria-label="Edit metadata"
                         >
                           <EditIcon />
+                        </button>
+                        <button
+                          onClick={() =>
+                            void confirmAndDelete(
+                              [t.path],
+                              `Move “${md.title || t.file_name}” to the trash?`,
+                            )
+                          }
+                          disabled={converting}
+                          className="flex h-8 w-8 items-center justify-center rounded-md text-fg-subtle hover:bg-surface-2 hover:text-danger-500 disabled:opacity-40"
+                          title="Delete (move to trash)"
+                          aria-label="Delete track"
+                        >
+                          <TrashIcon />
                         </button>
                       </div>
                     </td>
@@ -1061,6 +1121,9 @@ export default function LibraryView({
                     const albumLength = gTracks.reduce(
                       (s, t) => s + t.audio.duration_secs,
                       0,
+                    );
+                    const albumDate = Math.max(
+                      ...gTracks.map((t) => t.download_date ?? 0),
                     );
                     rows.push(
                       <tr
@@ -1129,7 +1192,28 @@ export default function LibraryView({
                             )}
                           </div>
                         </td>
-                        <td className="px-4 py-2.5"></td>
+                        <td className="whitespace-nowrap px-4 py-2.5 text-fg-muted">
+                          {formatDate(albumDate)}
+                        </td>
+                        <td
+                          className="px-4 py-2.5 text-right"
+                          onClick={(e) => e.stopPropagation()}
+                        >
+                          <button
+                            onClick={() =>
+                              void confirmAndDelete(
+                                gTracks.map((t) => t.path),
+                                `Move the album “${it.key}” (${gTracks.length} files) to the trash? An empty folder is removed too.`,
+                              )
+                            }
+                            disabled={converting}
+                            className="flex h-8 w-8 items-center justify-center rounded-md text-fg-subtle hover:bg-surface-2 hover:text-danger-500 disabled:opacity-40"
+                            title="Delete album (move to trash)"
+                            aria-label="Delete album"
+                          >
+                            <TrashIcon />
+                          </button>
+                        </td>
                       </tr>,
                     );
                     if (expanded) {
@@ -1185,7 +1269,7 @@ export default function LibraryView({
           groups={dupGroups}
           scanning={dedupeRunning}
           onClose={() => setDupOpen(false)}
-          onDeleteFiles={handleDeleteDuplicateFiles}
+          onDeleteFiles={deleteFilesAndPrune}
           onDismissGroup={dismissDuplicateGroup}
           onRescan={() => void startDuplicateScan()}
         />

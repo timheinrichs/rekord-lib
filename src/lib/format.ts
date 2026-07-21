@@ -22,6 +22,15 @@ export function formatDuration(secs: number): string {
   return `${m}:${s.toString().padStart(2, "0")}`;
 }
 
+/** Unix millis → "YYYY-MM-DD" (or "–"). */
+export function formatDate(ms: number | null): string {
+  if (!ms) return "–";
+  const d = new Date(ms);
+  if (Number.isNaN(d.getTime())) return "–";
+  const p = (n: number) => n.toString().padStart(2, "0");
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
+}
+
 export function formatSampleRate(hz: number): string {
   if (!hz) return "–";
   return `${(hz / 1000).toFixed(1)} kHz`;

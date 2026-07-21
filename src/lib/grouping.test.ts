@@ -113,6 +113,40 @@ describe("buildAlbumItems", () => {
   });
 });
 
+describe("sort by download date", () => {
+  it("sorts flat tracks by date", () => {
+    const t1 = makeTrack({ id: "t1", path: "/x/1.aiff", download_date: 100 });
+    const t2 = makeTrack({ id: "t2", path: "/x/2.aiff", download_date: 300 });
+    expect(sortTracks([t2, t1], NO_EDITS, "date", "asc").map((t) => t.id)).toEqual(["t1", "t2"]);
+    expect(sortTracks([t1, t2], NO_EDITS, "date", "desc").map((t) => t.id)).toEqual(["t2", "t1"]);
+  });
+
+  it("uses the album's newest track date at the top level", () => {
+    const beta1 = makeTrack({
+      id: "b1",
+      path: "/lib/Beta/1.aiff",
+      metadata: makeMetadata({ album: "Beta", track_number: 1 }),
+      download_date: 100,
+    });
+    const beta2 = makeTrack({
+      id: "b2",
+      path: "/lib/Beta/2.aiff",
+      metadata: makeMetadata({ album: "Beta", track_number: 2 }),
+      download_date: 300,
+    });
+    const solo = makeTrack({
+      id: "solo",
+      path: "/lib/Alpha/s.aiff",
+      metadata: makeMetadata({ album: "Alpha" }),
+      download_date: 500,
+    });
+    const items = buildAlbumItems([beta1, beta2, solo], NO_EDITS, "date", "asc");
+    // Album Beta (max date 300) before the single (500).
+    expect(items[0].type).toBe("group");
+    expect(items[1].type).toBe("track");
+  });
+});
+
 describe("sortTracks (flat)", () => {
   it("sorts by title ascending and descending", () => {
     const { a1, a2, solo } = scene();

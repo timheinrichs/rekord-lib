@@ -1,7 +1,7 @@
 import type { DuplicateGroup, TrackAnalysis, TrackEdit } from "../types";
 
 /** Column the top-level list (collapsed albums + single tracks) is sorted by. */
-export type SortKey = "title" | "artist" | "album" | "length";
+export type SortKey = "title" | "artist" | "album" | "length" | "date";
 
 export type SortDir = "asc" | "desc";
 
@@ -91,13 +91,16 @@ export function buildAlbumItems(
   }
 
   // A group's representative is its first (lowest-numbered) track; for the
-  // "album" column it is the album name, for "length" the total duration.
-  if (sortKey === "length") {
-    const itemLen = (it: AlbumItem): number =>
+  // "album" column it is the album name, for "length" the total duration and for
+  // "date" the newest track's download date.
+  if (sortKey === "length" || sortKey === "date") {
+    const itemNum = (it: AlbumItem): number =>
       it.type === "group"
-        ? it.tracks.reduce((s, t) => s + t.audio.duration_secs, 0)
-        : it.track.audio.duration_secs;
-    items.sort((a, b) => dir * (itemLen(a) - itemLen(b)));
+        ? sortKey === "length"
+          ? it.tracks.reduce((s, t) => s + t.audio.duration_secs, 0)
+          : Math.max(...it.tracks.map((t) => t.download_date ?? 0))
+        : trackNumber(it.track, sortKey);
+    items.sort((a, b) => dir * (itemNum(a) - itemNum(b)));
   } else {
     const itemText = (it: AlbumItem): string =>
       it.type === "group"
@@ -119,10 +122,15 @@ export function sortTracks(
 ): TrackAnalysis[] {
   const dir = sortDir === "asc" ? 1 : -1;
   return [...tracks].sort((a, b) =>
-    sortKey === "length"
-      ? dir * (a.audio.duration_secs - b.audio.duration_secs)
+    sortKey === "length" || sortKey === "date"
+      ? dir * (trackNumber(a, sortKey) - trackNumber(b, sortKey))
       : compareValues(trackText(a, edits, sortKey), trackText(b, edits, sortKey), dir),
   );
+}
+
+/** Numeric sort value of a track for the "length" / "date" columns. */
+function trackNumber(t: TrackAnalysis, key: SortKey): number {
+  return key === "length" ? t.audio.duration_secs : t.download_date ?? 0;
 }
 
 /**

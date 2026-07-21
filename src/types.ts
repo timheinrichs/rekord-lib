@@ -47,6 +47,8 @@ export interface TrackAnalysis {
   metadata: TrackMetadata;
   compat: CompatReport;
   metadata_incomplete: boolean;
+  /** File creation time (Unix millis), used as the "downloaded" date. */
+  download_date: number | null;
 }
 
 export interface ConvertOptions {

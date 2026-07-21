@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   editComplete,
   formatBytes,
+  formatDate,
   formatDuration,
   formatLabel,
   formatSampleRate,
@@ -54,6 +55,15 @@ describe("formatSampleRate", () => {
     expect(formatSampleRate(44_100)).toBe("44.1 kHz");
     expect(formatSampleRate(48_000)).toBe("48.0 kHz");
     expect(formatSampleRate(0)).toBe("–");
+  });
+});
+
+describe("formatDate", () => {
+  it("formats millis as YYYY-MM-DD and handles null", () => {
+    const ms = new Date(2026, 6, 21).getTime(); // 2026-07-21 local
+    expect(formatDate(ms)).toBe("2026-07-21");
+    expect(formatDate(null)).toBe("–");
+    expect(formatDate(0)).toBe("–");
   });
 });
 
