@@ -20,9 +20,10 @@ contain incompatible changes.
   that album.
 - **Bandcamp sync** no longer re-downloads purchases it already has: presence is
   now confirmed via a persistent download ledger (what each download actually
-  wrote) in addition to metadata matching, and matching keeps non-Latin (e.g.
-  Cyrillic) titles instead of erasing them. This fixes the wrong "missing" count
-  and the endless re-download of the same track.
+  wrote) in addition to metadata matching. Matching also keeps non-Latin (e.g.
+  Cyrillic) titles instead of erasing them, and falls back to the file name for
+  untagged single-track downloads. This fixes the wrong "missing" count and the
+  endless re-download of the same track.
 
 ## [0.4.1] - 2026-07-22
 

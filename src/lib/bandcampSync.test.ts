@@ -79,6 +79,28 @@ describe("syncCollection", () => {
     expect(result.missing.map((m) => m.key)).toEqual(["p2"]);
   });
 
+  it("matches an untagged single track by its file name", () => {
+    // Bandcamp single-track downloads are saved as "<title>.<ext>" and often
+    // carry no title/album tag, so metadata alone can't match them.
+    const tracks = [
+      makeTrack({
+        id: "t1",
+        file_name: "Where's The Love Gone.aiff",
+        metadata: makeMetadata({
+          title: null,
+          album: null,
+          artist: null,
+          album_artist: null,
+        }),
+      }),
+    ];
+    const result = syncCollection(tracks, [
+      item({ key: "t7", title: "Where's The Love Gone", band_name: "Julie Stapleton", item_type: "track" }),
+    ]);
+    expect(result.originById.t1).toBe("t7");
+    expect(result.missing).toHaveLength(0);
+  });
+
   it("matches non-Latin (e.g. Cyrillic) titles instead of erasing them", () => {
     const tracks = [
       makeTrack({
