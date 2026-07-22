@@ -9,6 +9,8 @@ contain incompatible changes.
 
 ## [Unreleased]
 
+## [0.4.3] - 2026-07-23
+
 ### Added
 - **Undo** for tag writes: every metadata write now snapshots the previous
   on-disk values first, and an "Undo" header action reverts the last write
