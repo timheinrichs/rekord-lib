@@ -101,6 +101,28 @@ describe("syncCollection", () => {
     expect(result.missing).toHaveLength(0);
   });
 
+  it("matches an album by its extracted folder name when tags differ", () => {
+    // "Double O" was extracted into a "Double O/" folder; the per-track tags
+    // don't carry the album title (VA-style / odd tagging), but the folder does.
+    const tracks = [
+      makeTrack({
+        id: "t1",
+        path: "/lib/Double O/01 Intro.aiff",
+        metadata: makeMetadata({ album: "Some Compilation", title: "Intro", album_artist: "Various" }),
+      }),
+      makeTrack({
+        id: "t2",
+        path: "/lib/Double O/02 Outro.aiff",
+        metadata: makeMetadata({ album: "Some Compilation", title: "Outro", album_artist: "Various" }),
+      }),
+    ];
+    const result = syncCollection(tracks, [
+      item({ key: "pkg9", title: "Double O", band_name: "Asphalt DJ", item_type: "package" }),
+    ]);
+    expect(result.originById).toEqual({ t1: "pkg9", t2: "pkg9" });
+    expect(result.missing).toHaveLength(0);
+  });
+
   it("matches non-Latin (e.g. Cyrillic) titles instead of erasing them", () => {
     const tracks = [
       makeTrack({

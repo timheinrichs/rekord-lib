@@ -14,26 +14,34 @@ function normalize(s: string | null | undefined): string {
     .trim();
 }
 
+/** Parent folder name of a POSIX-style path (matches the backend paths). */
+function parentFolderName(path: string): string {
+  const parts = path.split("/");
+  return parts.length >= 2 ? parts[parts.length - 2] : "";
+}
+
 /** Does a local track match the Bandcamp entry (album/track + artist)? */
 function matches(track: TrackAnalysis, item: BandcampItem): boolean {
   const itemTitle = normalize(item.title);
   const band = normalize(item.band_name);
   if (!itemTitle) return false;
 
+  // Downloads are named after the purchase: an album ZIP extracts into a folder
+  // "<title>/", a single track is saved as "<title>.<ext>". These names come
+  // straight from the purchase and don't depend on tags, so an exact match is a
+  // strong identity on its own — accept it without the artist check (which the
+  // real tags often contradict, e.g. a "Various"-tagged compilation).
+  const fileBase = normalize(track.file_name.replace(/\.[^./\\]+$/, ""));
+  const folder = normalize(parentFolderName(track.path));
+  if (fileBase === itemTitle || folder === itemTitle) return true;
+
+  // Otherwise fall back to the tags, gated by a loose artist check to avoid
+  // false hits on common album/track titles.
   const album = normalize(track.metadata.album);
   const title = normalize(track.metadata.title);
   const artist = normalize(track.metadata.album_artist ?? track.metadata.artist);
-  // Single-track downloads are saved as "<title>.<ext>" and frequently carry no
-  // readable tags at all, so fall back to the file name (minus extension).
-  const fileBase = normalize(track.file_name.replace(/\.[^./\\]+$/, ""));
+  if (album !== itemTitle && title !== itemTitle) return false;
 
-  // Album purchase: album tag == item title. Single track: track title (or, when
-  // untagged, the file name) == item title.
-  const titleHit =
-    album === itemTitle || title === itemTitle || fileBase === itemTitle;
-  if (!titleHit) return false;
-
-  // Loosely check the artist (an empty band name counts as a match).
   if (!band || !artist) return true;
   return artist === band || artist.includes(band) || band.includes(artist);
 }
