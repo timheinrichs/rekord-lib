@@ -14,7 +14,7 @@ use crate::metadata::{artwork, suggest, write};
 use crate::models::{
     BandcampAccount, BandcampDownloadResult, BandcampItem, ConvertJob, ConvertOptions,
     ConvertResult, CoverInput, DeleteResult, DupCandidate, DuplicateGroup, MetadataSuggestions,
-    TrackAnalysis,
+    TrackAnalysis, TrackMetadata,
 };
 
 /// Progress of the library scan (streamed to the frontend).
@@ -537,6 +537,54 @@ fn dir_holds_only(dir: &str, paths: &[String]) -> bool {
     let ours: std::collections::HashSet<&str> =
         paths.iter().map(String::as_str).collect();
     audio.iter().all(|p| ours.contains(p.as_str()))
+}
+
+/// One file to (re)write tags into, with its full confirmed metadata.
+#[derive(Debug, serde::Deserialize)]
+pub struct WriteMetadataItem {
+    pub path: String,
+    pub metadata: TrackMetadata,
+    #[serde(default)]
+    pub cover: Option<CoverInput>,
+}
+
+/// Outcome of writing one file's metadata (re-analyzed on success).
+#[derive(Debug, serde::Serialize)]
+pub struct WriteMetadataResult {
+    pub path: String,
+    pub track: Option<TrackAnalysis>,
+    pub error: Option<String>,
+}
+
+/// Writes confirmed metadata (keeping/updating the cover) straight into the
+/// files via lofty, then re-analyzes each so the caller can refresh the row
+/// without a full rescan. Used by the metadata editor and bulk edit so tag
+/// changes land on disk immediately — not only when a file is converted.
+#[tauri::command]
+pub async fn write_metadata(
+    app: AppHandle,
+    items: Vec<WriteMetadataItem>,
+) -> Vec<WriteMetadataResult> {
+    let mut out = Vec::with_capacity(items.len());
+    for item in items {
+        let cover = item.cover.unwrap_or(CoverInput::Keep);
+        match write::finalize(&item.path, &item.path, &Some(item.metadata), &cover).await {
+            Ok(()) => {
+                let track = analyze_path(&app, item.path.clone()).await;
+                out.push(WriteMetadataResult {
+                    path: item.path,
+                    track,
+                    error: None,
+                });
+            }
+            Err(e) => out.push(WriteMetadataResult {
+                path: item.path,
+                track: None,
+                error: Some(e.to_string()),
+            }),
+        }
+    }
+    out
 }
 
 /// Moves the given files to the trash (reversible, no Finder sound).

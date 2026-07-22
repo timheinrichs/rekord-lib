@@ -26,6 +26,8 @@ import {
   startDedupe,
   startLibraryWatch,
   startScan,
+  writeMetadata,
+  type WriteMetadataItem,
 } from "../lib/api";
 import { loadLibrary, saveLibrary } from "../lib/library";
 import { loadDuplicates, saveDuplicates } from "../lib/duplicates";
@@ -43,7 +45,6 @@ import type {
   ConvertOptions,
   ConvertProgress,
   ConvertResult,
-  CoverInput,
   DeleteResult,
   DuplicateGroup,
   TrackAnalysis,
@@ -67,6 +68,12 @@ import {
 } from "../lib/grouping";
 import { foldersToPrune, parentDir } from "../lib/dupAlbums";
 import {
+  allFolderPaths,
+  buildFolderTree,
+  folderTrackList,
+  type FolderNode,
+} from "../lib/folderTree";
+import {
   convertedOutputs,
   diffAudioFiles,
   mergeConverted,
@@ -86,6 +93,7 @@ interface Props {
 }
 
 type Filter = "all" | "convert" | "incomplete";
+type Grouping = "flat" | "album" | "folder";
 
 export default function LibraryView({
   settings,
@@ -107,11 +115,16 @@ export default function LibraryView({
   const [edits, setEdits] = useState<Record<string, TrackEdit>>({});
   const [editingId, setEditingId] = useState<string | null>(null);
   const [bulkOpen, setBulkOpen] = useState(false);
+  const [writing, setWriting] = useState(false);
+  // When a bulk edit targets a folder (not the checkbox selection), the folder's
+  // track ids are held here so applyBulk writes to them instead of `selected`.
+  const [bulkFolderIds, setBulkFolderIds] = useState<Set<string> | null>(null);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [filter, setFilter] = useState<Filter>("all");
   const [search, setSearch] = useState("");
-  const [groupByAlbum, setGroupByAlbum] = useState(true);
+  const [grouping, setGrouping] = useState<Grouping>("album");
   const [expandedAlbums, setExpandedAlbums] = useState<Set<string>>(new Set());
+  const [expandedFolders, setExpandedFolders] = useState<Set<string>>(new Set());
   const [sortKey, setSortKey] = useState<SortKey>("artist");
   const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
   const [error, setError] = useState<string | null>(null);
@@ -460,21 +473,38 @@ export default function LibraryView({
   // Grouping by album + top-level sorting (pure logic lives in lib/grouping).
   const albumItems = useMemo<AlbumItem[] | null>(
     () =>
-      groupByAlbum
+      grouping === "album"
         ? buildAlbumItems(visibleTracks, edits, sortKey, sortDir)
         : null,
-    [groupByAlbum, visibleTracks, edits, sortKey, sortDir],
+    [grouping, visibleTracks, edits, sortKey, sortDir],
   );
 
   // Flat (ungrouped) render order, sorted by the active column.
   const sortedFlat = useMemo(
     () =>
-      groupByAlbum ? null : sortTracks(visibleTracks, edits, sortKey, sortDir),
-    [groupByAlbum, visibleTracks, edits, sortKey, sortDir],
+      grouping === "flat"
+        ? sortTracks(visibleTracks, edits, sortKey, sortDir)
+        : null,
+    [grouping, visibleTracks, edits, sortKey, sortDir],
+  );
+
+  // Folder tree of the visible tracks (real directory structure).
+  const folderRoot = useMemo(
+    () =>
+      grouping === "folder"
+        ? buildFolderTree(visibleTracks, libraryDir ?? "")
+        : null,
+    [grouping, visibleTracks, libraryDir],
+  );
+
+  const allFolderKeys = useMemo(
+    () => (folderRoot ? allFolderPaths(folderRoot) : []),
+    [folderRoot],
   );
 
   // Flat render order (including collapsed) for the shift selection.
   const renderOrder = useMemo(() => {
+    if (folderRoot) return folderTrackList(folderRoot);
     if (!albumItems) return sortedFlat ?? visibleTracks;
     const arr: TrackAnalysis[] = [];
     for (const it of albumItems) {
@@ -482,7 +512,7 @@ export default function LibraryView({
       else arr.push(it.track);
     }
     return arr;
-  }, [albumItems, sortedFlat, visibleTracks]);
+  }, [folderRoot, albumItems, sortedFlat, visibleTracks]);
 
   const allGroupKeys = useMemo(
     () =>
@@ -520,6 +550,22 @@ export default function LibraryView({
         : new Set(allGroupKeys),
     );
   }, [allGroupKeys]);
+
+  const toggleFolder = useCallback((path: string) => {
+    setExpandedFolders((prev) => {
+      const next = new Set(prev);
+      next.has(path) ? next.delete(path) : next.add(path);
+      return next;
+    });
+  }, []);
+
+  const toggleAllFolders = useCallback(() => {
+    setExpandedFolders((prev) =>
+      prev.size >= allFolderKeys.length && allFolderKeys.length > 0
+        ? new Set()
+        : new Set(allFolderKeys),
+    );
+  }, [allFolderKeys]);
 
   // (De)select all tracks of an album group.
   const toggleAlbumSelect = useCallback((tracksInAlbum: TrackAnalysis[]) => {
@@ -580,29 +626,76 @@ export default function LibraryView({
     [renderOrder],
   );
 
-  const saveEdit = useCallback((id: string, edit: TrackEdit) => {
-    setEdits((prev) => ({ ...prev, [id]: edit }));
-    setEditingId(null);
+  // Writes confirmed metadata straight into the files, then swaps in the
+  // re-analyzed tracks and clears the now-persisted pending edits. On failure
+  // the pending edit is kept so the change isn't lost.
+  const writeToFiles = useCallback(async (reqs: WriteMetadataItem[]) => {
+    if (!reqs.length) return;
+    setWriting(true);
+    setError(null);
+    try {
+      const results = await writeMetadata(reqs);
+      const byPath = new Map(results.map((r) => [r.path, r]));
+      setTracks((prev) => prev.map((t) => byPath.get(t.path)?.track ?? t));
+      const writtenIds = new Set(
+        results.filter((r) => r.track).map((r) => r.track!.id),
+      );
+      if (writtenIds.size) {
+        setEdits((prev) => {
+          const next = { ...prev };
+          for (const id of writtenIds) delete next[id];
+          return next;
+        });
+      }
+      const failed = results.filter((r) => r.error);
+      if (failed.length) {
+        setError(
+          `Failed to write tags for ${failed.length} file(s): ${failed
+            .map((f) => f.error)
+            .filter(Boolean)
+            .join("; ")}`,
+        );
+      }
+    } catch (e) {
+      setError(`Failed to write tags: ${e}`);
+    } finally {
+      setWriting(false);
+    }
   }, []);
 
-  // Bulk edit: apply the selected fields to all selected tracks.
-  const applyBulk = useCallback(
-    (patch: BulkPatch) => {
-      setEdits((prev) => {
-        const next = { ...prev };
-        tracks.forEach((t) => {
-          if (!selected.has(t.id)) return;
-          const base = prev[t.id]?.metadata ?? t.metadata;
-          const cover: CoverInput =
-            prev[t.id]?.cover ??
-            (t.metadata.has_cover ? { kind: "keep" } : { kind: "none" });
-          next[t.id] = { metadata: { ...base, ...patch }, cover };
-        });
-        return next;
-      });
-      setBulkOpen(false);
+  const saveEdit = useCallback(
+    (id: string, edit: TrackEdit) => {
+      const track = tracks.find((t) => t.id === id);
+      setEditingId(null);
+      if (!track) return;
+      // Show the edit immediately; the write re-analyzes and clears it.
+      setEdits((prev) => ({ ...prev, [id]: edit }));
+      void writeToFiles([
+        { path: track.path, metadata: edit.metadata, cover: edit.cover },
+      ]);
     },
-    [tracks, selected],
+    [tracks, writeToFiles],
+  );
+
+  // Bulk edit: write the selected fields into all target tracks on disk.
+  const applyBulkTo = useCallback(
+    (patch: BulkPatch, targetIds: Set<string>) => {
+      const reqs: WriteMetadataItem[] = [];
+      for (const t of tracks) {
+        if (!targetIds.has(t.id)) continue;
+        const base = edits[t.id]?.metadata ?? t.metadata;
+        reqs.push({ path: t.path, metadata: { ...base, ...patch } });
+      }
+      setBulkOpen(false);
+      setBulkFolderIds(null);
+      void writeToFiles(reqs);
+    },
+    [tracks, edits, writeToFiles],
+  );
+
+  const applyBulk = useCallback(
+    (patch: BulkPatch) => applyBulkTo(patch, bulkFolderIds ?? selected),
+    [applyBulkTo, bulkFolderIds, selected],
   );
 
   // Apply a set of delete results to the live state (tracks, selection, dup
@@ -725,6 +818,45 @@ export default function LibraryView({
     [deleteAlbumTracks],
   );
 
+  // Folder view: open the bulk editor scoped to all tracks in a folder.
+  const editFolder = useCallback((node: FolderNode) => {
+    const ids = new Set(folderTrackList(node).map((t) => t.id));
+    if (!ids.size) return;
+    setBulkFolderIds(ids);
+    setBulkOpen(true);
+  }, []);
+
+  const toggleFolderSelect = useCallback(
+    (node: FolderNode) => toggleAlbumSelect(folderTrackList(node)),
+    [toggleAlbumSelect],
+  );
+
+  // Confirm, then trash a whole folder (incl. subfolders and side files).
+  const confirmAndDeleteFolder = useCallback(
+    async (node: FolderNode) => {
+      const paths = folderTrackList(node).map((t) => t.path);
+      if (!paths.length) return;
+      const ok = await ask(
+        `Move the folder “${node.name}” (${paths.length} tracks) to the trash? The whole folder is removed.`,
+        {
+          title: "Delete",
+          kind: "warning",
+          okLabel: "Move to trash",
+          cancelLabel: "Cancel",
+        },
+      );
+      if (!ok) return;
+      setError(null);
+      try {
+        const { failed } = applyDeletion(await deleteAlbum(node.path, paths));
+        raiseIfFailed(failed);
+      } catch (e) {
+        setError(`Deletion failed: ${e}`);
+      }
+    },
+    [applyDeletion],
+  );
+
   // Dismiss a group ("not a duplicate") – persistent.
   const dismissDuplicateGroup = useCallback((id: string) => {
     setDupGroups((prev) => {
@@ -842,11 +974,20 @@ export default function LibraryView({
             ? `Duplicates (${dupGroups.length})`
             : "Find duplicates"}
       </button>
+      {writing && (
+        <span
+          className="flex h-9 w-9 items-center justify-center text-fg-subtle"
+          title="Writing tags…"
+          aria-label="Writing tags"
+        >
+          <SpinnerIcon />
+        </span>
+      )}
       {selected.size > 0 && (
         <>
           <button
             onClick={() => setBulkOpen(true)}
-            disabled={converting}
+            disabled={converting || writing}
             className="rounded-lg border border-border-strong px-3 py-2 text-sm hover:border-accent-500 disabled:opacity-50"
           >
             Edit metadata ({selected.size})
@@ -936,17 +1077,44 @@ export default function LibraryView({
             label={`Metadata incomplete (${tracks.filter(isIncomplete).length})`}
           />
           <div className="ml-auto flex items-center gap-2">
-            <FilterChip
-              active={groupByAlbum}
-              onClick={() => setGroupByAlbum((v) => !v)}
-              label="By album"
-            />
-            {groupByAlbum && allGroupKeys.length > 0 && (
+            {/* Grouping switch: flat list / by album / by folder tree. */}
+            <div className="flex items-center rounded-full ring-1 ring-border-strong">
+              {(
+                [
+                  ["flat", "Flat"],
+                  ["album", "By album"],
+                  ["folder", "By folder"],
+                ] as [Grouping, string][]
+              ).map(([key, label]) => (
+                <button
+                  key={key}
+                  onClick={() => setGrouping(key)}
+                  className={`whitespace-nowrap rounded-full px-3 py-1.5 text-sm transition-colors ${
+                    grouping === key
+                      ? "bg-accent-600 text-fg"
+                      : "text-fg-muted hover:text-fg"
+                  }`}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+            {grouping === "album" && allGroupKeys.length > 0 && (
               <button
                 onClick={toggleAllAlbums}
                 className="whitespace-nowrap rounded-full px-3 py-1.5 text-sm text-fg-muted ring-1 ring-border-strong transition-colors hover:text-fg hover:ring-border-strong"
               >
                 {expandedAlbums.size >= allGroupKeys.length
+                  ? "Collapse all"
+                  : "Expand all"}
+              </button>
+            )}
+            {grouping === "folder" && allFolderKeys.length > 0 && (
+              <button
+                onClick={toggleAllFolders}
+                className="whitespace-nowrap rounded-full px-3 py-1.5 text-sm text-fg-muted ring-1 ring-border-strong transition-colors hover:text-fg hover:ring-border-strong"
+              >
+                {expandedFolders.size >= allFolderKeys.length
                   ? "Collapse all"
                   : "Expand all"}
               </button>
@@ -1048,7 +1216,11 @@ export default function LibraryView({
             </thead>
             <tbody>
               {(() => {
-                const renderTrackRow = (t: TrackAnalysis, index: number) => {
+                const renderTrackRow = (
+                  t: TrackAnalysis,
+                  index: number,
+                  depth = 0,
+                ) => {
                 const prog = progress[t.id];
                 const result = results[t.id];
                 const fromBandcamp = !!originById[t.id];
@@ -1062,6 +1234,7 @@ export default function LibraryView({
                   >
                     <td
                       className="px-4 py-3"
+                      style={depth ? { paddingLeft: 16 + depth * 20 } : undefined}
                       onClick={(e) => e.stopPropagation()}
                     >
                       <input
@@ -1185,7 +1358,104 @@ export default function LibraryView({
                 };
 
                 const rows: ReactNode[] = [];
-                if (albumItems) {
+
+                // Folder view: render the directory tree (folders + track leaves).
+                const renderFolderNode = (
+                  node: FolderNode,
+                  depth: number,
+                  idxRef: { i: number },
+                ) => {
+                  const nodeTracks = folderTrackList(node);
+                  const allSel =
+                    nodeTracks.length > 0 &&
+                    nodeTracks.every((t) => selected.has(t.id));
+                  const someSel =
+                    !allSel && nodeTracks.some((t) => selected.has(t.id));
+                  const expanded = expandedFolders.has(node.path);
+                  rows.push(
+                    <tr
+                      key={`f-${node.path}`}
+                      onClick={() => toggleFolder(node.path)}
+                      className="group cursor-pointer border-b border-border bg-surface-2/40 hover:bg-surface-2"
+                    >
+                      <td
+                        className="px-4 py-2.5"
+                        onClick={(e) => e.stopPropagation()}
+                      >
+                        <input
+                          type="checkbox"
+                          checked={allSel}
+                          ref={(el) => {
+                            if (el) el.indeterminate = someSel;
+                          }}
+                          onChange={() => toggleFolderSelect(node)}
+                          className="h-4 w-4 rounded border-border-strong bg-surface-2"
+                          aria-label={`Select ${node.name}`}
+                        />
+                      </td>
+                      <td
+                        colSpan={8}
+                        className="px-4 py-2.5"
+                        style={{ paddingLeft: 16 + depth * 20 }}
+                      >
+                        <div className="flex items-center gap-2">
+                          <span className="shrink-0 text-fg-subtle">
+                            <ChevronIcon open={expanded} />
+                          </span>
+                          <span className="min-w-0 truncate font-medium text-fg">
+                            {node.name}
+                          </span>
+                          <span className="shrink-0 whitespace-nowrap pl-2 text-xs text-fg-subtle">
+                            {nodeTracks.length} tracks
+                          </span>
+                        </div>
+                      </td>
+                      <td
+                        className="relative px-4 py-2.5"
+                        onClick={(e) => e.stopPropagation()}
+                      >
+                        <div className="pointer-events-none absolute inset-y-0 right-4 flex items-center gap-2 rounded-lg bg-surface-2 pl-3 opacity-0 transition-opacity group-hover:pointer-events-auto group-hover:opacity-100">
+                          <button
+                            onClick={() => editFolder(node)}
+                            disabled={writing}
+                            className="flex h-8 w-8 items-center justify-center rounded-md text-fg-subtle hover:bg-surface hover:text-accent-400 disabled:opacity-40"
+                            title="Edit metadata for all tracks in this folder"
+                            aria-label="Edit folder metadata"
+                          >
+                            <EditIcon />
+                          </button>
+                          <button
+                            onClick={() => void confirmAndDeleteFolder(node)}
+                            disabled={converting}
+                            className="flex h-8 w-8 items-center justify-center rounded-md text-fg-subtle hover:bg-surface hover:text-danger-500 disabled:opacity-40"
+                            title="Delete folder (move to trash)"
+                            aria-label="Delete folder"
+                          >
+                            <TrashIcon />
+                          </button>
+                        </div>
+                      </td>
+                    </tr>,
+                  );
+                  if (expanded) {
+                    for (const child of node.folders)
+                      renderFolderNode(child, depth + 1, idxRef);
+                    node.tracks.forEach((t) => {
+                      rows.push(renderTrackRow(t, idxRef.i++, depth + 1));
+                    });
+                  } else {
+                    idxRef.i += nodeTracks.length;
+                  }
+                };
+
+                if (folderRoot) {
+                  const idxRef = { i: 0 };
+                  for (const child of folderRoot.folders)
+                    renderFolderNode(child, 0, idxRef);
+                  folderRoot.tracks.forEach((t) =>
+                    rows.push(renderTrackRow(t, idxRef.i++, 0)),
+                  );
+                } else if (albumItems) {
                   let idx = 0;
                   for (const it of albumItems) {
                     if (it.type === "track") {
@@ -1365,9 +1635,12 @@ export default function LibraryView({
 
       {bulkOpen && (
         <BulkMetadataEditor
-          count={selected.size}
+          count={(bulkFolderIds ?? selected).size}
           suggestions={fieldOptions}
-          onClose={() => setBulkOpen(false)}
+          onClose={() => {
+            setBulkOpen(false);
+            setBulkFolderIds(null);
+          }}
           onApply={applyBulk}
         />
       )}

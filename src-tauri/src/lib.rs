@@ -56,6 +56,7 @@ pub fn run() {
             commands::dedupe_status,
             commands::dedupe_result,
             commands::cancel_dedupe,
+            commands::write_metadata,
             commands::delete_files,
             commands::delete_album,
             commands::prune_empty_dirs,

@@ -21,6 +21,7 @@ import type {
   ScanProgress,
   ScanStatus,
   TrackAnalysis,
+  TrackMetadata,
 } from "../types";
 
 export interface BandcampDownloadResult {
@@ -121,6 +122,31 @@ export function onDedupeProgress(
 /** Subscribes to the duplicate detection completion event (delivers the result). */
 export function onDedupeDone(cb: (d: DedupeDone) => void): Promise<UnlistenFn> {
   return listen<DedupeDone>("dedupe://done", (e) => cb(e.payload));
+}
+
+/** A file to write confirmed metadata into (cover defaults to keeping it). */
+export interface WriteMetadataItem {
+  path: string;
+  metadata: TrackMetadata;
+  cover?: CoverInput;
+}
+
+/** Result of writing one file's tags (re-analyzed track on success). */
+export interface WriteMetadataResult {
+  path: string;
+  track: TrackAnalysis | null;
+  error: string | null;
+}
+
+/**
+ * Writes confirmed metadata (and cover) directly into the files via lofty and
+ * returns the re-analyzed tracks. Used by the metadata editor and bulk edit so
+ * tag changes are persisted immediately, not only on conversion.
+ */
+export function writeMetadata(
+  items: WriteMetadataItem[],
+): Promise<WriteMetadataResult[]> {
+  return invoke<WriteMetadataResult[]>("write_metadata", { items });
 }
 
 /** Moves files to the trash (reversible). */

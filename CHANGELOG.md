@@ -9,7 +9,17 @@ contain incompatible changes.
 
 ## [Unreleased]
 
+### Added
+- **Folder view**: a new grouping mode (Flat / By album / **By folder**) shows the
+  library as its real directory tree with collapsible folders. Each folder can be
+  bulk-edited (e.g. give a loose collection of singles/EPs a common album tag),
+  selected, or deleted as a whole — handy for tidying up many small entries.
+
 ### Changed
+- Metadata edits (single **and** bulk) are now **written straight into the files**
+  via lofty and re-analyzed in place, instead of only being applied on
+  conversion. So a tag change (e.g. album) is present on disk immediately — also
+  for Rekordbox — without needing to convert.
 - The release **year** is now optional for metadata completeness. A track/album
   counts as "Metadata incomplete" only when title, artist, album or album artist
   is missing (genre, year, catalog number, label and country stay optional).
