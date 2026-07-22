@@ -698,6 +698,22 @@ export default function LibraryView({
     [applyBulkTo, bulkFolderIds, selected],
   );
 
+  // Pending edits from before tags were written on save (persisted in the
+  // cache): flush them all into the files in one go.
+  const pendingEdits = useMemo(
+    () => tracks.filter((t) => edits[t.id]),
+    [tracks, edits],
+  );
+
+  const flushPendingEdits = useCallback(() => {
+    const reqs: WriteMetadataItem[] = pendingEdits.map((t) => ({
+      path: t.path,
+      metadata: edits[t.id].metadata,
+      cover: edits[t.id].cover,
+    }));
+    void writeToFiles(reqs);
+  }, [pendingEdits, edits, writeToFiles]);
+
   // Apply a set of delete results to the live state (tracks, selection, dup
   // groups). Returns the removed paths, the still-remaining track paths (for
   // optional folder pruning) and the failed results.
@@ -982,6 +998,17 @@ export default function LibraryView({
         >
           <SpinnerIcon />
         </span>
+      )}
+      {pendingEdits.length > 0 && (
+        <button
+          onClick={flushPendingEdits}
+          disabled={writing || converting}
+          className="inline-flex items-center gap-1.5 rounded-lg border border-warning-500/40 px-3 py-2 text-sm text-warning-500 hover:border-warning-500 disabled:opacity-50"
+          title="Write metadata changes made earlier (not yet saved to the files) into the files"
+        >
+          {writing ? <SpinnerIcon /> : null}
+          Write pending tags ({pendingEdits.length})
+        </button>
       )}
       {selected.size > 0 && (
         <>

@@ -10,6 +10,9 @@ contain incompatible changes.
 ## [Unreleased]
 
 ### Added
+- **Write pending tags**: a header action appears when there are metadata edits
+  made earlier that were never written to disk (they only lived as pending edits
+  before tags were saved on edit). One click writes them all into the files.
 - **Folder view**: a new grouping mode (Flat / By album / **By folder**) shows the
   library as its real directory tree with collapsible folders. Each folder can be
   bulk-edited (e.g. give a loose collection of singles/EPs a common album tag),
