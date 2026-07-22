@@ -9,6 +9,11 @@ import {
   loadBandcampCollection,
   saveBandcampCollection,
 } from "./bandcampCache";
+import {
+  loadDownloadLedger,
+  saveDownloadLedger,
+  type DownloadLedger,
+} from "./bandcampDownloads";
 import { syncCollection } from "./bandcampSync";
 import { bandcampFormatKey, type Settings } from "./settings";
 import type {
@@ -40,6 +45,8 @@ export interface BulkProgress {
 export interface UseBandcamp {
   collection: BandcampItem[];
   downloads: Record<string, DownloadEntry>;
+  /** item key -> files a completed download wrote (persisted). */
+  ledger: DownloadLedger;
   refreshing: boolean;
   bulk: BulkProgress | null;
   error: string | null;
@@ -62,15 +69,23 @@ export function useBandcamp(
 ): UseBandcamp {
   const [collection, setCollection] = useState<BandcampItem[]>([]);
   const [downloads, setDownloads] = useState<Record<string, DownloadEntry>>({});
+  const [ledger, setLedger] = useState<DownloadLedger>({});
   const [refreshing, setRefreshing] = useState(false);
   const [bulk, setBulk] = useState<BulkProgress | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  // Latest settings/collection for stable callbacks.
+  // Latest settings/collection/ledger for stable callbacks.
   const settingsRef = useRef(settings);
   settingsRef.current = settings;
   const collectionRef = useRef(collection);
   collectionRef.current = collection;
+  const ledgerRef = useRef(ledger);
+  ledgerRef.current = ledger;
+
+  // Load the persisted download ledger on start.
+  useEffect(() => {
+    void loadDownloadLedger().then(setLedger);
+  }, []);
 
   // Byte progress from the backend into the matching download entry.
   useEffect(() => {
@@ -150,6 +165,16 @@ export function useBandcamp(
         bandcampFormatKey(settingsRef.current.download_format),
       );
       if (res.success) {
+        // Record what was written so sync recognizes it as present regardless
+        // of how the file's tags end up looking (the fuzzy metadata match is
+        // unreliable for odd formatting / non-Latin titles).
+        if (res.files.length) {
+          setLedger((prev) => {
+            const next = { ...prev, [item.key]: res.files };
+            void saveDownloadLedger(next);
+            return next;
+          });
+        }
         finish({ state: "done", stage: "Done" });
         return true;
       }
@@ -191,7 +216,11 @@ export function useBandcamp(
 
   const syncLibrary = useCallback(
     (tracks: TrackAnalysis[]) => {
-      const { missing } = syncCollection(tracks, collectionRef.current);
+      const { missing } = syncCollection(
+        tracks,
+        collectionRef.current,
+        ledgerRef.current,
+      );
       return runQueue(missing, "sync");
     },
     [runQueue],
@@ -220,6 +249,7 @@ export function useBandcamp(
     () => ({
       collection,
       downloads,
+      ledger,
       refreshing,
       bulk,
       error,
@@ -233,6 +263,7 @@ export function useBandcamp(
     [
       collection,
       downloads,
+      ledger,
       refreshing,
       bulk,
       error,

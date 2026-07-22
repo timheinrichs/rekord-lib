@@ -9,6 +9,21 @@ contain incompatible changes.
 
 ## [Unreleased]
 
+### Changed
+- Library row actions are now a right-aligned column frozen to the visible edge
+  of the (wide) table, so Edit/Delete/Convert are always reachable on hover
+  without scrolling horizontally.
+
+### Fixed
+- Deletions no longer play the macOS "move to trash" sound, and deleting an
+  album trashes its whole folder (incl. artwork) in one step when it holds only
+  that album.
+- **Bandcamp sync** no longer re-downloads purchases it already has: presence is
+  now confirmed via a persistent download ledger (what each download actually
+  wrote) in addition to metadata matching, and matching keeps non-Latin (e.g.
+  Cyrillic) titles instead of erasing them. This fixes the wrong "missing" count
+  and the endless re-download of the same track.
+
 ## [0.4.1] - 2026-07-22
 
 ### Added

@@ -78,4 +78,55 @@ describe("syncCollection", () => {
     expect(result.originById).toEqual({});
     expect(result.missing.map((m) => m.key)).toEqual(["p2"]);
   });
+
+  it("matches non-Latin (e.g. Cyrillic) titles instead of erasing them", () => {
+    const tracks = [
+      makeTrack({
+        id: "t1",
+        metadata: makeMetadata({
+          album: "Разом за Україну",
+          album_artist: "Standard Deviation",
+        }),
+      }),
+    ];
+    const result = syncCollection(tracks, [
+      item({ key: "a9", title: "Разом за Україну", band_name: "Standard Deviation" }),
+    ]);
+    expect(result.originById.t1).toBe("a9");
+    expect(result.missing).toHaveLength(0);
+  });
+
+  describe("download ledger fallback", () => {
+    it("treats a purchase as present when a recorded file still exists", () => {
+      // Tags don't match at all (odd formatting), but the file was downloaded.
+      const tracks = [
+        makeTrack({
+          id: "t1",
+          path: "/lib/VA/420.aiff",
+          metadata: makeMetadata({ album: "420 Hansa Malz", album_artist: "Max Scholpp" }),
+        }),
+      ];
+      const items = [
+        item({ key: "a1", title: "Max Scholpp - 420 Hansa Malz", band_name: "Various Artists" }),
+      ];
+      const bare = syncCollection(tracks, items);
+      expect(bare.missing.map((m) => m.key)).toEqual(["a1"]);
+
+      const withLedger = syncCollection(tracks, items, {
+        a1: ["/lib/VA/420.aiff"],
+      });
+      expect(withLedger.originById.t1).toBe("a1");
+      expect(withLedger.missing).toHaveLength(0);
+    });
+
+    it("re-flags a purchase as missing once its files are gone", () => {
+      const tracks = [makeTrack({ id: "t1", path: "/lib/keep.aiff" })];
+      const items = [item({ key: "a1", title: "Deleted Album" })];
+      const result = syncCollection(tracks, items, {
+        a1: ["/lib/gone.aiff"],
+      });
+      expect(result.originById).toEqual({});
+      expect(result.missing.map((m) => m.key)).toEqual(["a1"]);
+    });
+  });
 });

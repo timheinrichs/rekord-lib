@@ -68,8 +68,8 @@ export default function App() {
 
   // Which local tracks came from Bandcamp + which purchases are already local.
   const originById = useMemo(
-    () => syncCollection(libraryTracks, bc.collection).originById,
-    [libraryTracks, bc.collection],
+    () => syncCollection(libraryTracks, bc.collection, bc.ledger).originById,
+    [libraryTracks, bc.collection, bc.ledger],
   );
   const presentKeys = useMemo(
     () => new Set(Object.values(originById)),

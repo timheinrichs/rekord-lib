@@ -1,4 +1,5 @@
 import type { BandcampItem, TrackAnalysis } from "../types";
+import type { DownloadLedger } from "./bandcampDownloads";
 
 /** Normalizes a title/name for fuzzy matching. */
 function normalize(s: string | null | undefined): string {
@@ -6,7 +7,10 @@ function normalize(s: string | null | undefined): string {
     .toLowerCase()
     .normalize("NFKD")
     .replace(/[̀-ͯ]/g, "") // remove diacritics
-    .replace(/[^a-z0-9]+/g, " ")
+    // Keep letters/digits of ANY script (e.g. Cyrillic) — collapse the rest to
+    // spaces. Stripping to a-z0-9 previously erased non-Latin titles entirely,
+    // so they could never match and were re-downloaded on every sync.
+    .replace(/[^\p{L}\p{N}]+/gu, " ")
     .trim();
 }
 
@@ -36,18 +40,35 @@ export interface SyncResult {
   missing: BandcampItem[];
 }
 
-/** Reconciles the scanned library with the Bandcamp collection. */
+/**
+ * Reconciles the scanned library with the Bandcamp collection.
+ *
+ * Presence is decided two ways, which is important because fuzzy metadata
+ * matching alone is unreliable (odd tag formatting, "Various Artists" albums,
+ * non-Latin titles): an item counts as present if it either matches a local
+ * track by metadata OR the download ledger recorded files for it that are still
+ * in the library. The ledger is authoritative for anything downloaded through
+ * the app, so a successful download is never re-offered as "missing".
+ */
 export function syncCollection(
   tracks: TrackAnalysis[],
   items: BandcampItem[],
+  ledger: DownloadLedger = {},
 ): SyncResult {
   const originById: Record<string, string> = {};
   const missing: BandcampItem[] = [];
+  const byPath = new Map(tracks.map((t) => [t.path, t]));
 
   for (const item of items) {
-    const hits = tracks.filter((t) => matches(t, item));
-    if (hits.length > 0) {
-      for (const t of hits) originById[t.id] = item.key;
+    const present = new Set<TrackAnalysis>();
+    for (const t of tracks) if (matches(t, item)) present.add(t);
+    // Ledger fallback: recorded files that still exist in the library.
+    for (const p of ledger[item.key] ?? []) {
+      const t = byPath.get(p);
+      if (t) present.add(t);
+    }
+    if (present.size > 0) {
+      for (const t of present) originById[t.id] = item.key;
     } else {
       missing.push(item);
     }
