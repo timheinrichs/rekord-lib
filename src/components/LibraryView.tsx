@@ -12,6 +12,7 @@ import {
   analyzeFiles,
   convertTracks,
   dedupeStatus,
+  deleteAlbum,
   deleteFiles,
   listAudioFiles,
   onConvertProgress,
@@ -43,6 +44,7 @@ import type {
   ConvertProgress,
   ConvertResult,
   CoverInput,
+  DeleteResult,
   DuplicateGroup,
   TrackAnalysis,
   TrackEdit,
@@ -63,7 +65,7 @@ import {
   type AlbumItem,
   type SortKey,
 } from "../lib/grouping";
-import { foldersToPrune } from "../lib/dupAlbums";
+import { foldersToPrune, parentDir } from "../lib/dupAlbums";
 import {
   convertedOutputs,
   diffAudioFiles,
@@ -600,15 +602,17 @@ export default function LibraryView({
     [tracks, selected],
   );
 
-  // Move files to the trash and update groups/library live. Album folders that
-  // end up without any remaining library track are removed too. Throws if any
-  // deletion failed (the duplicates modal surfaces that).
-  const deleteFilesAndPrune = useCallback(
-    async (paths: string[]) => {
-      const results = await deleteFiles(paths);
-      const gone = new Set(results.filter((r) => r.success).map((r) => r.path));
+  // Apply a set of delete results to the live state (tracks, selection, dup
+  // groups). Returns the removed paths, the still-remaining track paths (for
+  // optional folder pruning) and the failed results.
+  const applyDeletion = useCallback(
+    (results: DeleteResult[]) => {
+      const gone = new Set(
+        results.filter((r) => r.success).map((r) => r.path),
+      );
+      let remaining: string[] = [];
       if (gone.size) {
-        const remaining = tracks
+        remaining = tracks
           .filter((t) => !gone.has(t.path))
           .map((t) => t.path);
         setTracks((prev) => prev.filter((t) => !gone.has(t.path)));
@@ -622,18 +626,55 @@ export default function LibraryView({
           void saveDuplicates(pruned);
           return pruned;
         });
+      }
+      return { gone, remaining, failed: results.filter((r) => !r.success) };
+    },
+    [tracks],
+  );
+
+  const raiseIfFailed = (failed: DeleteResult[]) => {
+    if (failed.length) {
+      throw new Error(
+        failed.map((f) => f.error).filter(Boolean).join("; ") || "unknown",
+      );
+    }
+  };
+
+  // Move files to the trash and update groups/library live. Album folders that
+  // end up without any remaining library track are removed too. Throws if any
+  // deletion failed (the duplicates modal surfaces that).
+  const deleteFilesAndPrune = useCallback(
+    async (paths: string[]) => {
+      const { gone, remaining, failed } = applyDeletion(
+        await deleteFiles(paths),
+      );
+      if (gone.size) {
         // Remove now-empty album folders (backend re-checks for safety).
         const dirs = foldersToPrune([...gone], remaining);
         if (dirs.length) await pruneEmptyDirs(dirs).catch(() => []);
       }
-      const failed = results.filter((r) => !r.success);
-      if (failed.length) {
-        throw new Error(
-          failed.map((f) => f.error).filter(Boolean).join("; ") || "unknown",
-        );
-      }
+      raiseIfFailed(failed);
     },
-    [tracks],
+    [applyDeletion],
+  );
+
+  // Delete a whole album. When all of its tracks live in one folder, the folder
+  // is trashed in a single operation (incl. artwork/side files); otherwise it
+  // falls back to per-file deletion + folder pruning.
+  const deleteAlbumTracks = useCallback(
+    async (albumTracks: TrackAnalysis[]) => {
+      const paths = albumTracks.map((t) => t.path);
+      const dirs = new Set(paths.map(parentDir));
+      if (dirs.size !== 1) {
+        await deleteFilesAndPrune(paths);
+        return;
+      }
+      const { failed } = applyDeletion(
+        await deleteAlbum([...dirs][0], paths),
+      );
+      raiseIfFailed(failed);
+    },
+    [applyDeletion, deleteFilesAndPrune],
   );
 
   // Delete from the library with a confirmation (files go to the trash).
@@ -655,6 +696,27 @@ export default function LibraryView({
       }
     },
     [deleteFilesAndPrune],
+  );
+
+  // Confirm, then delete a whole album (folder-at-once when possible).
+  const confirmAndDeleteAlbum = useCallback(
+    async (albumTracks: TrackAnalysis[], message: string) => {
+      if (!albumTracks.length) return;
+      const ok = await ask(message, {
+        title: "Delete",
+        kind: "warning",
+        okLabel: "Move to trash",
+        cancelLabel: "Cancel",
+      });
+      if (!ok) return;
+      setError(null);
+      try {
+        await deleteAlbumTracks(albumTracks);
+      } catch (e) {
+        setError(`Deletion failed: ${e}`);
+      }
+    },
+    [deleteAlbumTracks],
   );
 
   // Dismiss a group ("not a duplicate") – persistent.
@@ -1240,9 +1302,9 @@ export default function LibraryView({
                           <div className="pointer-events-none absolute inset-y-0 right-4 flex items-center rounded-lg bg-surface-2 pl-3 opacity-0 transition-opacity group-hover:pointer-events-auto group-hover:opacity-100">
                             <button
                               onClick={() =>
-                                void confirmAndDelete(
-                                  gTracks.map((t) => t.path),
-                                  `Move the album “${it.key}” (${gTracks.length} files) to the trash? An empty folder is removed too.`,
+                                void confirmAndDeleteAlbum(
+                                  gTracks,
+                                  `Move the album “${it.key}” (${gTracks.length} files) to the trash? The whole folder is removed.`,
                                 )
                               }
                               disabled={converting}

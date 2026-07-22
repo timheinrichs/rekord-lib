@@ -128,6 +128,18 @@ export function deleteFiles(paths: string[]): Promise<DeleteResult[]> {
   return invoke<DeleteResult[]>("delete_files", { paths });
 }
 
+/**
+ * Deletes a whole album. If `dir` holds no audio beyond `paths`, the entire
+ * folder is trashed in one operation; otherwise only the files are trashed.
+ * Results report one entry per track path.
+ */
+export function deleteAlbum(
+  dir: string,
+  paths: string[],
+): Promise<DeleteResult[]> {
+  return invoke<DeleteResult[]>("delete_album", { dir, paths });
+}
+
 /** Trashes directories that no longer contain any audio files (safety-checked). */
 export function pruneEmptyDirs(dirs: string[]): Promise<DeleteResult[]> {
   return invoke<DeleteResult[]>("prune_empty_dirs", { dirs });

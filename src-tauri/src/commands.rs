@@ -500,24 +500,74 @@ pub fn cancel_dedupe(state: State<'_, DedupeState>) {
     }
 }
 
-/// Moves the given files to the trash (reversible).
+/// A trash context that moves items via `NSFileManager` instead of driving the
+/// Finder — same reversible trash, but *without* the Finder "move to trash"
+/// sound (and a bit faster).
+fn trash_ctx() -> trash::TrashContext {
+    use trash::macos::{DeleteMethod, TrashContextExtMacos};
+    let mut ctx = trash::TrashContext::default();
+    ctx.set_delete_method(DeleteMethod::NsFileManager);
+    ctx
+}
+
+/// Trashes one path with the given context, mapping the outcome to a result.
+fn trash_one(ctx: &trash::TrashContext, path: String) -> DeleteResult {
+    match ctx.delete(&path) {
+        Ok(()) => DeleteResult {
+            path,
+            success: true,
+            error: None,
+        },
+        Err(e) => DeleteResult {
+            path,
+            success: false,
+            error: Some(e.to_string()),
+        },
+    }
+}
+
+/// True if every audio file under `dir` (recursively) is one of `paths` — i.e.
+/// the folder holds only this album, so trashing the whole folder is safe.
+fn dir_holds_only(dir: &str, paths: &[String]) -> bool {
+    let mut audio = Vec::new();
+    collect_audio_files(std::path::Path::new(dir), &mut audio);
+    if audio.is_empty() {
+        return false;
+    }
+    let ours: std::collections::HashSet<&str> =
+        paths.iter().map(String::as_str).collect();
+    audio.iter().all(|p| ours.contains(p.as_str()))
+}
+
+/// Moves the given files to the trash (reversible, no Finder sound).
 #[tauri::command]
 pub async fn delete_files(paths: Vec<String>) -> Vec<DeleteResult> {
-    paths
-        .into_iter()
-        .map(|p| match trash::delete(&p) {
-            Ok(()) => DeleteResult {
-                path: p,
-                success: true,
-                error: None,
-            },
-            Err(e) => DeleteResult {
-                path: p,
-                success: false,
-                error: Some(e.to_string()),
-            },
-        })
-        .collect()
+    let ctx = trash_ctx();
+    paths.into_iter().map(|p| trash_one(&ctx, p)).collect()
+}
+
+/// Deletes a whole album: if `dir` contains no audio outside `paths`, the entire
+/// folder (incl. artwork and other side files) is trashed in one operation;
+/// otherwise only the given files are trashed and the folder is left in place.
+/// Either way the result reports one entry per track path so the caller can
+/// update its state uniformly.
+#[tauri::command]
+pub async fn delete_album(dir: String, paths: Vec<String>) -> Vec<DeleteResult> {
+    let ctx = trash_ctx();
+    if dir_holds_only(&dir, &paths) {
+        if ctx.delete(&dir).is_ok() {
+            return paths
+                .into_iter()
+                .map(|path| DeleteResult {
+                    path,
+                    success: true,
+                    error: None,
+                })
+                .collect();
+        }
+        // Folder trash failed — fall through to trashing the files individually.
+    }
+    paths.into_iter().map(|p| trash_one(&ctx, p)).collect()
 }
 
 /// Trashes directories that no longer contain any audio files (re-checked here
@@ -526,6 +576,7 @@ pub async fn delete_files(paths: Vec<String>) -> Vec<DeleteResult> {
 /// tracks) are left untouched.
 #[tauri::command]
 pub async fn prune_empty_dirs(dirs: Vec<String>) -> Vec<DeleteResult> {
+    let ctx = trash_ctx();
     dirs.into_iter()
         .map(|d| {
             let mut audio = Vec::new();
@@ -537,18 +588,7 @@ pub async fn prune_empty_dirs(dirs: Vec<String>) -> Vec<DeleteResult> {
                     error: Some("directory still contains audio files".into()),
                 };
             }
-            match trash::delete(&d) {
-                Ok(()) => DeleteResult {
-                    path: d,
-                    success: true,
-                    error: None,
-                },
-                Err(e) => DeleteResult {
-                    path: d,
-                    success: false,
-                    error: Some(e.to_string()),
-                },
-            }
+            trash_one(&ctx, d)
         })
         .collect()
 }
@@ -700,5 +740,26 @@ mod tests {
         assert_eq!(res.len(), 1);
         assert!(!res[0].success, "folder with audio must not be deleted");
         assert!(with_audio.exists(), "folder must still exist");
+    }
+
+    #[test]
+    fn dir_holds_only_detects_exclusive_album_folders() {
+        let dir = tempfile::tempdir().unwrap();
+        let a = dir.path().join("a.mp3");
+        let b = dir.path().join("b.flac");
+        fs::write(&a, b"x").unwrap();
+        fs::write(&b, b"x").unwrap();
+        fs::write(dir.path().join("cover.jpg"), b"x").unwrap(); // side file, ignored
+        let root = dir.path().to_string_lossy().to_string();
+        let a = a.to_string_lossy().to_string();
+        let b = b.to_string_lossy().to_string();
+
+        // Both audio files belong to the album → safe to trash the whole folder.
+        assert!(dir_holds_only(&root, &[a.clone(), b.clone()]));
+        // A foreign track remains → not safe, keep the folder.
+        assert!(!dir_holds_only(&root, &[a.clone()]));
+        // Empty / non-existent folder → nothing to trash.
+        assert!(!dir_holds_only(&root, &[]));
+        assert!(!dir_holds_only("/no/such/dir", &[a]));
     }
 }
