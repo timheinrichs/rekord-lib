@@ -344,6 +344,8 @@ pub async fn convert_tracks(
                     &job.path,
                     &job.metadata,
                     &cover,
+                    // Convert keeps existing tags for fields left unset.
+                    false,
                 )
                 .await;
 
@@ -568,7 +570,11 @@ pub async fn write_metadata(
     let mut out = Vec::with_capacity(items.len());
     for item in items {
         let cover = item.cover.unwrap_or(CoverInput::Keep);
-        match write::finalize(&item.path, &item.path, &Some(item.metadata), &cover).await {
+        // clear_empty = true: the caller sends the file's full intended tags, so
+        // an empty field should clear the tag (enables a faithful undo).
+        match write::finalize(&item.path, &item.path, &Some(item.metadata), &cover, true)
+            .await
+        {
             Ok(()) => {
                 let track = analyze_path(&app, item.path.clone()).await;
                 out.push(WriteMetadataResult {

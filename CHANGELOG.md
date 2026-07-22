@@ -10,6 +10,10 @@ contain incompatible changes.
 ## [Unreleased]
 
 ### Added
+- **Undo** for tag writes: every metadata write now snapshots the previous
+  on-disk values first, and an "Undo" header action reverts the last write
+  (single edit, bulk, folder or flush). Emptying a field now also clears the tag
+  on disk, so an undo faithfully restores a field that used to be empty.
 - **Write pending tags**: a header action appears when there are metadata edits
   made earlier that were never written to disk (they only lived as pending edits
   before tags were saved on edit). One click writes them all into the files.

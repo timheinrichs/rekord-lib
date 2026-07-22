@@ -108,6 +108,7 @@ pub async fn finalize(
     source: &str,
     metadata: &Option<TrackMetadata>,
     cover: &CoverInput,
+    clear_empty: bool,
 ) -> AppResult<()> {
     // 1. Obtain the cover and prepare it for CDJ.
     let cover_jpeg = match resolve_cover(source, cover).await? {
@@ -132,38 +133,46 @@ pub async fn finalize(
         .primary_tag_mut()
         .ok_or_else(|| AppError::Metadata("no writable tag".into()))?;
 
-    // 3. Set text fields (only if confirmed).
+    // 3. Set text fields (only if confirmed). With `clear_empty`, an empty
+    //    field removes the tag instead of leaving the old value — needed so an
+    //    undo can restore a field that used to be empty.
     if let Some(md) = metadata {
-        if let Some(v) = clean(&md.title) {
-            tag.set_title(v);
+        let country_key = ItemKey::from_key(tag.tag_type(), "RELEASECOUNTRY");
+        // (field value, its ItemKey) for the text fields.
+        let text: [(&Option<String>, ItemKey); 8] = [
+            (&md.title, ItemKey::TrackTitle),
+            (&md.artist, ItemKey::TrackArtist),
+            (&md.album, ItemKey::AlbumTitle),
+            (&md.genre, ItemKey::Genre),
+            (&md.album_artist, ItemKey::AlbumArtist),
+            (&md.catalog_number, ItemKey::CatalogNumber),
+            (&md.label, ItemKey::Label),
+            (&md.country, country_key),
+        ];
+        for (value, key) in text {
+            match clean(value) {
+                Some(v) => {
+                    tag.insert_text(key, v);
+                }
+                None if clear_empty => {
+                    tag.remove_key(&key);
+                }
+                None => {}
+            }
         }
-        if let Some(v) = clean(&md.artist) {
-            tag.set_artist(v);
+        match md.year.as_ref().and_then(|s| s.trim().parse::<u32>().ok()) {
+            Some(y) => tag.set_year(y),
+            None if clear_empty => {
+                tag.remove_key(&ItemKey::Year);
+            }
+            None => {}
         }
-        if let Some(v) = clean(&md.album) {
-            tag.set_album(v);
-        }
-        if let Some(v) = clean(&md.genre) {
-            tag.set_genre(v);
-        }
-        if let Some(v) = clean(&md.album_artist) {
-            tag.insert_text(ItemKey::AlbumArtist, v);
-        }
-        if let Some(v) = clean(&md.catalog_number) {
-            tag.insert_text(ItemKey::CatalogNumber, v);
-        }
-        if let Some(v) = clean(&md.label) {
-            tag.insert_text(ItemKey::Label, v);
-        }
-        if let Some(v) = clean(&md.country) {
-            let tt = tag.tag_type();
-            tag.insert_text(ItemKey::from_key(tt, "RELEASECOUNTRY"), v);
-        }
-        if let Some(y) = md.year.as_ref().and_then(|s| s.trim().parse::<u32>().ok()) {
-            tag.set_year(y);
-        }
-        if let Some(n) = md.track_number {
-            tag.set_track(n);
+        match md.track_number {
+            Some(n) => tag.set_track(n),
+            None if clear_empty => {
+                tag.remove_key(&ItemKey::TrackNumber);
+            }
+            None => {}
         }
     }
 

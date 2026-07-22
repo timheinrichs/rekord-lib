@@ -56,7 +56,14 @@ import CoverThumb from "./CoverThumb";
 import MarqueeText from "./MarqueeText";
 import DuplicatesModal from "./DuplicatesModal";
 import AppHeader from "./AppHeader";
-import { ArrowUpIcon, ChevronIcon, EditIcon, SpinnerIcon, TrashIcon } from "./icons";
+import {
+  ArrowUpIcon,
+  ChevronIcon,
+  EditIcon,
+  SpinnerIcon,
+  TrashIcon,
+  UndoIcon,
+} from "./icons";
 import { useScrolled } from "../lib/useScrolled";
 import {
   albumArtistOf,
@@ -116,6 +123,11 @@ export default function LibraryView({
   const [editingId, setEditingId] = useState<string | null>(null);
   const [bulkOpen, setBulkOpen] = useState(false);
   const [writing, setWriting] = useState(false);
+  // Undo history for tag writes: each entry holds the metadata as it was on disk
+  // right before a write, so the last write can be reverted.
+  const [undoStack, setUndoStack] = useState<
+    { label: string; items: WriteMetadataItem[] }[]
+  >([]);
   // When a bulk edit targets a folder (not the checkbox selection), the folder's
   // track ids are held here so applyBulk writes to them instead of `selected`.
   const [bulkFolderIds, setBulkFolderIds] = useState<Set<string> | null>(null);
@@ -628,40 +640,69 @@ export default function LibraryView({
 
   // Writes confirmed metadata straight into the files, then swaps in the
   // re-analyzed tracks and clears the now-persisted pending edits. On failure
-  // the pending edit is kept so the change isn't lost.
-  const writeToFiles = useCallback(async (reqs: WriteMetadataItem[]) => {
-    if (!reqs.length) return;
-    setWriting(true);
-    setError(null);
-    try {
-      const results = await writeMetadata(reqs);
-      const byPath = new Map(results.map((r) => [r.path, r]));
-      setTracks((prev) => prev.map((t) => byPath.get(t.path)?.track ?? t));
-      const writtenIds = new Set(
-        results.filter((r) => r.track).map((r) => r.track!.id),
-      );
-      if (writtenIds.size) {
-        setEdits((prev) => {
-          const next = { ...prev };
-          for (const id of writtenIds) delete next[id];
-          return next;
-        });
+  // the pending edit is kept so the change isn't lost. Unless `recordUndo` is
+  // false (i.e. this write *is* an undo), the pre-write metadata is snapshotted
+  // so the write can be reverted.
+  const writeToFiles = useCallback(
+    async (reqs: WriteMetadataItem[], recordUndo = true, undoLabel?: string) => {
+      if (!reqs.length) return;
+      if (recordUndo) {
+        const byPathNow = new Map(tracks.map((t) => [t.path, t]));
+        const snapshot: WriteMetadataItem[] = [];
+        for (const r of reqs) {
+          const t = byPathNow.get(r.path);
+          if (t) snapshot.push({ path: t.path, metadata: t.metadata });
+        }
+        if (snapshot.length) {
+          setUndoStack((s) =>
+            [
+              ...s,
+              { label: undoLabel ?? `${snapshot.length} track(s)`, items: snapshot },
+            ].slice(-20),
+          );
+        }
       }
-      const failed = results.filter((r) => r.error);
-      if (failed.length) {
-        setError(
-          `Failed to write tags for ${failed.length} file(s): ${failed
-            .map((f) => f.error)
-            .filter(Boolean)
-            .join("; ")}`,
+      setWriting(true);
+      setError(null);
+      try {
+        const results = await writeMetadata(reqs);
+        const byPath = new Map(results.map((r) => [r.path, r]));
+        setTracks((prev) => prev.map((t) => byPath.get(t.path)?.track ?? t));
+        const writtenIds = new Set(
+          results.filter((r) => r.track).map((r) => r.track!.id),
         );
+        if (writtenIds.size) {
+          setEdits((prev) => {
+            const next = { ...prev };
+            for (const id of writtenIds) delete next[id];
+            return next;
+          });
+        }
+        const failed = results.filter((r) => r.error);
+        if (failed.length) {
+          setError(
+            `Failed to write tags for ${failed.length} file(s): ${failed
+              .map((f) => f.error)
+              .filter(Boolean)
+              .join("; ")}`,
+          );
+        }
+      } catch (e) {
+        setError(`Failed to write tags: ${e}`);
+      } finally {
+        setWriting(false);
       }
-    } catch (e) {
-      setError(`Failed to write tags: ${e}`);
-    } finally {
-      setWriting(false);
-    }
-  }, []);
+    },
+    [tracks],
+  );
+
+  // Revert the last tag write, restoring the previous on-disk metadata.
+  const undoLastWrite = useCallback(() => {
+    const entry = undoStack[undoStack.length - 1];
+    if (!entry) return;
+    setUndoStack((s) => s.slice(0, -1));
+    void writeToFiles(entry.items, false);
+  }, [undoStack, writeToFiles]);
 
   const saveEdit = useCallback(
     (id: string, edit: TrackEdit) => {
@@ -998,6 +1039,19 @@ export default function LibraryView({
         >
           <SpinnerIcon />
         </span>
+      )}
+      {undoStack.length > 0 && (
+        <button
+          onClick={undoLastWrite}
+          disabled={writing}
+          className="inline-flex items-center gap-1.5 rounded-lg border border-border-strong px-3 py-2 text-sm hover:border-accent-500 disabled:opacity-50"
+          title={`Undo the last tag write (${
+            undoStack[undoStack.length - 1]?.label
+          })`}
+        >
+          <UndoIcon />
+          Undo
+        </button>
       )}
       {pendingEdits.length > 0 && (
         <button
