@@ -67,14 +67,12 @@ export default function App() {
   }, []);
 
   // Which local tracks came from Bandcamp + which purchases are already local.
-  const originById = useMemo(
-    () => syncCollection(libraryTracks, bc.collection, bc.ledger).originById,
+  const sync = useMemo(
+    () => syncCollection(libraryTracks, bc.collection, bc.ledger),
     [libraryTracks, bc.collection, bc.ledger],
   );
-  const presentKeys = useMemo(
-    () => new Set(Object.values(originById)),
-    [originById],
-  );
+  const originById = sync.originById;
+  const presentKeys = sync.presentKeys;
 
   const nav = (
     <HeaderNav
@@ -99,6 +97,7 @@ export default function App() {
               settings={settings}
               originById={originById}
               onTracksChange={setLibraryTracks}
+              onFilesDeleted={bc.forgetDownloads}
               nav={nav}
               onOpenSettings={() => setSettingsOpen(true)}
             />

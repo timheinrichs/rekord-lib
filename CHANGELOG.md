@@ -10,9 +10,10 @@ contain incompatible changes.
 ## [Unreleased]
 
 ### Changed
-- Library row actions are now a right-aligned column frozen to the visible edge
-  of the (wide) table, so Edit/Delete/Convert are always reachable on hover
-  without scrolling horizontally.
+- Library row actions (Edit/Delete/Convert) now appear as a right-aligned
+  overlay only on row hover with a transparent column background (no longer
+  covering the Downloaded column), and the table is narrower so it fits at full
+  window width without horizontal scrolling.
 
 ### Fixed
 - Deletions no longer play the macOS "move to trash" sound, and deleting an
@@ -24,8 +25,11 @@ contain incompatible changes.
   Cyrillic) titles instead of erasing them and, since downloads are named after
   the purchase, recognizes an album by its extracted folder name or a single
   track by its file name even when the tags are missing or odd (e.g. a
-  "Various"-tagged compilation). This fixes the wrong "missing" count and the
-  endless re-download of tracks/albums already in the library.
+  "Various"-tagged compilation). A successful download is authoritative — the
+  purchase counts as present immediately, even before its files are re-scanned
+  — and deleting files forgets them from the ledger so the purchase can be
+  synced again. This fixes the wrong "missing" count and the endless re-download
+  of tracks/albums already in the library.
 
 ## [0.4.1] - 2026-07-22
 

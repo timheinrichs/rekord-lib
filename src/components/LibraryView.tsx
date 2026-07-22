@@ -78,6 +78,8 @@ interface Props {
   originById: Record<string, string>;
   /** Mirrors the scanned tracks up to the app (for Bandcamp sync). */
   onTracksChange?: (tracks: TrackAnalysis[]) => void;
+  /** Notifies the app of deleted files (to prune the Bandcamp download ledger). */
+  onFilesDeleted?: (paths: string[]) => void;
   /** Shared header navigation (Library/Bandcamp tabs, downloads, gear). */
   nav?: ReactNode;
   onOpenSettings: () => void;
@@ -89,6 +91,7 @@ export default function LibraryView({
   settings,
   originById,
   onTracksChange,
+  onFilesDeleted,
   nav,
   onOpenSettings,
 }: Props) {
@@ -626,10 +629,13 @@ export default function LibraryView({
           void saveDuplicates(pruned);
           return pruned;
         });
+        // Forget these files in the Bandcamp download ledger so a deleted
+        // purchase can be synced again.
+        onFilesDeleted?.([...gone]);
       }
       return { gone, remaining, failed: results.filter((r) => !r.success) };
     },
-    [tracks],
+    [tracks, onFilesDeleted],
   );
 
   const raiseIfFailed = (failed: DeleteResult[]) => {
@@ -981,7 +987,7 @@ export default function LibraryView({
           </div>
         ) : (
           <div className="overflow-x-auto">
-          <table className="w-full min-w-[114rem] table-fixed text-sm">
+          <table className="w-full min-w-[98rem] table-fixed text-sm">
             <thead className="text-left text-fg-muted">
               <tr className="border-b border-border">
                 <th className="w-10 px-4 py-3">
@@ -1037,7 +1043,7 @@ export default function LibraryView({
                   onSort={toggleSort}
                   className="w-32"
                 />
-                <th className="sticky right-0 z-20 w-48 border-l border-border bg-surface px-4 py-3 font-medium"></th>
+                <th className="w-16 px-4 py-3 font-medium"></th>
               </tr>
             </thead>
             <tbody>
@@ -1135,10 +1141,10 @@ export default function LibraryView({
                       {formatDate(t.download_date)}
                     </td>
                     <td
-                      className="sticky right-0 z-10 border-l border-border bg-surface px-4 py-3 group-hover:bg-surface-2"
+                      className="relative px-4 py-3"
                       onClick={(e) => e.stopPropagation()}
                     >
-                      <div className="flex items-center justify-end gap-2 opacity-0 transition-opacity group-hover:opacity-100">
+                      <div className="pointer-events-none absolute inset-y-0 right-4 flex items-center gap-2 rounded-lg bg-surface-2 pl-3 opacity-0 transition-opacity group-hover:pointer-events-auto group-hover:opacity-100">
                         {!t.compat.compatible && (
                           <button
                             onClick={() => convertOne(t)}
@@ -1296,10 +1302,10 @@ export default function LibraryView({
                           {formatDate(albumDate)}
                         </td>
                         <td
-                          className="sticky right-0 z-10 border-l border-border bg-surface px-4 py-2.5 group-hover:bg-surface-2"
+                          className="relative px-4 py-2.5"
                           onClick={(e) => e.stopPropagation()}
                         >
-                          <div className="flex items-center justify-end opacity-0 transition-opacity group-hover:opacity-100">
+                          <div className="pointer-events-none absolute inset-y-0 right-4 flex items-center rounded-lg bg-surface-2 pl-3 opacity-0 transition-opacity group-hover:pointer-events-auto group-hover:opacity-100">
                             <button
                               onClick={() =>
                                 void confirmAndDeleteAlbum(

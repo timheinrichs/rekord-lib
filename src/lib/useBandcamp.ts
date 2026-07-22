@@ -11,6 +11,7 @@ import {
 } from "./bandcampCache";
 import {
   loadDownloadLedger,
+  pruneLedger,
   saveDownloadLedger,
   type DownloadLedger,
 } from "./bandcampDownloads";
@@ -56,6 +57,8 @@ export interface UseBandcamp {
   syncLibrary: (tracks: TrackAnalysis[]) => Promise<void>;
   cancelDownload: (key: string) => void;
   clearFinished: () => void;
+  /** Forget deleted files so their purchase is offered by sync again. */
+  forgetDownloads: (paths: string[]) => void;
 }
 
 /**
@@ -245,6 +248,15 @@ export function useBandcamp(
     );
   }, []);
 
+  const forgetDownloads = useCallback((paths: string[]) => {
+    if (!paths.length) return;
+    setLedger((prev) => {
+      const next = pruneLedger(prev, paths);
+      if (next !== prev) void saveDownloadLedger(next);
+      return next;
+    });
+  }, []);
+
   return useMemo(
     () => ({
       collection,
@@ -259,6 +271,7 @@ export function useBandcamp(
       syncLibrary,
       cancelDownload,
       clearFinished,
+      forgetDownloads,
     }),
     [
       collection,
@@ -273,6 +286,7 @@ export function useBandcamp(
       syncLibrary,
       cancelDownload,
       clearFinished,
+      forgetDownloads,
     ],
   );
 }

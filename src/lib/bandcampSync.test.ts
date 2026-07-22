@@ -140,16 +140,11 @@ describe("syncCollection", () => {
     expect(result.missing).toHaveLength(0);
   });
 
-  describe("download ledger fallback", () => {
-    it("treats a purchase as present when a recorded file still exists", () => {
-      // Tags don't match at all (odd formatting), but the file was downloaded.
-      const tracks = [
-        makeTrack({
-          id: "t1",
-          path: "/lib/VA/420.aiff",
-          metadata: makeMetadata({ album: "420 Hansa Malz", album_artist: "Max Scholpp" }),
-        }),
-      ];
+  describe("download ledger", () => {
+    it("counts a downloaded purchase as present even before it is re-scanned", () => {
+      // Tags don't match and the new file isn't in the scan yet, but it was
+      // just downloaded — it must not be offered as missing again.
+      const tracks = [makeTrack({ id: "t1", path: "/lib/other.aiff" })];
       const items = [
         item({ key: "a1", title: "Max Scholpp - 420 Hansa Malz", band_name: "Various Artists" }),
       ];
@@ -159,17 +154,22 @@ describe("syncCollection", () => {
       const withLedger = syncCollection(tracks, items, {
         a1: ["/lib/VA/420.aiff"],
       });
-      expect(withLedger.originById.t1).toBe("a1");
+      expect(withLedger.presentKeys.has("a1")).toBe(true);
       expect(withLedger.missing).toHaveLength(0);
     });
 
-    it("re-flags a purchase as missing once its files are gone", () => {
+    it("maps the origin badge for recorded files that are already scanned", () => {
+      const tracks = [makeTrack({ id: "t1", path: "/lib/VA/420.aiff" })];
+      const items = [item({ key: "a1", title: "420 Hansa Malz" })];
+      const result = syncCollection(tracks, items, { a1: ["/lib/VA/420.aiff"] });
+      expect(result.originById.t1).toBe("a1");
+    });
+
+    it("re-offers a purchase once its ledger entry is pruned away", () => {
       const tracks = [makeTrack({ id: "t1", path: "/lib/keep.aiff" })];
       const items = [item({ key: "a1", title: "Deleted Album" })];
-      const result = syncCollection(tracks, items, {
-        a1: ["/lib/gone.aiff"],
-      });
-      expect(result.originById).toEqual({});
+      const result = syncCollection(tracks, items, {}); // pruned on delete
+      expect(result.presentKeys.has("a1")).toBe(false);
       expect(result.missing.map((m) => m.key)).toEqual(["a1"]);
     });
   });

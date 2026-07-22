@@ -26,3 +26,23 @@ export async function saveDownloadLedger(ledger: DownloadLedger): Promise<void> 
   await store.set(KEY, ledger);
   await store.save();
 }
+
+/**
+ * Removes deleted file paths from the ledger and drops entries left empty, so a
+ * purchase whose files were trashed is offered by sync again. Pure;
+ * reference-stable when nothing matched.
+ */
+export function pruneLedger(
+  ledger: DownloadLedger,
+  deletedPaths: string[],
+): DownloadLedger {
+  const gone = new Set(deletedPaths);
+  let changed = false;
+  const next: DownloadLedger = {};
+  for (const [key, paths] of Object.entries(ledger)) {
+    const kept = paths.filter((p) => !gone.has(p));
+    if (kept.length !== paths.length) changed = true;
+    if (kept.length) next[key] = kept;
+  }
+  return changed ? next : ledger;
+}

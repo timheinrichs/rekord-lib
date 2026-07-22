@@ -47,8 +47,10 @@ function matches(track: TrackAnalysis, item: BandcampItem): boolean {
 }
 
 export interface SyncResult {
-  /** Track ID → Bandcamp key for purchases present locally. */
+  /** Track ID → Bandcamp key for purchases present locally (for badges). */
   originById: Record<string, string>;
+  /** Keys of purchases considered present (matched OR downloaded). */
+  presentKeys: Set<string>;
   /** Purchases that are not (yet) in the library. */
   missing: BandcampItem[];
 }
@@ -56,12 +58,17 @@ export interface SyncResult {
 /**
  * Reconciles the scanned library with the Bandcamp collection.
  *
- * Presence is decided two ways, which is important because fuzzy metadata
- * matching alone is unreliable (odd tag formatting, "Various Artists" albums,
- * non-Latin titles): an item counts as present if it either matches a local
- * track by metadata OR the download ledger recorded files for it that are still
- * in the library. The ledger is authoritative for anything downloaded through
- * the app, so a successful download is never re-offered as "missing".
+ * Presence is decided two ways, because fuzzy metadata matching alone is
+ * unreliable (odd tag formatting, "Various Artists" albums, non-Latin titles):
+ *  1. a local track matches the purchase (by tags, folder or file name), or
+ *  2. the download ledger has recorded files for it.
+ *
+ * The ledger is authoritative for anything downloaded through the app: once a
+ * download succeeded it is never re-offered as "missing", even before the new
+ * files have been re-scanned into the library (which otherwise lagged and made
+ * a just-downloaded item keep showing up). `originById` only maps tracks we can
+ * actually see (for the origin badge); `presentKeys`/`missing` also honor the
+ * ledger on their own.
  */
 export function syncCollection(
   tracks: TrackAnalysis[],
@@ -69,23 +76,28 @@ export function syncCollection(
   ledger: DownloadLedger = {},
 ): SyncResult {
   const originById: Record<string, string> = {};
+  const presentKeys = new Set<string>();
   const missing: BandcampItem[] = [];
   const byPath = new Map(tracks.map((t) => [t.path, t]));
 
   for (const item of items) {
-    const present = new Set<TrackAnalysis>();
-    for (const t of tracks) if (matches(t, item)) present.add(t);
-    // Ledger fallback: recorded files that still exist in the library.
+    // Map whatever local tracks we can recognize (drives the origin badge).
+    const seen = new Set<TrackAnalysis>();
+    for (const t of tracks) if (matches(t, item)) seen.add(t);
     for (const p of ledger[item.key] ?? []) {
       const t = byPath.get(p);
-      if (t) present.add(t);
+      if (t) seen.add(t);
     }
-    if (present.size > 0) {
-      for (const t of present) originById[t.id] = item.key;
+    for (const t of seen) originById[t.id] = item.key;
+
+    // Present if a track matched it OR the app has downloaded it.
+    const downloaded = (ledger[item.key]?.length ?? 0) > 0;
+    if (seen.size > 0 || downloaded) {
+      presentKeys.add(item.key);
     } else {
       missing.push(item);
     }
   }
 
-  return { originById, missing };
+  return { originById, presentKeys, missing };
 }
