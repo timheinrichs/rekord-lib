@@ -9,6 +9,8 @@ contain incompatible changes.
 
 ## [Unreleased]
 
+## [0.4.2] - 2026-07-22
+
 ### Changed
 - Library row actions (Edit/Delete/Convert) now appear as a right-aligned
   overlay only on row hover with a transparent column background (no longer
