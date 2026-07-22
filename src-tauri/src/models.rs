@@ -81,7 +81,8 @@ pub struct TrackMetadata {
 
 impl TrackMetadata {
     /// Are all text fields relevant for Rekordbox set?
-    /// (title, artist, album, album artist, year — genre is optional)
+    /// (title, artist, album, album artist — genre, year, catalog number,
+    /// label and country are optional)
     pub fn is_complete(&self) -> bool {
         fn filled(v: &Option<String>) -> bool {
             v.as_ref().map(|s| !s.trim().is_empty()).unwrap_or(false)
@@ -90,7 +91,6 @@ impl TrackMetadata {
             && filled(&self.artist)
             && filled(&self.album)
             && filled(&self.album_artist)
-            && filled(&self.year)
     }
 }
 
@@ -358,10 +358,11 @@ mod tests {
     }
 
     #[test]
-    fn is_complete_ignores_optional_catalog_label_and_genre() {
-        // catalog_number, label and genre are intentionally optional.
+    fn is_complete_ignores_optional_catalog_label_genre_and_year() {
+        // catalog_number, label, genre and year are intentionally optional.
         let mut md = full_metadata();
         md.genre = None;
+        md.year = None;
         assert!(md.catalog_number.is_none() && md.label.is_none());
         assert!(md.is_complete());
     }
@@ -373,7 +374,7 @@ mod tests {
         assert!(!md.is_complete());
 
         let mut md = full_metadata();
-        md.year = Some("   ".into());
+        md.album_artist = Some("   ".into());
         assert!(!md.is_complete());
     }
 

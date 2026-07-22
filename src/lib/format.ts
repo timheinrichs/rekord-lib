@@ -2,7 +2,8 @@ import type { TrackAnalysis, TrackEdit } from "../types";
 
 /**
  * Are all text fields relevant to Rekordbox set?
- * (title, artist, album, album artist, year — genre is optional)
+ * (title, artist, album, album artist — genre, year, catalog number, label
+ * and country are optional)
  */
 export function editComplete(edit: TrackEdit): boolean {
   const m = edit.metadata;
@@ -10,8 +11,7 @@ export function editComplete(edit: TrackEdit): boolean {
     !!m.title?.trim() &&
     !!m.artist?.trim() &&
     !!m.album?.trim() &&
-    !!m.album_artist?.trim() &&
-    !!m.year?.trim()
+    !!m.album_artist?.trim()
   );
 }
 

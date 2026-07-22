@@ -9,6 +9,11 @@ contain incompatible changes.
 
 ## [Unreleased]
 
+### Changed
+- The release **year** is now optional for metadata completeness. A track/album
+  counts as "Metadata incomplete" only when title, artist, album or album artist
+  is missing (genre, year, catalog number, label and country stay optional).
+
 ## [0.4.2] - 2026-07-22
 
 ### Changed

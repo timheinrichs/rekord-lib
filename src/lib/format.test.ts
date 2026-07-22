@@ -19,9 +19,14 @@ describe("editComplete", () => {
     expect(editComplete(edit)).toBe(true);
   });
 
-  it("ignores optional catalog number, label and genre", () => {
+  it("ignores optional catalog number, label, genre and year", () => {
     const edit: TrackEdit = {
-      metadata: makeMetadata({ catalog_number: null, label: null, genre: null }),
+      metadata: makeMetadata({
+        catalog_number: null,
+        label: null,
+        genre: null,
+        year: null,
+      }),
       cover,
     };
     expect(editComplete(edit)).toBe(true);
@@ -32,7 +37,7 @@ describe("editComplete", () => {
       editComplete({ metadata: makeMetadata({ album: null }), cover }),
     ).toBe(false);
     expect(
-      editComplete({ metadata: makeMetadata({ year: "  " }), cover }),
+      editComplete({ metadata: makeMetadata({ album_artist: "  " }), cover }),
     ).toBe(false);
   });
 });
