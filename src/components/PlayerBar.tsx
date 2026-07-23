@@ -19,6 +19,7 @@ export default function PlayerBar() {
     hasPrev,
     index,
     total,
+    positioned,
     toggle,
     next,
     prev,
@@ -114,7 +115,7 @@ export default function PlayerBar() {
 
         {/* Position + time + close */}
         <div className="flex flex-1 items-center justify-end gap-4">
-          {total > 1 && (
+          {positioned && total > 1 && (
             <span className="hidden whitespace-nowrap text-xs text-fg-subtle md:inline">
               Track {index + 1}/{total}
             </span>

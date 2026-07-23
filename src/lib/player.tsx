@@ -32,7 +32,10 @@ interface PlayerApi {
   /** Zero-based position in the queue and its length (for "Track x/y"). */
   index: number;
   total: number;
-  play: (queue: PlayerTrack[], index: number) => void;
+  /** Whether the position ("Track x/y") is meaningful (e.g. an album, not the
+   *  whole library) and should be shown. */
+  positioned: boolean;
+  play: (queue: PlayerTrack[], index: number, positioned?: boolean) => void;
   toggle: () => void;
   next: () => void;
   prev: () => void;
@@ -71,6 +74,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   const [queue, setQueue] = useState<PlayerTrack[]>([]);
   const [index, setIndex] = useState(0);
   const [playing, setPlaying] = useState(false);
+  const [positioned, setPositioned] = useState(false);
   const [time, setTime] = useState(0);
   const [duration, setDuration] = useState(0);
   // Bumped on every play() so clicking a cover restarts even the same track.
@@ -80,13 +84,17 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   const hasNext = index < queue.length - 1;
   const hasPrev = index > 0;
 
-  const play = useCallback((q: PlayerTrack[], i: number) => {
-    if (!q.length) return;
-    setQueue(q);
-    setIndex(clampIndex(i, q.length));
-    setPlaying(true);
-    setToken((t) => t + 1);
-  }, []);
+  const play = useCallback(
+    (q: PlayerTrack[], i: number, pos = false) => {
+      if (!q.length) return;
+      setQueue(q);
+      setIndex(clampIndex(i, q.length));
+      setPositioned(pos);
+      setPlaying(true);
+      setToken((t) => t + 1);
+    },
+    [],
+  );
 
   const next = useCallback(
     () => setIndex((i) => clampIndex(i + 1, queue.length)),
@@ -151,6 +159,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       hasPrev,
       index,
       total: queue.length,
+      positioned,
       play,
       toggle,
       next,
@@ -165,6 +174,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       hasPrev,
       index,
       queue.length,
+      positioned,
       play,
       toggle,
       next,

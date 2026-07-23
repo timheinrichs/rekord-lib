@@ -545,8 +545,8 @@ export default function LibraryView({
   // Playing a track from a cover queues the whole visible list (so next/prev
   // browse it); an album cover queues just that album.
   const playFrom = useCallback(
-    (list: TrackAnalysis[], index: number) => {
-      player.play(list.map(toPlayerTrack), index);
+    (list: TrackAnalysis[], index: number, positioned = false) => {
+      player.play(list.map(toPlayerTrack), index, positioned);
     },
     [player, toPlayerTrack],
   );
@@ -1634,7 +1634,7 @@ export default function LibraryView({
                           <CoverThumb
                             path={cover.path}
                             hasCover={cover.metadata.has_cover}
-                            onPlay={() => playFrom(gTracks, 0)}
+                            onPlay={() => playFrom(gTracks, 0, true)}
                             active={gTracks.some(
                               (t) => t.path === player.current?.path,
                             )}
