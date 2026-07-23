@@ -32,9 +32,6 @@ interface PlayerApi {
   /** Zero-based position in the queue and its length (for "Track x/y"). */
   index: number;
   total: number;
-  /** Playback position and length in seconds. */
-  time: number;
-  duration: number;
   play: (queue: PlayerTrack[], index: number) => void;
   toggle: () => void;
   next: () => void;
@@ -44,12 +41,24 @@ interface PlayerApi {
   seek: (fraction: number) => void;
 }
 
+/** Playback position, in its own context so ~4×/s updates don't re-render
+ *  everything that only needs the stable controls (e.g. the track list). */
+interface PlayerProgress {
+  time: number;
+  duration: number;
+}
+
 const PlayerCtx = createContext<PlayerApi | null>(null);
+const ProgressCtx = createContext<PlayerProgress>({ time: 0, duration: 0 });
 
 export function usePlayer(): PlayerApi {
   const ctx = useContext(PlayerCtx);
   if (!ctx) throw new Error("usePlayer must be used within a PlayerProvider");
   return ctx;
+}
+
+export function usePlayerProgress(): PlayerProgress {
+  return useContext(ProgressCtx);
 }
 
 /**
@@ -142,8 +151,6 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       hasPrev,
       index,
       total: queue.length,
-      time,
-      duration,
       play,
       toggle,
       next,
@@ -158,8 +165,6 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       hasPrev,
       index,
       queue.length,
-      time,
-      duration,
       play,
       toggle,
       next,
@@ -169,8 +174,14 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     ],
   );
 
+  const progress = useMemo<PlayerProgress>(
+    () => ({ time, duration }),
+    [time, duration],
+  );
+
   return (
     <PlayerCtx.Provider value={api}>
+      <ProgressCtx.Provider value={progress}>
       {children}
       <audio
         ref={audioRef}
@@ -184,6 +195,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
           else setPlaying(false);
         }}
       />
+      </ProgressCtx.Provider>
     </PlayerCtx.Provider>
   );
 }

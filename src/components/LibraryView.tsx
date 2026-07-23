@@ -1361,6 +1361,9 @@ export default function LibraryView({
                         path={t.path}
                         hasCover={t.metadata.has_cover}
                         onPlay={() => playFrom(renderOrder, index)}
+                        active={player.current?.path === t.path}
+                        playing={player.playing}
+                        onToggle={player.toggle}
                       />
                     </td>
                     <td className="px-4 py-3 text-fg" title={t.path}>
@@ -1632,6 +1635,11 @@ export default function LibraryView({
                             path={cover.path}
                             hasCover={cover.metadata.has_cover}
                             onPlay={() => playFrom(gTracks, 0)}
+                            active={gTracks.some(
+                              (t) => t.path === player.current?.path,
+                            )}
+                            playing={player.playing}
+                            onToggle={player.toggle}
                           />
                         </td>
                         <td className="px-4 py-2.5">

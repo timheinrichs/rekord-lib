@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { usePlayer } from "../lib/player";
+import { usePlayer, usePlayerProgress } from "../lib/player";
 import { coverThumbnail } from "../lib/api";
 import { formatDuration } from "../lib/format";
 import {
@@ -19,14 +19,13 @@ export default function PlayerBar() {
     hasPrev,
     index,
     total,
-    time,
-    duration,
     toggle,
     next,
     prev,
     close,
     seek,
   } = usePlayer();
+  const { time, duration } = usePlayerProgress();
   const [cover, setCover] = useState<string | null>(null);
 
   // Load the current track's embedded cover for the bar.

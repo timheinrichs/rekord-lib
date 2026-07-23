@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { coverThumbnail } from "../lib/api";
-import { PlayIcon } from "./icons";
+import { PauseIcon, PlayIcon } from "./icons";
 
 /** Module-wide cache: path → data URL (or null = no cover). */
 const cache = new Map<string, string | null>();
@@ -10,6 +10,12 @@ interface Props {
   hasCover: boolean;
   /** When set, hovering the cover reveals a play button that calls this. */
   onPlay?: () => void;
+  /** This cover represents the current player source. */
+  active?: boolean;
+  /** The player is currently playing (only meaningful when active). */
+  playing?: boolean;
+  /** Pause/resume the active item (used instead of onPlay when active). */
+  onToggle?: () => void;
 }
 
 /**
@@ -17,7 +23,14 @@ interface Props {
  * Loads only once the row scrolls into the viewport (IntersectionObserver),
  * and caches the result module-wide to avoid flooding the backend.
  */
-export default function CoverThumb({ path, hasCover, onPlay }: Props) {
+export default function CoverThumb({
+  path,
+  hasCover,
+  onPlay,
+  active,
+  playing,
+  onToggle,
+}: Props) {
   const [url, setUrl] = useState<string | null>(() => cache.get(path) ?? null);
   const [visible, setVisible] = useState(() => cache.has(path));
   const ref = useRef<HTMLDivElement>(null);
@@ -75,13 +88,14 @@ export default function CoverThumb({ path, hasCover, onPlay }: Props) {
         <button
           onClick={(e) => {
             e.stopPropagation();
-            onPlay();
+            if (active) onToggle?.();
+            else onPlay();
           }}
           className="absolute inset-0 flex items-center justify-center bg-black/50 text-fg opacity-0 transition-opacity group-hover/cover:opacity-100 focus:opacity-100"
-          title="Play"
-          aria-label="Play"
+          title={active && playing ? "Pause" : "Play"}
+          aria-label={active && playing ? "Pause" : "Play"}
         >
-          <PlayIcon size={18} />
+          {active && playing ? <PauseIcon size={18} /> : <PlayIcon size={18} />}
         </button>
       )}
     </div>
