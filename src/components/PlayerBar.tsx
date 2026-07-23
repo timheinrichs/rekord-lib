@@ -17,6 +17,8 @@ export default function PlayerBar() {
     playing,
     hasNext,
     hasPrev,
+    index,
+    total,
     time,
     duration,
     toggle,
@@ -111,8 +113,13 @@ export default function PlayerBar() {
           </button>
         </div>
 
-        {/* Time + close */}
+        {/* Position + time + close */}
         <div className="flex flex-1 items-center justify-end gap-4">
+          {total > 1 && (
+            <span className="hidden whitespace-nowrap text-xs text-fg-subtle md:inline">
+              Track {index + 1}/{total}
+            </span>
+          )}
           <span className="hidden whitespace-nowrap text-xs text-fg-subtle sm:inline">
             {formatDuration(time)} / {formatDuration(duration)}
           </span>

@@ -29,6 +29,9 @@ interface PlayerApi {
   playing: boolean;
   hasNext: boolean;
   hasPrev: boolean;
+  /** Zero-based position in the queue and its length (for "Track x/y"). */
+  index: number;
+  total: number;
   /** Playback position and length in seconds. */
   time: number;
   duration: number;
@@ -137,6 +140,8 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       playing,
       hasNext,
       hasPrev,
+      index,
+      total: queue.length,
       time,
       duration,
       play,
@@ -151,6 +156,8 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       playing,
       hasNext,
       hasPrev,
+      index,
+      queue.length,
       time,
       duration,
       play,
