@@ -9,11 +9,14 @@ contain incompatible changes.
 
 ## [Unreleased]
 
+## [0.4.4] - 2026-07-23
+
 ### Added
 - **Audio player**: hovering a cover reveals a play button; clicking it plays the
-  track (queuing the current list for next/prev) or the whole album. A bottom bar
-  shows the cover, title and artist with play/pause, previous/next, a seek bar and
-  a close button. Files stream via Tauri's asset protocol.
+  track (queuing the current list for next/prev) or the whole album. Hovering the
+  active track's/album's cover shows a pause button. A bottom bar shows the cover,
+  title and artist with play/pause, previous/next, a seek bar, "Track x/y" (for
+  album playback) and a close button. Files stream via Tauri's asset protocol.
 
 ## [0.4.3] - 2026-07-23
 
