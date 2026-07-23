@@ -205,6 +205,69 @@ export function ArrowUpIcon() {
   );
 }
 
+export function PlayIcon({ size = 18 }: { size?: number }) {
+  return (
+    <svg
+      xmlns="http://www.w3.org/2000/svg"
+      width={size}
+      height={size}
+      viewBox="0 0 24 24"
+      fill="currentColor"
+      aria-hidden="true"
+    >
+      <path d="M8 5v14l11-7z" />
+    </svg>
+  );
+}
+
+export function PauseIcon({ size = 18 }: { size?: number }) {
+  return (
+    <svg
+      xmlns="http://www.w3.org/2000/svg"
+      width={size}
+      height={size}
+      viewBox="0 0 24 24"
+      fill="currentColor"
+      aria-hidden="true"
+    >
+      <rect x="6" y="5" width="4" height="14" rx="1" />
+      <rect x="14" y="5" width="4" height="14" rx="1" />
+    </svg>
+  );
+}
+
+export function NextIcon() {
+  return (
+    <svg
+      xmlns="http://www.w3.org/2000/svg"
+      width="18"
+      height="18"
+      viewBox="0 0 24 24"
+      fill="currentColor"
+      aria-hidden="true"
+    >
+      <path d="M6 5v14l9-7z" />
+      <rect x="16" y="5" width="2.5" height="14" rx="1" />
+    </svg>
+  );
+}
+
+export function PrevIcon() {
+  return (
+    <svg
+      xmlns="http://www.w3.org/2000/svg"
+      width="18"
+      height="18"
+      viewBox="0 0 24 24"
+      fill="currentColor"
+      aria-hidden="true"
+    >
+      <path d="M18 5v14l-9-7z" />
+      <rect x="5.5" y="5" width="2.5" height="14" rx="1" />
+    </svg>
+  );
+}
+
 export function UndoIcon() {
   return (
     <svg

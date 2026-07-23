@@ -4,6 +4,8 @@ import LibraryView from "./components/LibraryView";
 import BandcampView from "./components/BandcampView";
 import SettingsView from "./components/SettingsView";
 import HeaderNav from "./components/HeaderNav";
+import PlayerBar from "./components/PlayerBar";
+import { PlayerProvider } from "./lib/player";
 import { CloseIcon } from "./components/icons";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { bandcampStatus } from "./lib/api";
@@ -87,6 +89,7 @@ export default function App() {
   );
 
   return (
+    <PlayerProvider>
     <div className="min-h-screen bg-bg font-mono text-fg">
       {ready && (
         <>
@@ -153,5 +156,7 @@ export default function App() {
         </>
       )}
     </div>
+      <PlayerBar />
+    </PlayerProvider>
   );
 }

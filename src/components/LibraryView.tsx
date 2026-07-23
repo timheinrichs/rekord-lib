@@ -53,6 +53,7 @@ import type {
 import MetadataEditor from "./MetadataEditor";
 import BulkMetadataEditor, { type BulkPatch } from "./BulkMetadataEditor";
 import CoverThumb from "./CoverThumb";
+import { usePlayer, type PlayerTrack } from "../lib/player";
 import MarqueeText from "./MarqueeText";
 import DuplicatesModal from "./DuplicatesModal";
 import AppHeader from "./AppHeader";
@@ -525,6 +526,30 @@ export default function LibraryView({
     }
     return arr;
   }, [folderRoot, albumItems, sortedFlat, visibleTracks]);
+
+  // Audio player: build a queue entry from an (edit-aware) track.
+  const player = usePlayer();
+  const toPlayerTrack = useCallback(
+    (t: TrackAnalysis): PlayerTrack => {
+      const m = edits[t.id]?.metadata ?? t.metadata;
+      return {
+        id: t.id,
+        path: t.path,
+        title: m.title || t.file_name,
+        artist: m.artist || m.album_artist || "",
+      };
+    },
+    [edits],
+  );
+
+  // Playing a track from a cover queues the whole visible list (so next/prev
+  // browse it); an album cover queues just that album.
+  const playFrom = useCallback(
+    (list: TrackAnalysis[], index: number) => {
+      player.play(list.map(toPlayerTrack), index);
+    },
+    [player, toPlayerTrack],
+  );
 
   const allGroupKeys = useMemo(
     () =>
@@ -1332,7 +1357,11 @@ export default function LibraryView({
                       />
                     </td>
                     <td className="px-4 py-3">
-                      <CoverThumb path={t.path} hasCover={t.metadata.has_cover} />
+                      <CoverThumb
+                        path={t.path}
+                        hasCover={t.metadata.has_cover}
+                        onPlay={() => playFrom(renderOrder, index)}
+                      />
                     </td>
                     <td className="px-4 py-3 text-fg" title={t.path}>
                       <MarqueeText text={md.title || t.file_name} />
@@ -1602,6 +1631,7 @@ export default function LibraryView({
                           <CoverThumb
                             path={cover.path}
                             hasCover={cover.metadata.has_cover}
+                            onPlay={() => playFrom(gTracks, 0)}
                           />
                         </td>
                         <td className="px-4 py-2.5">

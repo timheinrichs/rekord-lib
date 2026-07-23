@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { coverThumbnail } from "../lib/api";
+import { PlayIcon } from "./icons";
 
 /** Module-wide cache: path → data URL (or null = no cover). */
 const cache = new Map<string, string | null>();
@@ -7,6 +8,8 @@ const cache = new Map<string, string | null>();
 interface Props {
   path: string;
   hasCover: boolean;
+  /** When set, hovering the cover reveals a play button that calls this. */
+  onPlay?: () => void;
 }
 
 /**
@@ -14,7 +17,7 @@ interface Props {
  * Loads only once the row scrolls into the viewport (IntersectionObserver),
  * and caches the result module-wide to avoid flooding the backend.
  */
-export default function CoverThumb({ path, hasCover }: Props) {
+export default function CoverThumb({ path, hasCover, onPlay }: Props) {
   const [url, setUrl] = useState<string | null>(() => cache.get(path) ?? null);
   const [visible, setVisible] = useState(() => cache.has(path));
   const ref = useRef<HTMLDivElement>(null);
@@ -61,12 +64,25 @@ export default function CoverThumb({ path, hasCover }: Props) {
   return (
     <div
       ref={ref}
-      className="flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded bg-surface-2"
+      className="group/cover relative flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded bg-surface-2"
     >
       {url ? (
         <img src={url} className="h-full w-full object-cover" alt="" />
       ) : (
         <MusicIcon />
+      )}
+      {onPlay && (
+        <button
+          onClick={(e) => {
+            e.stopPropagation();
+            onPlay();
+          }}
+          className="absolute inset-0 flex items-center justify-center bg-black/50 text-fg opacity-0 transition-opacity group-hover/cover:opacity-100 focus:opacity-100"
+          title="Play"
+          aria-label="Play"
+        >
+          <PlayIcon size={18} />
+        </button>
       )}
     </div>
   );
