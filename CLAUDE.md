@@ -75,8 +75,10 @@ should never have to install a dependency to make a feature work.
   against system libraries** (`/usr/lib`, `/System/…`). A binary linked against
   `/opt/homebrew/…` or `/usr/local/…` crashes with `dyld: Library not loaded`
   on users' machines — analysis/conversion then fail silently. **Never copy
-  Homebrew binaries into the bundle**; use static builds (e.g. osxexperts.net
-  static `ffmpeg`/`ffprobe` for `aarch64`). Verify before committing: `otool -L`
+  Homebrew binaries into the bundle**; use static builds. Regenerate them with
+  `scripts/build-static-ffmpeg.sh` (minimal, audio-only, from pinned+checksummed
+  sources) or the `Build ffmpeg sidecars` GitHub workflow. Verify before
+  committing: `otool -L`
   shows system paths only, `file` shows the right arch, `codesign -dv` shows a
   valid (ad-hoc) signature. The test
   `audio::sidecar::sidecars_are_self_contained` enforces this in CI — keep it

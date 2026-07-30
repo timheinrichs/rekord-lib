@@ -1,0 +1,5 @@
+# SHA-256 checksums for third-party sources pulled by build-static-ffmpeg.sh.
+# Verify each hash against the official download the first time you rely on it
+# (LAME: https://lame.sourceforge.io/download.php). FFmpeg is pinned via its
+# git tag instead of a checksum, so it is not listed here.
+ddfe36cab873794038ae2c1210557ad34857a4b6bdc515785d1da9e175b1da1e  lame-3.100.tar.gz

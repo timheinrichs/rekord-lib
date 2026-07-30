@@ -1,0 +1,35 @@
+name: Build ffmpeg sidecars
+
+# Manually build the minimal, self-contained static ffmpeg/ffprobe sidecars on
+# a clean Apple Silicon runner (no Homebrew ffmpeg involved) and upload them as
+# an artifact. Download it, drop the two files into src-tauri/binaries/, run
+# `cd src-tauri && cargo test sidecars_are_self_contained`, verify format
+# coverage by importing each supported type, then commit.
+on:
+  workflow_dispatch:
+
+jobs:
+  build:
+    name: Build static ffmpeg/ffprobe (macOS arm64)
+    runs-on: macos-14 # Apple Silicon, matches the aarch64 target
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build sidecars
+        run: scripts/build-static-ffmpeg.sh
+
+      - name: Show dependencies (must be system-only)
+        run: |
+          for b in src-tauri/binaries/ffmpeg-aarch64-apple-darwin \
+                   src-tauri/binaries/ffprobe-aarch64-apple-darwin; do
+            echo "== $b =="
+            otool -L "$b"
+          done
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ffmpeg-sidecars-aarch64-apple-darwin
+          path: |
+            src-tauri/binaries/ffmpeg-aarch64-apple-darwin
+            src-tauri/binaries/ffprobe-aarch64-apple-darwin
+          if-no-files-found: error
