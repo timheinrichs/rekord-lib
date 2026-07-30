@@ -9,6 +9,29 @@ contain incompatible changes.
 
 ## [Unreleased]
 
+## [0.4.5] - 2026-07-30
+
+### Fixed
+- **Sidecars run without Homebrew**: the bundled `ffmpeg`/`ffprobe` were
+  dynamically linked against Homebrew dylibs and crashed with
+  `dyld: Library not loaded` on machines without an identical Homebrew install —
+  imports failed and Bandcamp downloads never appeared in the library. Replaced
+  with self-contained static builds (system libraries only).
+
+### Changed
+- **Easier install**: the app bundle is now ad-hoc signed, so Gatekeeper shows
+  the bypassable "unidentified developer" prompt instead of the hard
+  "is damaged and can't be opened" error on first launch.
+- **Hardened webview**: added a strict Content-Security-Policy and narrowed the
+  asset-protocol scope from the whole filesystem to the user's home and mounted
+  volumes.
+
+### Added
+- `scripts/build-static-ffmpeg.sh` + a manual GitHub workflow to regenerate
+  minimal, audio-only static sidecars from pinned, checksum-verified sources, and
+  a test (`sidecars_are_self_contained`) that fails the build if a sidecar ever
+  links against non-system libraries again.
+
 ## [0.4.4] - 2026-07-23
 
 ### Added
