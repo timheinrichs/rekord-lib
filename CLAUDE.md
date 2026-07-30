@@ -63,6 +63,40 @@ tokens, status color = state, mono for technical data. When in doubt, check
   **`npm test`** and **`cd src-tauri && cargo test`** must be green. CI
   (`.github/workflows/ci.yml`) enforces this on every push/PR.
 
+## Distribution, robustness & security — mandatory
+
+The app ships as a **standalone `.app`** that must run on **any** supported Mac
+**out of the box** — including machines that have **no Homebrew** and no way to
+install system packages. Assume nothing beyond a clean macOS install; the user
+should never have to install a dependency to make a feature work.
+
+- **Self-contained binaries.** Every bundled sidecar / native dependency
+  (`src-tauri/binaries/` — currently `ffmpeg`/`ffprobe`) must link **only
+  against system libraries** (`/usr/lib`, `/System/…`). A binary linked against
+  `/opt/homebrew/…` or `/usr/local/…` crashes with `dyld: Library not loaded`
+  on users' machines — analysis/conversion then fail silently. **Never copy
+  Homebrew binaries into the bundle**; use static builds (e.g. osxexperts.net
+  static `ffmpeg`/`ffprobe` for `aarch64`). Verify before committing: `otool -L`
+  shows system paths only, `file` shows the right arch, `codesign -dv` shows a
+  valid (ad-hoc) signature. The test
+  `audio::sidecar::sidecars_are_self_contained` enforces this in CI — keep it
+  green, and add a matching guard for any new bundled binary.
+- **Ease of installation.** First-run friction must stay minimal. The bundle is
+  ad-hoc signed (`bundle.macOS.signingIdentity: "-"`) so Gatekeeper shows the
+  bypassable "unidentified developer" prompt rather than the hard "is damaged"
+  error. Ship the workaround for testers in the release notes (right-click →
+  Open, or `xattr -dr com.apple.quarantine /Applications/rekord-lib.app`). The
+  real target is Developer ID signing + notarization (see suggestions below) —
+  ad-hoc is only the interim.
+- **Security.** Only bundle binaries from trustworthy, verifiable sources, and
+  vet them before they enter the repo (arch, signature, dependencies, size,
+  version; prefer sources that publish checksums/signatures). Treat all
+  downloaded / third-party content (Bandcamp downloads, dragged-in files,
+  update artifacts) as **untrusted input** — validate and sandbox-scope it.
+  Keep the Tauri capability, `assetProtocol`, and CSP scopes as **narrow** as
+  the feature allows; widen only with a concrete reason. The updater's minisign
+  signature is what protects auto-updates — never disable or bypass it.
+
 ## Releasing & auto-update
 
 **Never bump the version or cut a release without the maintainer's explicit
@@ -72,8 +106,10 @@ deliberate step that only happens when the maintainer says so.
 - **Distribution:** macOS **Apple Silicon only** (`aarch64-apple-darwin`; the
   bundled `ffmpeg`/`ffprobe` sidecars in `src-tauri/binaries/` exist only for
   that target — this is also why the backend CI job runs on `macos-14`, not
-  Linux). The app is **not** Apple-signed/notarized (Gatekeeper warning on
-  first launch / after updates).
+  Linux). The app is **ad-hoc** signed (`bundle.macOS.signingIdentity: "-"`) but
+  **not** Developer-ID-signed/notarized — Gatekeeper still warns on first launch
+  / after updates (bypassable "unidentified developer", not "is damaged"). See
+  **Distribution, robustness & security** above.
 - **Self-update:** Tauri updater + process plugins. Endpoint + public key in
   `src-tauri/tauri.conf.json` (`plugins.updater`), pure wrapper in
   `src/lib/updater.ts`, UI in `SettingsView` (About) + gear badge. The updater
