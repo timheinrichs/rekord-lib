@@ -9,6 +9,14 @@ contain incompatible changes.
 
 ## [Unreleased]
 
+## [0.4.6] - 2026-08-01
+
+### Fixed
+- **Bandcamp cover images load again**: the strict CSP shipped in 0.4.5 blocked
+  the Bandcamp collection's cover thumbnails (served from the bcbits CDN). Allow
+  `https://*.bcbits.com` in `img-src`; a test now keeps the CSP in sync with the
+  art host.
+
 ## [0.4.5] - 2026-07-30
 
 ### Fixed
