@@ -161,4 +161,33 @@ mod tests {
         let it = json!({ "item_title": "No id" });
         assert!(parse_item(&it, &Value::Null).is_none());
     }
+
+    /// The Bandcamp view renders `art_url` (bcbits CDN) directly as an <img>, so
+    /// the webview CSP must allow that host in `img-src`. Tightening the CSP
+    /// without keeping bcbits shipped broken cover images in 0.4.5 — guard it.
+    #[test]
+    fn csp_allows_bandcamp_art_host() {
+        let conf = include_str!("../../tauri.conf.json");
+        let csp = serde_json::from_str::<Value>(conf)
+            .unwrap()
+            .pointer("/app/security/csp")
+            .and_then(Value::as_str)
+            .expect("tauri.conf.json must define a CSP string")
+            .to_string();
+
+        // art_url is built from this host in parse_item above.
+        assert!(
+            item_art_url(42).contains("bcbits.com"),
+            "art_url host changed — update the CSP assertion below"
+        );
+        assert!(
+            csp.contains("bcbits.com"),
+            "CSP img-src must allow the bcbits image host, else Bandcamp covers \
+             are blocked. Current CSP: {csp}"
+        );
+    }
+
+    fn item_art_url(id: u64) -> String {
+        format!("https://f4.bcbits.com/img/a{id:010}_9.jpg")
+    }
 }
