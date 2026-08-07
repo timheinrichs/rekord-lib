@@ -67,7 +67,6 @@ import {
 } from "./icons";
 import { useScrolled } from "../lib/useScrolled";
 import {
-  albumArtistOf,
   buildAlbumItems,
   pruneGroups,
   sortTracks,
@@ -87,6 +86,7 @@ import {
   labelTrackList,
   type LabelNode,
 } from "../lib/labelTree";
+import { albumsLabel, summarizeGroup } from "../lib/groupSummary";
 import {
   convertedOutputs,
   diffAudioFiles,
@@ -953,11 +953,6 @@ export default function LibraryView({
     setBulkOpen(true);
   }, []);
 
-  const toggleFolderSelect = useCallback(
-    (node: FolderNode) => toggleAlbumSelect(folderTrackList(node)),
-    [toggleAlbumSelect],
-  );
-
   // Label view: open the bulk editor scoped to a label or one of its albums.
   const editTracks = useCallback((list: TrackAnalysis[]) => {
     const ids = new Set(list.map((t) => t.id));
@@ -1537,22 +1532,32 @@ export default function LibraryView({
                 const rows: ReactNode[] = [];
 
                 // Folder view: render the directory tree (folders + track leaves).
-                const renderFolderNode = (
-                  node: FolderNode,
-                  depth: number,
-                  idxRef: { i: number },
-                ) => {
-                  const nodeTracks = folderTrackList(node);
+                // One header row for every kind of group (album, label, folder)
+                // so a group shows the same columns everywhere. `cover` is only
+                // passed where one artwork really represents the group.
+                const renderGroupHeader = (opts: {
+                  id: string;
+                  title: string;
+                  depth: number;
+                  tracks: TrackAnalysis[];
+                  expanded: boolean;
+                  onToggle: () => void;
+                  cover?: TrackAnalysis;
+                  /** Album column override; defaults to "N albums". */
+                  albumText?: string;
+                  actions?: ReactNode;
+                }) => {
+                  const { tracks: gTracks, depth } = opts;
+                  const s = summarizeGroup(gTracks, edits, isIncomplete);
                   const allSel =
-                    nodeTracks.length > 0 &&
-                    nodeTracks.every((t) => selected.has(t.id));
+                    gTracks.length > 0 && gTracks.every((t) => selected.has(t.id));
                   const someSel =
-                    !allSel && nodeTracks.some((t) => selected.has(t.id));
-                  const expanded = expandedFolders.has(node.path);
+                    !allSel && gTracks.some((t) => selected.has(t.id));
+                  const fromBandcamp = gTracks.some((t) => !!originById[t.id]);
                   rows.push(
                     <tr
-                      key={`f-${node.path}`}
-                      onClick={() => toggleFolder(node.path)}
+                      key={opts.id}
+                      onClick={opts.onToggle}
                       className="group cursor-pointer border-b border-border bg-surface-2/40 hover:bg-surface-2"
                     >
                       <td
@@ -1565,55 +1570,127 @@ export default function LibraryView({
                           ref={(el) => {
                             if (el) el.indeterminate = someSel;
                           }}
-                          onChange={() => toggleFolderSelect(node)}
+                          onChange={() => toggleAlbumSelect(gTracks)}
                           className="h-4 w-4 rounded border-border-strong bg-surface-2"
-                          aria-label={`Select ${node.name}`}
+                          aria-label={`Select ${opts.title}`}
                         />
                       </td>
+                      <td className="px-4 py-2.5">
+                        {opts.cover && (
+                          <CoverThumb
+                            path={opts.cover.path}
+                            hasCover={opts.cover.metadata.has_cover}
+                            onPlay={() => playFrom(gTracks, 0, true)}
+                            active={gTracks.some(
+                              (t) => t.path === player.current?.path,
+                            )}
+                            playing={player.playing}
+                            onToggle={player.toggle}
+                          />
+                        )}
+                      </td>
                       <td
-                        colSpan={8}
                         className="px-4 py-2.5"
-                        style={{ paddingLeft: 16 + depth * 20 }}
+                        style={depth ? { paddingLeft: 16 + depth * 20 } : undefined}
                       >
                         <div className="flex items-center gap-2">
                           <span className="shrink-0 text-fg-subtle">
-                            <ChevronIcon open={expanded} />
+                            <ChevronIcon open={opts.expanded} />
                           </span>
-                          <span className="min-w-0 truncate font-medium text-fg">
-                            {node.name}
-                          </span>
+                          <MarqueeText
+                            text={opts.title}
+                            className="min-w-0 font-medium text-fg"
+                          />
                           <span className="shrink-0 whitespace-nowrap pl-2 text-xs text-fg-subtle">
-                            {nodeTracks.length} tracks
+                            {s.count} tracks
                           </span>
                         </div>
+                      </td>
+                      <td className="max-w-[10rem] truncate px-4 py-2.5 text-fg-muted">
+                        {s.albumArtist || "–"}
+                      </td>
+                      <td className="truncate px-4 py-2.5 text-fg-muted">
+                        {opts.albumText ?? albumsLabel(s.albums)}
+                      </td>
+                      <td className="truncate whitespace-nowrap px-4 py-2.5 text-fg-muted">
+                        {s.format}
+                      </td>
+                      <td className="whitespace-nowrap px-4 py-2.5 text-fg-muted">
+                        {formatDuration(s.totalLength)}
+                      </td>
+                      <td className="px-4 py-2.5">
+                        <div className="flex flex-wrap gap-1.5">
+                          {s.needConvert > 0 && (
+                            <span className="rounded-full bg-warning-500/15 px-2 py-0.5 text-xs text-warning-500 ring-1 ring-warning-500/30">
+                              Convert ({s.needConvert})
+                            </span>
+                          )}
+                          {s.needIncomplete > 0 && (
+                            <span className="rounded-full bg-warning-500/15 px-2 py-0.5 text-xs text-warning-500 ring-1 ring-warning-500/30">
+                              Metadata incomplete ({s.needIncomplete})
+                            </span>
+                          )}
+                          {fromBandcamp && (
+                            <span className="rounded-full bg-accent-500/15 px-2 py-0.5 text-xs text-accent-300 ring-1 ring-accent-500/30">
+                              Bandcamp
+                            </span>
+                          )}
+                        </div>
+                      </td>
+                      <td className="whitespace-nowrap px-4 py-2.5 text-fg-muted">
+                        {formatDate(s.newestDate)}
                       </td>
                       <td
                         className="relative px-4 py-2.5"
                         onClick={(e) => e.stopPropagation()}
                       >
-                        <div className="pointer-events-none absolute inset-y-0 right-4 flex items-center gap-2 rounded-lg bg-surface-2 pl-3 opacity-0 transition-opacity group-hover:pointer-events-auto group-hover:opacity-100">
-                          <button
-                            onClick={() => editFolder(node)}
-                            disabled={writing}
-                            className="flex h-8 w-8 items-center justify-center rounded-md text-fg-subtle hover:bg-surface hover:text-accent-400 disabled:opacity-40"
-                            title="Edit metadata for all tracks in this folder"
-                            aria-label="Edit folder metadata"
-                          >
-                            <EditIcon />
-                          </button>
-                          <button
-                            onClick={() => void confirmAndDeleteFolder(node)}
-                            disabled={converting}
-                            className="flex h-8 w-8 items-center justify-center rounded-md text-fg-subtle hover:bg-surface hover:text-danger-500 disabled:opacity-40"
-                            title="Delete folder (move to trash)"
-                            aria-label="Delete folder"
-                          >
-                            <TrashIcon />
-                          </button>
-                        </div>
+                        {opts.actions && (
+                          <div className="pointer-events-none absolute inset-y-0 right-4 flex items-center gap-2 rounded-lg bg-surface-2 pl-3 opacity-0 transition-opacity group-hover:pointer-events-auto group-hover:opacity-100">
+                            {opts.actions}
+                          </div>
+                        )}
                       </td>
                     </tr>,
                   );
+                };
+
+                const renderFolderNode = (
+                  node: FolderNode,
+                  depth: number,
+                  idxRef: { i: number },
+                ) => {
+                  const nodeTracks = folderTrackList(node);
+                  const expanded = expandedFolders.has(node.path);
+                  renderGroupHeader({
+                    id: `f-${node.path}`,
+                    title: node.name,
+                    depth,
+                    tracks: nodeTracks,
+                    expanded,
+                    onToggle: () => toggleFolder(node.path),
+                    actions: (
+                      <>
+                        <button
+                          onClick={() => editFolder(node)}
+                          disabled={writing}
+                          className="flex h-8 w-8 items-center justify-center rounded-md text-fg-subtle hover:bg-surface hover:text-accent-400 disabled:opacity-40"
+                          title="Edit metadata for all tracks in this folder"
+                          aria-label="Edit folder metadata"
+                        >
+                          <EditIcon />
+                        </button>
+                        <button
+                          onClick={() => void confirmAndDeleteFolder(node)}
+                          disabled={converting}
+                          className="flex h-8 w-8 items-center justify-center rounded-md text-fg-subtle hover:bg-surface hover:text-danger-500 disabled:opacity-40"
+                          title="Delete folder (move to trash)"
+                          aria-label="Delete folder"
+                        >
+                          <TrashIcon />
+                        </button>
+                      </>
+                    ),
+                  });
                   if (expanded) {
                     for (const child of node.folders)
                       renderFolderNode(child, depth + 1, idxRef);
@@ -1625,103 +1702,63 @@ export default function LibraryView({
                   }
                 };
 
-                // Label view header row (label at depth 0, its albums at depth 1).
-                // Same visual language as the folder header; no delete button,
-                // because a label spans arbitrary folders.
-                const renderLabelHeader = (
-                  id: string,
-                  name: string,
-                  depth: number,
-                  nodeTracks: TrackAnalysis[],
-                  editTitle: string,
-                ) => {
-                  const allSel =
-                    nodeTracks.length > 0 &&
-                    nodeTracks.every((t) => selected.has(t.id));
-                  const someSel =
-                    !allSel && nodeTracks.some((t) => selected.has(t.id));
-                  rows.push(
-                    <tr
-                      key={id}
-                      onClick={() => toggleLabel(id)}
-                      className="group cursor-pointer border-b border-border bg-surface-2/40 hover:bg-surface-2"
-                    >
-                      <td
-                        className="px-4 py-2.5"
-                        onClick={(e) => e.stopPropagation()}
-                      >
-                        <input
-                          type="checkbox"
-                          checked={allSel}
-                          ref={(el) => {
-                            if (el) el.indeterminate = someSel;
-                          }}
-                          onChange={() => toggleAlbumSelect(nodeTracks)}
-                          className="h-4 w-4 rounded border-border-strong bg-surface-2"
-                          aria-label={`Select ${name}`}
-                        />
-                      </td>
-                      <td
-                        colSpan={8}
-                        className="px-4 py-2.5"
-                        style={{ paddingLeft: 16 + depth * 20 }}
-                      >
-                        <div className="flex items-center gap-2">
-                          <span className="shrink-0 text-fg-subtle">
-                            <ChevronIcon open={expandedLabels.has(id)} />
-                          </span>
-                          <span className="min-w-0 truncate font-medium text-fg">
-                            {name}
-                          </span>
-                          <span className="shrink-0 whitespace-nowrap pl-2 text-xs text-fg-subtle">
-                            {nodeTracks.length} tracks
-                          </span>
-                        </div>
-                      </td>
-                      <td
-                        className="relative px-4 py-2.5"
-                        onClick={(e) => e.stopPropagation()}
-                      >
-                        <div className="pointer-events-none absolute inset-y-0 right-4 flex items-center gap-2 rounded-lg bg-surface-2 pl-3 opacity-0 transition-opacity group-hover:pointer-events-auto group-hover:opacity-100">
-                          <button
-                            onClick={() => editTracks(nodeTracks)}
-                            disabled={writing}
-                            className="flex h-8 w-8 items-center justify-center rounded-md text-fg-subtle hover:bg-surface hover:text-accent-400 disabled:opacity-40"
-                            title={editTitle}
-                            aria-label={editTitle}
-                          >
-                            <EditIcon />
-                          </button>
-                        </div>
-                      </td>
-                    </tr>,
-                  );
-                };
-
                 const renderLabelNode = (
                   node: LabelNode,
                   idxRef: { i: number },
                 ) => {
-                  renderLabelHeader(
-                    node.id,
-                    node.name,
-                    0,
-                    node.all,
-                    "Edit metadata for all tracks of this label",
-                  );
-                  if (!expandedLabels.has(node.id)) {
+                  const expanded = expandedLabels.has(node.id);
+                  renderGroupHeader({
+                    id: node.id,
+                    title: node.name,
+                    depth: 0,
+                    tracks: node.all,
+                    expanded,
+                    onToggle: () => toggleLabel(node.id),
+                    actions: (
+                      <button
+                        onClick={() => editTracks(node.all)}
+                        disabled={writing}
+                        className="flex h-8 w-8 items-center justify-center rounded-md text-fg-subtle hover:bg-surface hover:text-accent-400 disabled:opacity-40"
+                        title="Edit metadata for all tracks of this label"
+                        aria-label="Edit label metadata"
+                      >
+                        <EditIcon />
+                      </button>
+                    ),
+                  });
+                  if (!expanded) {
                     idxRef.i += node.all.length;
                     return;
                   }
                   for (const album of node.albums) {
-                    renderLabelHeader(
-                      album.id,
-                      album.album,
-                      1,
-                      album.tracks,
-                      "Edit metadata for all tracks of this album",
-                    );
-                    if (expandedLabels.has(album.id)) {
+                    const albumExpanded = expandedLabels.has(album.id);
+                    renderGroupHeader({
+                      id: album.id,
+                      title: album.album,
+                      depth: 1,
+                      tracks: album.tracks,
+                      expanded: albumExpanded,
+                      onToggle: () => toggleLabel(album.id),
+                      cover: album.tracks[0],
+                      albumText: album.album,
+                      actions: (
+                        <button
+                          onClick={() =>
+                            void confirmAndDeleteAlbum(
+                              album.tracks,
+                              `Move the album “${album.album}” (${album.tracks.length} files) to the trash? The whole folder is removed.`,
+                            )
+                          }
+                          disabled={converting}
+                          className="flex h-8 w-8 items-center justify-center rounded-md text-fg-subtle hover:bg-surface hover:text-danger-500 disabled:opacity-40"
+                          title="Delete album (move to trash)"
+                          aria-label="Delete album"
+                        >
+                          <TrashIcon />
+                        </button>
+                      ),
+                    });
+                    if (albumExpanded) {
                       album.tracks.forEach((t) => {
                         rows.push(renderTrackRow(t, idxRef.i++, 2));
                       });
@@ -1754,141 +1791,32 @@ export default function LibraryView({
                     }
                     const expanded = expandedAlbums.has(it.key);
                     const gTracks = it.tracks;
-                    const allSel = gTracks.every((t) => selected.has(t.id));
-                    const someSel =
-                      !allSel && gTracks.some((t) => selected.has(t.id));
-                    const cover = gTracks[0];
-                    const albumArtist = albumArtistOf(cover, edits);
-                    const needConvert = gTracks.filter(
-                      (t) => !t.compat.compatible,
-                    ).length;
-                    const needIncomplete = gTracks.filter(isIncomplete).length;
-                    // Format: shared label (without sample rate), else "Mixed".
-                    const formats = new Set(
-                      gTracks.map((t) =>
-                        formatLabel(
-                          t.audio.codec,
-                          t.audio.container,
-                          t.audio.bits_per_sample,
-                        ),
+                    renderGroupHeader({
+                      id: `g-${it.key}`,
+                      title: it.key,
+                      depth: 0,
+                      tracks: gTracks,
+                      expanded,
+                      onToggle: () => toggleAlbum(it.key),
+                      cover: gTracks[0],
+                      albumText: it.key,
+                      actions: (
+                        <button
+                          onClick={() =>
+                            void confirmAndDeleteAlbum(
+                              gTracks,
+                              `Move the album \u201C${it.key}\u201D (${gTracks.length} files) to the trash? The whole folder is removed.`,
+                            )
+                          }
+                          disabled={converting}
+                          className="flex h-8 w-8 items-center justify-center rounded-md text-fg-subtle hover:bg-surface hover:text-danger-500 disabled:opacity-40"
+                          title="Delete album (move to trash)"
+                          aria-label="Delete album"
+                        >
+                          <TrashIcon />
+                        </button>
                       ),
-                    );
-                    const albumFormat =
-                      formats.size === 1 ? [...formats][0] : "Mixed";
-                    const albumLength = gTracks.reduce(
-                      (s, t) => s + t.audio.duration_secs,
-                      0,
-                    );
-                    const albumDate = Math.max(
-                      ...gTracks.map((t) => t.download_date ?? 0),
-                    );
-                    const albumFromBandcamp = gTracks.some(
-                      (t) => !!originById[t.id],
-                    );
-                    rows.push(
-                      <tr
-                        key={`g-${it.key}`}
-                        onClick={() => toggleAlbum(it.key)}
-                        className="group cursor-pointer border-b border-border bg-surface-2/40 hover:bg-surface-2"
-                      >
-                        <td
-                          className="px-4 py-2.5"
-                          onClick={(e) => e.stopPropagation()}
-                        >
-                          <input
-                            type="checkbox"
-                            checked={allSel}
-                            ref={(el) => {
-                              if (el) el.indeterminate = someSel;
-                            }}
-                            onChange={() => toggleAlbumSelect(gTracks)}
-                            className="h-4 w-4 rounded border-border-strong bg-surface-2"
-                            aria-label={`Select ${it.key}`}
-                          />
-                        </td>
-                        <td className="px-4 py-2.5">
-                          <CoverThumb
-                            path={cover.path}
-                            hasCover={cover.metadata.has_cover}
-                            onPlay={() => playFrom(gTracks, 0, true)}
-                            active={gTracks.some(
-                              (t) => t.path === player.current?.path,
-                            )}
-                            playing={player.playing}
-                            onToggle={player.toggle}
-                          />
-                        </td>
-                        <td className="px-4 py-2.5">
-                          <div className="flex items-center gap-2">
-                            <span className="shrink-0 text-fg-subtle">
-                              <ChevronIcon open={expanded} />
-                            </span>
-                            <MarqueeText
-                              text={it.key}
-                              className="min-w-0 font-medium text-fg"
-                            />
-                            <span className="shrink-0 whitespace-nowrap pl-2 text-xs text-fg-subtle">
-                              {gTracks.length} tracks
-                            </span>
-                          </div>
-                        </td>
-                        <td className="max-w-[10rem] truncate px-4 py-2.5 text-fg-muted">
-                          {albumArtist || "–"}
-                        </td>
-                        <td className="truncate px-4 py-2.5 text-fg-muted">
-                          {it.key}
-                        </td>
-                        <td className="truncate whitespace-nowrap px-4 py-2.5 text-fg-muted">
-                          {albumFormat}
-                        </td>
-                        <td className="whitespace-nowrap px-4 py-2.5 text-fg-muted">
-                          {formatDuration(albumLength)}
-                        </td>
-                        <td className="px-4 py-2.5">
-                          <div className="flex flex-wrap gap-1.5">
-                            {needConvert > 0 && (
-                              <span className="rounded-full bg-warning-500/15 px-2 py-0.5 text-xs text-warning-500 ring-1 ring-warning-500/30">
-                                Convert ({needConvert})
-                              </span>
-                            )}
-                            {needIncomplete > 0 && (
-                              <span className="rounded-full bg-warning-500/15 px-2 py-0.5 text-xs text-warning-500 ring-1 ring-warning-500/30">
-                                Metadata incomplete ({needIncomplete})
-                              </span>
-                            )}
-                            {albumFromBandcamp && (
-                              <span className="rounded-full bg-accent-500/15 px-2 py-0.5 text-xs text-accent-300 ring-1 ring-accent-500/30">
-                                Bandcamp
-                              </span>
-                            )}
-                          </div>
-                        </td>
-                        <td className="whitespace-nowrap px-4 py-2.5 text-fg-muted">
-                          {formatDate(albumDate)}
-                        </td>
-                        <td
-                          className="relative px-4 py-2.5"
-                          onClick={(e) => e.stopPropagation()}
-                        >
-                          <div className="pointer-events-none absolute inset-y-0 right-4 flex items-center rounded-lg bg-surface-2 pl-3 opacity-0 transition-opacity group-hover:pointer-events-auto group-hover:opacity-100">
-                            <button
-                              onClick={() =>
-                                void confirmAndDeleteAlbum(
-                                  gTracks,
-                                  `Move the album “${it.key}” (${gTracks.length} files) to the trash? The whole folder is removed.`,
-                                )
-                              }
-                              disabled={converting}
-                              className="flex h-8 w-8 items-center justify-center rounded-md text-fg-subtle hover:bg-surface hover:text-danger-500 disabled:opacity-40"
-                              title="Delete album (move to trash)"
-                              aria-label="Delete album"
-                            >
-                              <TrashIcon />
-                            </button>
-                          </div>
-                        </td>
-                      </tr>,
-                    );
+                    });
                     if (expanded) {
                       gTracks.forEach((t) => {
                         rows.push(renderTrackRow(t, idx));
