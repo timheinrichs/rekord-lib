@@ -10,10 +10,10 @@ export type AlbumItem =
   | { type: "group"; key: string; tracks: TrackAnalysis[] }
   | { type: "track"; track: TrackAnalysis };
 
-type Edits = Record<string, TrackEdit>;
+export type Edits = Record<string, TrackEdit>;
 
 /** Edit-aware metadata of a track (pending edits win over the scanned tags). */
-function metaOf(t: TrackAnalysis, edits: Edits) {
+export function metaOf(t: TrackAnalysis, edits: Edits) {
   return edits[t.id]?.metadata ?? t.metadata;
 }
 
@@ -53,7 +53,7 @@ function trackText(t: TrackAnalysis, edits: Edits, sortKey: SortKey): string {
 }
 
 /** Edit-aware track number for the hard within-album ordering (nulls last). */
-function trackNumberOf(t: TrackAnalysis, edits: Edits): number {
+export function trackNumberOf(t: TrackAnalysis, edits: Edits): number {
   const n = metaOf(t, edits).track_number;
   return n != null ? n : Number.MAX_SAFE_INTEGER;
 }

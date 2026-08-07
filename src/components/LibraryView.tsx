@@ -82,6 +82,12 @@ import {
   type FolderNode,
 } from "../lib/folderTree";
 import {
+  allLabelIds,
+  buildLabelTree,
+  labelTrackList,
+  type LabelNode,
+} from "../lib/labelTree";
+import {
   convertedOutputs,
   diffAudioFiles,
   mergeConverted,
@@ -101,7 +107,7 @@ interface Props {
 }
 
 type Filter = "all" | "convert" | "incomplete";
-type Grouping = "flat" | "album" | "folder";
+type Grouping = "flat" | "album" | "folder" | "label";
 
 export default function LibraryView({
   settings,
@@ -138,6 +144,8 @@ export default function LibraryView({
   const [grouping, setGrouping] = useState<Grouping>("album");
   const [expandedAlbums, setExpandedAlbums] = useState<Set<string>>(new Set());
   const [expandedFolders, setExpandedFolders] = useState<Set<string>>(new Set());
+  // Label view: holds both label and album node ids (see lib/labelTree).
+  const [expandedLabels, setExpandedLabels] = useState<Set<string>>(new Set());
   const [sortKey, setSortKey] = useState<SortKey>("artist");
   const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
   const [error, setError] = useState<string | null>(null);
@@ -473,7 +481,13 @@ export default function LibraryView({
       if (filter === "convert" && t.compat.compatible) return false;
       if (filter === "incomplete" && !isIncomplete(t)) return false;
       if (q) {
-        const hay = [t.metadata.title, t.metadata.artist, t.metadata.album, t.file_name]
+        const hay = [
+          t.metadata.title,
+          t.metadata.artist,
+          t.metadata.album,
+          t.metadata.label,
+          t.file_name,
+        ]
           .filter(Boolean)
           .join(" ")
           .toLowerCase();
@@ -515,9 +529,24 @@ export default function LibraryView({
     [folderRoot],
   );
 
+  // Label tree of the visible tracks (label -> album -> tracks).
+  const labelRoot = useMemo(
+    () =>
+      grouping === "label"
+        ? buildLabelTree(visibleTracks, edits, sortKey, sortDir)
+        : null,
+    [grouping, visibleTracks, edits, sortKey, sortDir],
+  );
+
+  const allLabelKeys = useMemo(
+    () => (labelRoot ? allLabelIds(labelRoot) : []),
+    [labelRoot],
+  );
+
   // Flat render order (including collapsed) for the shift selection.
   const renderOrder = useMemo(() => {
     if (folderRoot) return folderTrackList(folderRoot);
+    if (labelRoot) return labelTrackList(labelRoot);
     if (!albumItems) return sortedFlat ?? visibleTracks;
     const arr: TrackAnalysis[] = [];
     for (const it of albumItems) {
@@ -525,7 +554,7 @@ export default function LibraryView({
       else arr.push(it.track);
     }
     return arr;
-  }, [folderRoot, albumItems, sortedFlat, visibleTracks]);
+  }, [folderRoot, labelRoot, albumItems, sortedFlat, visibleTracks]);
 
   // Audio player: build a queue entry from an (edit-aware) track.
   const player = usePlayer();
@@ -603,6 +632,22 @@ export default function LibraryView({
         : new Set(allFolderKeys),
     );
   }, [allFolderKeys]);
+
+  const toggleLabel = useCallback((id: string) => {
+    setExpandedLabels((prev) => {
+      const next = new Set(prev);
+      next.has(id) ? next.delete(id) : next.add(id);
+      return next;
+    });
+  }, []);
+
+  const toggleAllLabels = useCallback(() => {
+    setExpandedLabels((prev) =>
+      prev.size >= allLabelKeys.length && allLabelKeys.length > 0
+        ? new Set()
+        : new Set(allLabelKeys),
+    );
+  }, [allLabelKeys]);
 
   // (De)select all tracks of an album group.
   const toggleAlbumSelect = useCallback((tracksInAlbum: TrackAnalysis[]) => {
@@ -913,6 +958,14 @@ export default function LibraryView({
     [toggleAlbumSelect],
   );
 
+  // Label view: open the bulk editor scoped to a label or one of its albums.
+  const editTracks = useCallback((list: TrackAnalysis[]) => {
+    const ids = new Set(list.map((t) => t.id));
+    if (!ids.size) return;
+    setBulkFolderIds(ids);
+    setBulkOpen(true);
+  }, []);
+
   // Confirm, then trash a whole folder (incl. subfolders and side files).
   const confirmAndDeleteFolder = useCallback(
     async (node: FolderNode) => {
@@ -1183,13 +1236,14 @@ export default function LibraryView({
             label={`Metadata incomplete (${tracks.filter(isIncomplete).length})`}
           />
           <div className="ml-auto flex items-center gap-2">
-            {/* Grouping switch: flat list / by album / by folder tree. */}
+            {/* Grouping switch: flat list / by album / by folder tree / by label. */}
             <div className="flex items-center rounded-full ring-1 ring-border-strong">
               {(
                 [
                   ["flat", "Flat"],
                   ["album", "By album"],
                   ["folder", "By folder"],
+                  ["label", "By label"],
                 ] as [Grouping, string][]
               ).map(([key, label]) => (
                 <button
@@ -1221,6 +1275,16 @@ export default function LibraryView({
                 className="whitespace-nowrap rounded-full px-3 py-1.5 text-sm text-fg-muted ring-1 ring-border-strong transition-colors hover:text-fg hover:ring-border-strong"
               >
                 {expandedFolders.size >= allFolderKeys.length
+                  ? "Collapse all"
+                  : "Expand all"}
+              </button>
+            )}
+            {grouping === "label" && allLabelKeys.length > 0 && (
+              <button
+                onClick={toggleAllLabels}
+                className="whitespace-nowrap rounded-full px-3 py-1.5 text-sm text-fg-muted ring-1 ring-border-strong transition-colors hover:text-fg hover:ring-border-strong"
+              >
+                {expandedLabels.size >= allLabelKeys.length
                   ? "Collapse all"
                   : "Expand all"}
               </button>
@@ -1561,7 +1625,119 @@ export default function LibraryView({
                   }
                 };
 
-                if (folderRoot) {
+                // Label view header row (label at depth 0, its albums at depth 1).
+                // Same visual language as the folder header; no delete button,
+                // because a label spans arbitrary folders.
+                const renderLabelHeader = (
+                  id: string,
+                  name: string,
+                  depth: number,
+                  nodeTracks: TrackAnalysis[],
+                  editTitle: string,
+                ) => {
+                  const allSel =
+                    nodeTracks.length > 0 &&
+                    nodeTracks.every((t) => selected.has(t.id));
+                  const someSel =
+                    !allSel && nodeTracks.some((t) => selected.has(t.id));
+                  rows.push(
+                    <tr
+                      key={id}
+                      onClick={() => toggleLabel(id)}
+                      className="group cursor-pointer border-b border-border bg-surface-2/40 hover:bg-surface-2"
+                    >
+                      <td
+                        className="px-4 py-2.5"
+                        onClick={(e) => e.stopPropagation()}
+                      >
+                        <input
+                          type="checkbox"
+                          checked={allSel}
+                          ref={(el) => {
+                            if (el) el.indeterminate = someSel;
+                          }}
+                          onChange={() => toggleAlbumSelect(nodeTracks)}
+                          className="h-4 w-4 rounded border-border-strong bg-surface-2"
+                          aria-label={`Select ${name}`}
+                        />
+                      </td>
+                      <td
+                        colSpan={8}
+                        className="px-4 py-2.5"
+                        style={{ paddingLeft: 16 + depth * 20 }}
+                      >
+                        <div className="flex items-center gap-2">
+                          <span className="shrink-0 text-fg-subtle">
+                            <ChevronIcon open={expandedLabels.has(id)} />
+                          </span>
+                          <span className="min-w-0 truncate font-medium text-fg">
+                            {name}
+                          </span>
+                          <span className="shrink-0 whitespace-nowrap pl-2 text-xs text-fg-subtle">
+                            {nodeTracks.length} tracks
+                          </span>
+                        </div>
+                      </td>
+                      <td
+                        className="relative px-4 py-2.5"
+                        onClick={(e) => e.stopPropagation()}
+                      >
+                        <div className="pointer-events-none absolute inset-y-0 right-4 flex items-center gap-2 rounded-lg bg-surface-2 pl-3 opacity-0 transition-opacity group-hover:pointer-events-auto group-hover:opacity-100">
+                          <button
+                            onClick={() => editTracks(nodeTracks)}
+                            disabled={writing}
+                            className="flex h-8 w-8 items-center justify-center rounded-md text-fg-subtle hover:bg-surface hover:text-accent-400 disabled:opacity-40"
+                            title={editTitle}
+                            aria-label={editTitle}
+                          >
+                            <EditIcon />
+                          </button>
+                        </div>
+                      </td>
+                    </tr>,
+                  );
+                };
+
+                const renderLabelNode = (
+                  node: LabelNode,
+                  idxRef: { i: number },
+                ) => {
+                  renderLabelHeader(
+                    node.id,
+                    node.name,
+                    0,
+                    node.all,
+                    "Edit metadata for all tracks of this label",
+                  );
+                  if (!expandedLabels.has(node.id)) {
+                    idxRef.i += node.all.length;
+                    return;
+                  }
+                  for (const album of node.albums) {
+                    renderLabelHeader(
+                      album.id,
+                      album.album,
+                      1,
+                      album.tracks,
+                      "Edit metadata for all tracks of this album",
+                    );
+                    if (expandedLabels.has(album.id)) {
+                      album.tracks.forEach((t) => {
+                        rows.push(renderTrackRow(t, idxRef.i++, 2));
+                      });
+                    } else {
+                      idxRef.i += album.tracks.length;
+                    }
+                  }
+                  node.tracks.forEach((t) => {
+                    rows.push(renderTrackRow(t, idxRef.i++, 1));
+                  });
+                };
+
+                if (labelRoot) {
+                  const idxRef = { i: 0 };
+                  for (const node of labelRoot) renderLabelNode(node, idxRef);
+                } else if (folderRoot) {
                   const idxRef = { i: 0 };
                   for (const child of folderRoot.folders)
                     renderFolderNode(child, 0, idxRef);
