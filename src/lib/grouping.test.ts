@@ -4,6 +4,7 @@ import {
   albumOf,
   buildAlbumItems,
   compareValues,
+  isNumericSort,
   pruneGroups,
   sortTracks,
 } from "./grouping";
@@ -198,5 +199,82 @@ describe("pruneGroups", () => {
   it("corrects keep_id when the kept file is gone", () => {
     const out = pruneGroups([group({ keep_id: "1" })], (p) => p !== "/a");
     expect(out[0].keep_id).toBe("2");
+  });
+});
+
+describe("BPM sorting", () => {
+  const bpmTrack = (id: string, bpm: number | null, album = id) =>
+    makeTrack({
+      id,
+      path: `/lib/${album}/${id}.aiff`,
+      metadata: makeMetadata({ album, title: id, bpm }),
+    });
+
+  it("is treated as a numeric column", () => {
+    expect(isNumericSort("bpm")).toBe(true);
+    expect(isNumericSort("length")).toBe(true);
+    expect(isNumericSort("artist")).toBe(false);
+  });
+
+  it("sorts a flat list by tempo in both directions", () => {
+    const tracks = [bpmTrack("fast", 174), bpmTrack("slow", 90), bpmTrack("mid", 128)];
+    expect(sortTracks(tracks, NO_EDITS, "bpm", "asc").map((t) => t.id)).toEqual([
+      "slow",
+      "mid",
+      "fast",
+    ]);
+    expect(sortTracks(tracks, NO_EDITS, "bpm", "desc").map((t) => t.id)).toEqual([
+      "fast",
+      "mid",
+      "slow",
+    ]);
+  });
+
+  it("puts tracks without a BPM last, whichever direction", () => {
+    const tracks = [bpmTrack("none", null), bpmTrack("fast", 174), bpmTrack("slow", 90)];
+    for (const dir of ["asc", "desc"] as const) {
+      const ids = sortTracks(tracks, NO_EDITS, "bpm", dir).map((t) => t.id);
+      expect(ids[ids.length - 1]).toBe("none");
+    }
+  });
+
+  it("prefers a pending edit over the scanned tag", () => {
+    const tracks = [bpmTrack("edited", 90), bpmTrack("other", 128)];
+    const edits = {
+      edited: { metadata: makeMetadata({ bpm: 174 }), cover: { kind: "keep" as const } },
+    };
+    expect(sortTracks(tracks, edits, "bpm", "asc").map((t) => t.id)).toEqual([
+      "other",
+      "edited",
+    ]);
+  });
+
+  it("sorts album groups by their mean tempo", () => {
+    // Group "Beta" averages 130, the single track sits at 100.
+    const b1 = bpmTrack("b1", 120, "Beta");
+    const b2 = bpmTrack("b2", 140, "Beta");
+    const solo = bpmTrack("solo", 100, "Alpha");
+    const items = buildAlbumItems([b1, b2, solo], NO_EDITS, "bpm", "asc");
+    const first = items[0];
+    expect(first.type === "track" && first.track.id).toBe("solo");
+  });
+
+  it("sorts a group with no BPM at all last", () => {
+    const withBpm = bpmTrack("has", 128, "Alpha");
+    const n1 = bpmTrack("n1", null, "Beta");
+    const n2 = bpmTrack("n2", null, "Beta");
+    const items = buildAlbumItems([n1, n2, withBpm], NO_EDITS, "bpm", "asc");
+    const last = items[items.length - 1];
+    expect(last.type).toBe("group");
+  });
+
+  it("leaves the Downloaded column's ordering untouched", () => {
+    // Missing dates keep their long-standing 0, i.e. first ascending.
+    const dated = makeTrack({ id: "dated", download_date: 500 });
+    const undated = makeTrack({ id: "undated", path: "/lib/u.aiff", download_date: null });
+    expect(sortTracks([dated, undated], NO_EDITS, "date", "asc").map((t) => t.id)).toEqual([
+      "undated",
+      "dated",
+    ]);
   });
 });

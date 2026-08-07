@@ -1,7 +1,14 @@
 import type { DuplicateGroup, TrackAnalysis, TrackEdit } from "../types";
 
 /** Column the top-level list (collapsed albums + single tracks) is sorted by. */
-export type SortKey = "title" | "artist" | "album" | "length" | "date";
+export type SortKey = "title" | "artist" | "album" | "length" | "date" | "bpm";
+
+/** Columns sorted as numbers rather than as text. */
+const NUMERIC_KEYS: readonly SortKey[] = ["length", "date", "bpm"];
+
+export function isNumericSort(key: SortKey): boolean {
+  return NUMERIC_KEYS.includes(key);
+}
 
 export type SortDir = "asc" | "desc";
 
@@ -29,6 +36,18 @@ export function albumOf(t: TrackAnalysis, edits: Edits): string {
 export function albumArtistOf(t: TrackAnalysis, edits: Edits): string {
   const md = metaOf(t, edits);
   return (md.album_artist ?? md.artist ?? "").trim();
+}
+
+/** Compares numeric sort values; missing (null) always last. dir: 1 asc, -1 desc. */
+export function compareNumbers(
+  a: number | null,
+  b: number | null,
+  dir: number,
+): number {
+  if (a == null && b == null) return 0;
+  if (a == null) return 1;
+  if (b == null) return -1;
+  return dir * (a - b);
 }
 
 /** Compares two sort values (empty always last, numeric-aware). dir: 1 asc, -1 desc. */
@@ -93,14 +112,12 @@ export function buildAlbumItems(
   // A group's representative is its first (lowest-numbered) track; for the
   // "album" column it is the album name, for "length" the total duration and for
   // "date" the newest track's download date.
-  if (sortKey === "length" || sortKey === "date") {
-    const itemNum = (it: AlbumItem): number =>
+  if (isNumericSort(sortKey)) {
+    const itemNum = (it: AlbumItem): number | null =>
       it.type === "group"
-        ? sortKey === "length"
-          ? it.tracks.reduce((s, t) => s + t.audio.duration_secs, 0)
-          : Math.max(...it.tracks.map((t) => t.download_date ?? 0))
-        : trackNumber(it.track, sortKey);
-    items.sort((a, b) => dir * (itemNum(a) - itemNum(b)));
+        ? groupNumber(it.tracks, edits, sortKey)
+        : trackNumber(it.track, edits, sortKey);
+    items.sort((a, b) => compareNumbers(itemNum(a), itemNum(b), dir));
   } else {
     const itemText = (it: AlbumItem): string =>
       it.type === "group"
@@ -122,15 +139,52 @@ export function sortTracks(
 ): TrackAnalysis[] {
   const dir = sortDir === "asc" ? 1 : -1;
   return [...tracks].sort((a, b) =>
-    sortKey === "length" || sortKey === "date"
-      ? dir * (trackNumber(a, sortKey) - trackNumber(b, sortKey))
+    isNumericSort(sortKey)
+      ? compareNumbers(trackNumber(a, edits, sortKey), trackNumber(b, edits, sortKey), dir)
       : compareValues(trackText(a, edits, sortKey), trackText(b, edits, sortKey), dir),
   );
 }
 
-/** Numeric sort value of a track for the "length" / "date" columns. */
-function trackNumber(t: TrackAnalysis, key: SortKey): number {
-  return key === "length" ? t.audio.duration_secs : t.download_date ?? 0;
+/**
+ * Numeric sort value of a track. Only BPM can be null (many files carry no
+ * tempo tag) — a missing download date keeps its long-standing 0, so the
+ * "Downloaded" column sorts exactly as before.
+ */
+export function trackNumber(
+  t: TrackAnalysis,
+  edits: Edits,
+  key: SortKey,
+): number | null {
+  switch (key) {
+    case "length":
+      return t.audio.duration_secs;
+    case "bpm":
+      return metaOf(t, edits).bpm;
+    default:
+      return t.download_date ?? 0;
+  }
+}
+
+/**
+ * Numeric sort value of a whole group: summed length, newest date, or the mean
+ * BPM of the tracks that have one.
+ */
+export function groupNumber(
+  tracks: TrackAnalysis[],
+  edits: Edits,
+  key: SortKey,
+): number | null {
+  if (key === "length") {
+    return tracks.reduce((s, t) => s + t.audio.duration_secs, 0);
+  }
+  if (key === "date") {
+    return Math.max(...tracks.map((t) => t.download_date ?? 0));
+  }
+  const values = tracks
+    .map((t) => metaOf(t, edits).bpm)
+    .filter((v): v is number => v != null);
+  if (!values.length) return null;
+  return values.reduce((s, v) => s + v, 0) / values.length;
 }
 
 /**

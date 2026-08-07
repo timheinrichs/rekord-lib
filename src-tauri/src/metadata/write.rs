@@ -2,7 +2,7 @@ use lofty::config::WriteOptions;
 use lofty::picture::{MimeType, Picture, PictureType};
 use lofty::prelude::*;
 use lofty::read_from_path;
-use lofty::tag::{ItemKey, Tag, TagExt};
+use lofty::tag::{ItemKey, Tag, TagExt, TagType};
 
 use crate::error::{AppError, AppResult};
 use crate::metadata::{artwork, net};
@@ -100,6 +100,23 @@ pub async fn resolve_cover(source: &str, cover: &CoverInput) -> AppResult<Option
     }
 }
 
+/// Writes *only* the BPM into an existing file. Deliberately not routed through
+/// [`finalize`]: that resolves and re-encodes the cover, and the scan's BPM pass
+/// must touch nothing but this one tag on thousands of files.
+pub fn write_bpm(path: &str, bpm: u32) -> AppResult<()> {
+    let mut tagged = read_from_path(path).map_err(|e| AppError::Metadata(e.to_string()))?;
+    if tagged.primary_tag().is_none() {
+        let tag_type = tagged.file_type().primary_tag_type();
+        tagged.insert_tag(Tag::new(tag_type));
+    }
+    let tag = tagged
+        .primary_tag_mut()
+        .ok_or_else(|| AppError::Metadata("no writable tag".into()))?;
+    tag.insert_text(bpm_key(tag.tag_type()), bpm.to_string());
+    tag.save_to_path(path, WriteOptions::default())
+        .map_err(|e| AppError::Metadata(format!("Failed to write BPM: {e}")))
+}
+
 /// Writes confirmed metadata and/or cover into the (already converted) output
 /// file. `metadata = None` leaves the text tags untouched; the cover is still
 /// set according to `cover` (default: keep the existing cover).
@@ -174,6 +191,20 @@ pub async fn finalize(
             }
             None => {}
         }
+        // BPM is numeric but has no dedicated lofty setter, and the right key
+        // depends on the format: lofty maps `IntegerBpm` for ID3v2/MP4 and
+        // `Bpm` for Vorbis comments. Using the wrong one is a silent no-op.
+        let bpm_key = bpm_key(tag.tag_type());
+        match md.bpm {
+            Some(n) => {
+                tag.insert_text(bpm_key, n.to_string());
+            }
+            None if clear_empty => {
+                tag.remove_key(&ItemKey::IntegerBpm);
+                tag.remove_key(&ItemKey::Bpm);
+            }
+            None => {}
+        }
     }
 
     // 4. Embed cover (replace the existing front cover).
@@ -200,10 +231,69 @@ fn clean(v: &Option<String>) -> Option<String> {
         .filter(|s| !s.is_empty())
 }
 
+/// The BPM key the given tag format actually maps. lofty drops unmapped keys
+/// silently on write, so a hardcoded `IntegerBpm` would never reach a FLAC.
+fn bpm_key(tag_type: TagType) -> ItemKey {
+    match tag_type {
+        TagType::VorbisComments => ItemKey::Bpm,
+        _ => ItemKey::IntegerBpm,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use std::fs;
+
+    /// The formats this app writes: AIFF/WAV/MP3/AAC use ID3v2, M4A uses ilst,
+    /// FLAC/Ogg use Vorbis comments.
+    const WRITTEN_TAG_TYPES: [TagType; 3] = [
+        TagType::Id3v2,
+        TagType::Mp4Ilst,
+        TagType::VorbisComments,
+    ];
+
+    #[test]
+    fn bpm_key_is_actually_mapped_for_every_format_we_write() {
+        for tag_type in WRITTEN_TAG_TYPES {
+            let key = bpm_key(tag_type);
+            assert!(
+                key.map_key(tag_type, false).is_some(),
+                "{tag_type:?} silently drops {key:?}"
+            );
+        }
+        assert_eq!(bpm_key(TagType::Id3v2).map_key(TagType::Id3v2, false), Some("TBPM"));
+        assert_eq!(
+            bpm_key(TagType::Mp4Ilst).map_key(TagType::Mp4Ilst, false),
+            Some("tmpo")
+        );
+        assert_eq!(
+            bpm_key(TagType::VorbisComments).map_key(TagType::VorbisComments, false),
+            Some("BPM")
+        );
+    }
+
+    #[test]
+    fn a_single_hardcoded_bpm_key_would_be_dropped() {
+        // This is why bpm_key exists: neither variant works everywhere.
+        assert!(ItemKey::IntegerBpm
+            .map_key(TagType::VorbisComments, false)
+            .is_none());
+        assert!(ItemKey::Bpm.map_key(TagType::Id3v2, false).is_none());
+    }
+
+    #[test]
+    fn bpm_survives_a_generic_tag_round_trip() {
+        for tag_type in WRITTEN_TAG_TYPES {
+            let mut tag = Tag::new(tag_type);
+            tag.insert_text(bpm_key(tag_type), "128".to_string());
+            assert_eq!(
+                crate::metadata::read::bpm_of(&tag),
+                Some(128),
+                "{tag_type:?} did not round-trip"
+            );
+        }
+    }
 
     #[test]
     fn clean_trims_and_drops_empty() {

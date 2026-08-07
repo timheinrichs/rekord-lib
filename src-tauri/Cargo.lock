@@ -3288,6 +3288,7 @@ dependencies = [
  "notify",
  "notify-debouncer-full",
  "reqwest 0.12.28",
+ "rustfft",
  "rusty-chromaprint",
  "serde",
  "serde_json",

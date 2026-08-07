@@ -20,6 +20,8 @@ pub struct ScanState {
     pub generation: AtomicU64,
     pub done: AtomicUsize,
     pub total: AtomicUsize,
+    /// Which pass the counters refer to, so a reload can reattach mid-scan.
+    pub stage: Mutex<String>,
 }
 
 /// State of the duplicate search (including a result cache for reattach).

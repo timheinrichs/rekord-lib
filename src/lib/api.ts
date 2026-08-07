@@ -46,13 +46,16 @@ const AUDIO_EXTENSIONS = [
 ];
 
 /** Analyzes the given file paths in the Rust backend. */
-export function analyzeFiles(paths: string[]): Promise<TrackAnalysis[]> {
-  return invoke<TrackAnalysis[]>("analyze_files", { paths });
+export function analyzeFiles(
+  paths: string[],
+  analyzeBpm = false,
+): Promise<TrackAnalysis[]> {
+  return invoke<TrackAnalysis[]>("analyze_files", { paths, analyzeBpm });
 }
 
 /** Starts a library scan (background singleton). false = already running. */
-export function startScan(dir: string): Promise<boolean> {
-  return invoke<boolean>("start_scan", { dir });
+export function startScan(dir: string, analyzeBpm = false): Promise<boolean> {
+  return invoke<boolean>("start_scan", { dir, analyzeBpm });
 }
 
 /** Current scan status (for reattaching after a reload). */

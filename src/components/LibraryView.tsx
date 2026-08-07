@@ -47,6 +47,7 @@ import type {
   ConvertResult,
   DeleteResult,
   DuplicateGroup,
+  ScanProgress,
   TrackAnalysis,
   TrackEdit,
 } from "../types";
@@ -149,6 +150,9 @@ export default function LibraryView({
   const [sortKey, setSortKey] = useState<SortKey>("artist");
   const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
   const [error, setError] = useState<string | null>(null);
+  // Stage + counters of the running scan; the BPM pass can take minutes, so it
+  // needs more than a spinner.
+  const [scanProgress, setScanProgress] = useState<ScanProgress | null>(null);
   // Incremental (auto) sync in progress — drives the inline spinner.
   const [syncing, setSyncing] = useState(false);
 
@@ -172,8 +176,8 @@ export default function LibraryView({
     }
     setError(null);
     setLoading(true);
-    void startScan(libraryDir);
-  }, [libraryDir]);
+    void startScan(libraryDir, settings.analyze_bpm);
+  }, [libraryDir, settings.analyze_bpm]);
 
   // Incremental sync: analyze only new files, drop deleted ones. Cheap enough to
   // run automatically on folder changes. Single-flight with a dirty re-run.
@@ -192,7 +196,9 @@ export default function LibraryView({
         const disk = await listAudioFiles(libraryDir);
         const { addedPaths, keptTracks, changed } = diffAudioFiles(disk, current);
         if (!changed) break;
-        const analyzed = addedPaths.length ? await analyzeFiles(addedPaths) : [];
+        const analyzed = addedPaths.length
+          ? await analyzeFiles(addedPaths, settings.analyze_bpm)
+          : [];
         current = [...keptTracks, ...analyzed];
         setTracks(current);
         const valid = new Set(current.map((t) => t.path));
@@ -208,7 +214,7 @@ export default function LibraryView({
       syncingRef.current = false;
       setSyncing(false);
     }
-  }, [libraryDir]);
+  }, [libraryDir, settings.analyze_bpm]);
 
   // Persistent scan listeners (one-time): progress + result.
   useEffect(() => {
@@ -217,6 +223,7 @@ export default function LibraryView({
     void (async () => {
       unProg = await onScanProgress((p) => {
         setLoading(p.running);
+        setScanProgress(p.running ? p : null);
       });
       unDone = await onScanDone((d) => {
         setLoading(false);
@@ -368,7 +375,7 @@ export default function LibraryView({
         // in incrementalSync() can't detect on its own.
         const outputs = convertedOutputs(res);
         if (outputs.length) {
-          const analyzed = await analyzeFiles(outputs);
+          const analyzed = await analyzeFiles(outputs, settings.analyze_bpm);
           setTracks((prev) => mergeConverted(prev, res, analyzed));
           // Drop edits of sources that a format change replaced with a new path
           // (their metadata is now written into the freshly analyzed output).
@@ -660,6 +667,12 @@ export default function LibraryView({
       return next;
     });
   }, []);
+
+  // "Scanning…" while probing, "BPM 412/2223" during the (long) BPM pass.
+  const scanLabel =
+    scanProgress && scanProgress.stage === "Detecting BPM"
+      ? `BPM ${scanProgress.done}/${scanProgress.total}`
+      : "Scanning…";
 
   const allVisibleSelected =
     visibleTracks.length > 0 && visibleTracks.every((t) => selected.has(t.id));
@@ -1074,7 +1087,7 @@ export default function LibraryView({
         className="inline-flex items-center gap-1.5 rounded-lg border border-border-strong px-3 py-2 text-sm hover:border-accent-500 disabled:opacity-50"
       >
         {loading && <SpinnerIcon />}
-        {loading ? "Scanning…" : "Rescan"}
+        {loading ? scanLabel : "Rescan"}
       </button>
       {/* Auto-sync indicator (incremental), left of the Duplicates button. */}
       {syncing && !loading && (
@@ -1306,7 +1319,7 @@ export default function LibraryView({
         {tracks.length === 0 ? (
           <div className="flex h-64 flex-col items-center justify-center gap-2 text-fg-subtle">
             <p className="text-lg">
-              {loading ? "Scanning…" : "No music in the library yet"}
+              {loading ? scanLabel : "No music in the library yet"}
             </p>
             {!loading && (
               <p className="text-sm">
@@ -1320,7 +1333,7 @@ export default function LibraryView({
           </div>
         ) : (
           <div className="overflow-x-auto">
-          <table className="w-full min-w-[98rem] table-fixed text-sm">
+          <table className="w-full min-w-[103rem] table-fixed text-sm">
             <thead className="text-left text-fg-muted">
               <tr className="border-b border-border">
                 <th className="w-10 px-4 py-3">
@@ -1362,6 +1375,14 @@ export default function LibraryView({
                 <SortableHeader
                   label="Length"
                   sortKey="length"
+                  activeKey={sortKey}
+                  dir={sortDir}
+                  onSort={toggleSort}
+                  className="w-20"
+                />
+                <SortableHeader
+                  label="BPM"
+                  sortKey="bpm"
                   activeKey={sortKey}
                   dir={sortDir}
                   onSort={toggleSort}
@@ -1446,6 +1467,9 @@ export default function LibraryView({
                     </td>
                     <td className="whitespace-nowrap px-4 py-3 text-fg-muted">
                       {formatDuration(t.audio.duration_secs)}
+                    </td>
+                    <td className="whitespace-nowrap px-4 py-3 text-fg-muted">
+                      {md.bpm ?? "–"}
                     </td>
                     <td className="px-4 py-3">
                       {result ? (
@@ -1617,6 +1641,9 @@ export default function LibraryView({
                       </td>
                       <td className="whitespace-nowrap px-4 py-2.5 text-fg-muted">
                         {formatDuration(s.totalLength)}
+                      </td>
+                      <td className="whitespace-nowrap px-4 py-2.5 text-fg-muted">
+                        {s.bpm}
                       </td>
                       <td className="px-4 py-2.5">
                         <div className="flex flex-wrap gap-1.5">

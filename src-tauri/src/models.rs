@@ -76,13 +76,17 @@ pub struct TrackMetadata {
     /// Release country (e.g. "Germany"). Stored as a RELEASECOUNTRY tag.
     #[serde(default)]
     pub country: Option<String>,
+    /// Tempo in beats per minute (ID3 `TBPM`, MP4 `tmpo`, Vorbis `BPM`).
+    /// Either read from the tag or detected by [`crate::audio::bpm`].
+    #[serde(default)]
+    pub bpm: Option<u32>,
     pub has_cover: bool,
 }
 
 impl TrackMetadata {
     /// Are all text fields relevant for Rekordbox set?
     /// (title, artist, album, album artist — genre, year, catalog number,
-    /// label and country are optional)
+    /// label, country and BPM are optional)
     pub fn is_complete(&self) -> bool {
         fn filled(v: &Option<String>) -> bool {
             v.as_ref().map(|s| !s.trim().is_empty()).unwrap_or(false)
@@ -348,6 +352,7 @@ mod tests {
             catalog_number: None,
             label: None,
             country: None,
+            bpm: None,
             has_cover: true,
         }
     }
@@ -358,12 +363,13 @@ mod tests {
     }
 
     #[test]
-    fn is_complete_ignores_optional_catalog_label_genre_and_year() {
-        // catalog_number, label, genre and year are intentionally optional.
+    fn is_complete_ignores_optional_catalog_label_genre_year_and_bpm() {
+        // catalog_number, label, genre, year and bpm are intentionally optional
+        // — most files have no BPM tag, and they are not "incomplete" for it.
         let mut md = full_metadata();
         md.genre = None;
         md.year = None;
-        assert!(md.catalog_number.is_none() && md.label.is_none());
+        assert!(md.catalog_number.is_none() && md.label.is_none() && md.bpm.is_none());
         assert!(md.is_complete());
     }
 

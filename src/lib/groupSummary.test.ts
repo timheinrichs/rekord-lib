@@ -121,3 +121,34 @@ describe("albumsLabel", () => {
     expect(albumsLabel([])).toBe("–");
   });
 });
+
+describe("summarizeGroup bpm", () => {
+  const bpmTrack = (id: string, bpm: number | null) =>
+    makeTrack({ id, path: `/lib/${id}.aiff`, metadata: makeMetadata({ bpm }) });
+
+  it("shows a single value when the group agrees", () => {
+    expect(summarizeGroup([bpmTrack("a", 128), bpmTrack("b", 128)], NO_EDITS, never).bpm).toBe(
+      "128",
+    );
+  });
+
+  it("shows a range when the tempos differ", () => {
+    const group = [bpmTrack("a", 130), bpmTrack("b", 126), bpmTrack("c", 128)];
+    expect(summarizeGroup(group, NO_EDITS, never).bpm).toBe("126–130");
+  });
+
+  it("ignores tracks without a BPM and dashes when none has one", () => {
+    expect(summarizeGroup([bpmTrack("a", 128), bpmTrack("b", null)], NO_EDITS, never).bpm).toBe(
+      "128",
+    );
+    expect(summarizeGroup([bpmTrack("a", null)], NO_EDITS, never).bpm).toBe("–");
+    expect(summarizeGroup([], NO_EDITS, never).bpm).toBe("–");
+  });
+
+  it("uses a pending edit over the scanned tag", () => {
+    const edits: Edits = {
+      a: { metadata: makeMetadata({ bpm: 174 }), cover: { kind: "keep" } },
+    };
+    expect(summarizeGroup([bpmTrack("a", 90)], edits, never).bpm).toBe("174");
+  });
+});

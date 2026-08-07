@@ -18,6 +18,7 @@ export function makeMetadata(over: Partial<TrackMetadata> = {}): TrackMetadata {
     catalog_number: null,
     label: null,
     country: null,
+    bpm: null,
     has_cover: true,
     ...over,
   };

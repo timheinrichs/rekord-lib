@@ -1,7 +1,10 @@
 import type { TrackAnalysis } from "../types";
 import {
   albumOf,
+  compareNumbers,
   compareValues,
+  groupNumber,
+  isNumericSort,
   metaOf,
   trackNumberOf,
   type Edits,
@@ -78,11 +81,9 @@ function sortAlbumTracks(tracks: TrackAnalysis[], edits: Edits): TrackAnalysis[]
   });
 }
 
-/** Numeric sort value of a whole label for the "length" / "date" columns. */
-function labelNumber(node: LabelNode, sortKey: SortKey): number {
-  return sortKey === "length"
-    ? node.all.reduce((s, t) => s + t.audio.duration_secs, 0)
-    : node.all.reduce((m, t) => Math.max(m, t.download_date ?? 0), 0);
+/** Numeric sort value of a whole label (summed length, newest date, mean BPM). */
+function labelNumber(node: LabelNode, edits: Edits, sortKey: SortKey): number | null {
+  return groupNumber(node.all, edits, sortKey);
 }
 
 /**
@@ -147,8 +148,10 @@ export function buildLabelTree(
   const unknown = nodes.filter((n) => n.key === NO_LABEL_KEY);
   const known = nodes.filter((n) => n.key !== NO_LABEL_KEY);
 
-  if (sortKey === "length" || sortKey === "date") {
-    known.sort((a, b) => dir * (labelNumber(a, sortKey) - labelNumber(b, sortKey)));
+  if (isNumericSort(sortKey)) {
+    known.sort((a, b) =>
+      compareNumbers(labelNumber(a, edits, sortKey), labelNumber(b, edits, sortKey), dir),
+    );
   } else {
     known.sort((a, b) => compareValues(a.key, b.key, dir));
   }

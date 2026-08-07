@@ -53,6 +53,7 @@ interface FormState {
   catalog_number: string;
   label: string;
   country: string;
+  bpm: string;
 }
 
 function toForm(md: TrackMetadata): FormState {
@@ -67,6 +68,7 @@ function toForm(md: TrackMetadata): FormState {
     catalog_number: md.catalog_number ?? "",
     label: md.label ?? "",
     country: md.country ?? "",
+    bpm: md.bpm != null ? String(md.bpm) : "",
   };
 }
 
@@ -87,6 +89,7 @@ function toMetadata(f: FormState, hasCover: boolean): TrackMetadata {
     catalog_number: s(f.catalog_number),
     label: s(f.label),
     country: s(f.country),
+    bpm: n(f.bpm),
     has_cover: hasCover,
   };
 }
@@ -123,6 +126,10 @@ export default function MetadataEditor({
   );
   const [coverUrl, setCoverUrl] = useState<string | null>(null);
   const [coverLoading, setCoverLoading] = useState(false);
+  // BPM reads as a value like Format/Length and only turns into an input on
+  // click, so correcting a mis-detected tempo stays possible without putting a
+  // form control among the read-only audio properties.
+  const [editingBpm, setEditingBpm] = useState(false);
 
   // Load suggestions.
   useEffect(() => {
@@ -354,7 +361,8 @@ export default function MetadataEditor({
               />
             </div>
 
-            {/* Read-only track info (same as the library table columns). */}
+            {/* Audio properties, mirroring the library table columns. Read-only
+                except for BPM, which turns into an input when clicked. */}
             <div className="flex flex-col gap-3 border-t border-border pt-3 text-sm">
               <div className="flex flex-col gap-0.5">
                 <span className="text-fg-muted">Format</span>
@@ -374,6 +382,34 @@ export default function MetadataEditor({
                 <span className="text-fg">
                   {formatDuration(track.audio.duration_secs)}
                 </span>
+              </div>
+              <div className="flex flex-col gap-0.5">
+                <span className="text-fg-muted">BPM</span>
+                {editingBpm ? (
+                  <input
+                    value={form.bpm}
+                    inputMode="numeric"
+                    placeholder="–"
+                    autoFocus
+                    onChange={(e) => set("bpm", e.target.value)}
+                    onBlur={() => setEditingBpm(false)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" || e.key === "Escape") {
+                        e.preventDefault();
+                        setEditingBpm(false);
+                      }
+                    }}
+                    className="w-20 rounded-md border border-border-strong bg-surface-2 px-2 py-0.5 text-fg outline-none focus:border-accent-500"
+                  />
+                ) : (
+                  <button
+                    onClick={() => setEditingBpm(true)}
+                    title="Edit BPM"
+                    className="-mx-2 w-fit rounded-md px-2 py-0.5 text-left text-fg hover:bg-surface-2"
+                  >
+                    {form.bpm.trim() || "–"}
+                  </button>
+                )}
               </div>
               <div className="flex flex-col gap-1">
                 <span className="text-fg-muted">Status</span>

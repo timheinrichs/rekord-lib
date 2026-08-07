@@ -4,7 +4,7 @@ use base64::Engine;
 use tauri::{AppHandle, Emitter, Manager, State};
 
 use crate::audio::convert::ConvertProgress;
-use crate::audio::{compat, convert, dedupe, probe};
+use crate::audio::{bpm, compat, convert, dedupe, probe};
 use crate::bandcamp::session::BandcampState;
 use crate::bandcamp::{collection, download, session};
 use crate::error::{AppError, AppResult};
@@ -24,7 +24,17 @@ struct ScanProgress {
     done: usize,
     total: usize,
     running: bool,
+    /// Which pass the counters refer to, e.g. "Analyzing" or "Detecting BPM".
+    stage: String,
 }
+
+/// Scan stage labels (also shown verbatim in the UI).
+const STAGE_ANALYZING: &str = "Analyzing";
+const STAGE_BPM: &str = "Detecting BPM";
+
+/// Concurrent ffmpeg processes in the BPM pass — same budget as the duplicate
+/// search's fingerprint pass.
+const BPM_CONCURRENCY: usize = 8;
 
 /// Completion event of the scan; delivers the result.
 #[derive(Debug, Clone, serde::Serialize)]
@@ -41,6 +51,7 @@ pub struct ScanStatus {
     generation: u64,
     done: usize,
     total: usize,
+    stage: String,
 }
 
 fn file_name(path: &str) -> String {
@@ -89,14 +100,82 @@ fn file_created_millis(path: &str) -> Option<i64> {
 /// Analyzes a list of files: audio properties, CDJ compatibility
 /// and existing metadata. Unreadable/non-audio files are skipped.
 #[tauri::command]
-pub async fn analyze_files(app: AppHandle, paths: Vec<String>) -> AppResult<Vec<TrackAnalysis>> {
+pub async fn analyze_files(
+    app: AppHandle,
+    paths: Vec<String>,
+    analyze_bpm: bool,
+) -> AppResult<Vec<TrackAnalysis>> {
     let mut out = Vec::with_capacity(paths.len());
     for path in paths {
         if let Some(track) = analyze_path(&app, path).await {
             out.push(track);
         }
     }
+    if analyze_bpm {
+        detect_missing_bpm(&app, &mut out, |_, _| {}, || false).await;
+    }
     Ok(out)
+}
+
+/// Detects the BPM of every track that has none yet, writes it into the file's
+/// tag and updates the track in place. Tracks that already carry a BPM tag are
+/// skipped entirely — that, plus writing what we detect, means a given file is
+/// analyzed once ever.
+///
+/// Runs [`BPM_CONCURRENCY`] decodes at a time; `progress(done, total)` is called
+/// per finished file and `cancelled()` is polled between chunks. Returns whether
+/// it stopped early.
+async fn detect_missing_bpm(
+    app: &AppHandle,
+    tracks: &mut [TrackAnalysis],
+    mut progress: impl FnMut(usize, usize),
+    cancelled: impl Fn() -> bool,
+) -> bool {
+    let todo: Vec<(usize, String)> = tracks
+        .iter()
+        .enumerate()
+        .filter(|(_, t)| t.metadata.bpm.is_none())
+        .map(|(i, t)| (i, t.path.clone()))
+        .collect();
+    let total = todo.len();
+    if total == 0 {
+        return false;
+    }
+
+    let mut done = 0;
+    for chunk in todo.chunks(BPM_CONCURRENCY) {
+        if cancelled() {
+            return true;
+        }
+        let handles: Vec<(usize, _)> = chunk
+            .iter()
+            .map(|(index, path)| {
+                let app = app.clone();
+                let path = path.clone();
+                (
+                    *index,
+                    tauri::async_runtime::spawn(async move {
+                        bpm::analyze_bpm(&app, &path).await.ok().flatten()
+                    }),
+                )
+            })
+            .collect();
+
+        for (index, handle) in handles {
+            if let Ok(Some(value)) = handle.await {
+                // Persist first: the tag is what keeps the next scan from
+                // re-analyzing this file. A failed write is not fatal — the
+                // value still shows up in the library for this session.
+                if let Err(e) = write::write_bpm(&tracks[index].path, value) {
+                    eprintln!("BPM write failed for {}: {e}", tracks[index].path);
+                }
+                tracks[index].metadata.bpm = Some(value);
+            }
+            done += 1;
+            progress(done, total);
+        }
+    }
+    false
 }
 
 /// Recursively collects all files with an audio extension under `dir`.
@@ -124,7 +203,12 @@ fn collect_audio_files(dir: &std::path::Path, out: &mut Vec<String>) {
 /// nothing happens (returns `false`) - the running process stays in place.
 /// The result arrives via `scan://done`, progress via `scan://progress`.
 #[tauri::command]
-pub fn start_scan(app: AppHandle, state: State<'_, ScanState>, dir: String) -> bool {
+pub fn start_scan(
+    app: AppHandle,
+    state: State<'_, ScanState>,
+    dir: String,
+    analyze_bpm: bool,
+) -> bool {
     // Single-flight: only start if a scan is not already running.
     if state.running.swap(true, Ordering::SeqCst) {
         return false;
@@ -132,6 +216,7 @@ pub fn start_scan(app: AppHandle, state: State<'_, ScanState>, dir: String) -> b
     state.cancel.store(false, Ordering::SeqCst);
     state.done.store(0, Ordering::SeqCst);
     state.total.store(0, Ordering::SeqCst);
+    set_scan_stage(&state, STAGE_ANALYZING);
     let generation = state.generation.fetch_add(1, Ordering::SeqCst) + 1;
 
     // A fresh scan means: the library has (possibly) changed -
@@ -153,9 +238,12 @@ pub fn start_scan(app: AppHandle, state: State<'_, ScanState>, dir: String) -> b
                 done: 0,
                 total,
                 running: true,
+                stage: STAGE_ANALYZING.into(),
             },
         );
 
+        // Stage 1: audio properties, compatibility and existing tags. Cheap
+        // (one ffprobe per file), so the list is ready quickly.
         let mut out = Vec::with_capacity(total);
         let mut cancelled = false;
         for (i, path) in paths.into_iter().enumerate() {
@@ -174,18 +262,61 @@ pub fn start_scan(app: AppHandle, state: State<'_, ScanState>, dir: String) -> b
                     done: i + 1,
                     total,
                     running: true,
+                    stage: STAGE_ANALYZING.into(),
                 },
             );
         }
 
-        app.state::<ScanState>().running.store(false, Ordering::SeqCst);
+        // Stage 2: BPM for the tracks that carry none. Far more expensive (a
+        // full decode each), hence its own concurrent pass and progress stage.
+        if !cancelled && analyze_bpm {
+            let state = app.state::<ScanState>();
+            set_scan_stage(&state, STAGE_BPM);
+            state.done.store(0, Ordering::SeqCst);
+            let app_progress = app.clone();
+            cancelled = detect_missing_bpm(
+                &app,
+                &mut out,
+                |done, total| {
+                    app_progress
+                        .state::<ScanState>()
+                        .done
+                        .store(done, Ordering::SeqCst);
+                    app_progress
+                        .state::<ScanState>()
+                        .total
+                        .store(total, Ordering::SeqCst);
+                    let _ = app_progress.emit(
+                        "scan://progress",
+                        ScanProgress {
+                            generation,
+                            done,
+                            total,
+                            running: true,
+                            stage: STAGE_BPM.into(),
+                        },
+                    );
+                },
+                || {
+                    app.state::<ScanState>()
+                        .cancel
+                        .load(Ordering::SeqCst)
+                },
+            )
+            .await;
+        }
+
+        let state = app.state::<ScanState>();
+        state.running.store(false, Ordering::SeqCst);
+        let stage = scan_stage(&state);
         let _ = app.emit(
             "scan://progress",
             ScanProgress {
                 generation,
-                done: app.state::<ScanState>().done.load(Ordering::SeqCst),
-                total,
+                done: state.done.load(Ordering::SeqCst),
+                total: state.total.load(Ordering::SeqCst),
                 running: false,
+                stage,
             },
         );
         let _ = app.emit(
@@ -208,6 +339,23 @@ pub fn scan_status(state: State<'_, ScanState>) -> ScanStatus {
         generation: state.generation.load(Ordering::SeqCst),
         done: state.done.load(Ordering::SeqCst),
         total: state.total.load(Ordering::SeqCst),
+        stage: scan_stage(&state),
+    }
+}
+
+/// Reads the scan's current stage label (poisoned lock falls back to the first
+/// stage rather than panicking a background job).
+fn scan_stage(state: &ScanState) -> String {
+    state
+        .stage
+        .lock()
+        .map(|s| s.clone())
+        .unwrap_or_else(|_| STAGE_ANALYZING.to_string())
+}
+
+fn set_scan_stage(state: &ScanState, stage: &str) {
+    if let Ok(mut s) = state.stage.lock() {
+        *s = stage.to_string();
     }
 }
 

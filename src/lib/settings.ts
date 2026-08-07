@@ -45,6 +45,11 @@ export interface Settings {
   sanitize_filenames: boolean;
   /** Format to request from Bandcamp downloads. */
   download_format: DownloadFormat;
+  /**
+   * Detect the BPM of tracks without one during the scan and write it into the
+   * file's tag. Off means the scan stays read-only.
+   */
+  analyze_bpm: boolean;
   /** Discogs app credentials for metadata suggestions (stored locally only). */
   discogs_key: string | null;
   discogs_secret: string | null;
@@ -56,6 +61,7 @@ export const DEFAULT_SETTINGS: Settings = {
   bit_depth: 16,
   sanitize_filenames: false,
   download_format: "aiff",
+  analyze_bpm: true,
   discogs_key: null,
   discogs_secret: null,
 };

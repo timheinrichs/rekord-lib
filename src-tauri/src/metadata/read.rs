@@ -27,6 +27,7 @@ pub fn read_metadata(path: &str) -> AppResult<TrackMetadata> {
             tag.get_string(&ItemKey::from_key(tag.tag_type(), "RELEASECOUNTRY"))
                 .map(|s| s.to_string()),
         );
+        md.bpm = bpm_of(tag);
         md.has_cover = !tag.pictures().is_empty();
     }
 
@@ -41,4 +42,51 @@ pub fn read_metadata(path: &str) -> AppResult<TrackMetadata> {
 
 fn non_empty(v: Option<String>) -> Option<String> {
     v.filter(|s| !s.trim().is_empty())
+}
+
+/// Reads the BPM from whichever key the tag format uses. Both variants are
+/// tried because lofty maps only `IntegerBpm` for ID3v2 (`TBPM`) but only
+/// `Bpm` for Vorbis comments. Values are parsed leniently: taggers write
+/// "128", "128.00" and "128,0" alike, and only whole beats are kept.
+pub(crate) fn bpm_of(tag: &lofty::tag::Tag) -> Option<u32> {
+    for key in [ItemKey::IntegerBpm, ItemKey::Bpm] {
+        if let Some(raw) = tag.get_string(&key) {
+            if let Some(bpm) = parse_bpm(raw) {
+                return Some(bpm);
+            }
+        }
+    }
+    None
+}
+
+/// "128.00" / "128,5" / " 128 " -> 128. Rejects 0 and implausible values.
+fn parse_bpm(raw: &str) -> Option<u32> {
+    let cleaned = raw.trim().replace(',', ".");
+    let value: f64 = cleaned.parse().ok()?;
+    if !value.is_finite() || value < 1.0 || value > 1000.0 {
+        return None;
+    }
+    Some(value.round() as u32)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::parse_bpm;
+
+    #[test]
+    fn parses_the_shapes_taggers_actually_write() {
+        assert_eq!(parse_bpm("128"), Some(128));
+        assert_eq!(parse_bpm("128.00"), Some(128));
+        assert_eq!(parse_bpm("127,6"), Some(128));
+        assert_eq!(parse_bpm("  174 "), Some(174));
+    }
+
+    #[test]
+    fn rejects_junk_and_implausible_values() {
+        assert_eq!(parse_bpm(""), None);
+        assert_eq!(parse_bpm("n/a"), None);
+        assert_eq!(parse_bpm("0"), None);
+        assert_eq!(parse_bpm("-120"), None);
+        assert_eq!(parse_bpm("99999"), None);
+    }
 }

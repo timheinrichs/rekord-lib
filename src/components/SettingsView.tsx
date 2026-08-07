@@ -253,6 +253,26 @@ export default function SettingsView({
         )}
       </section>
 
+      {/* Analysis */}
+      <section className="rounded-xl border border-border bg-surface p-5">
+        <h2 className="text-sm font-semibold text-fg">Analysis</h2>
+        <p className="mt-1 text-sm text-fg-subtle">
+          Tracks without a BPM tag are analysed during the scan, and the result
+          is written into the file so it only ever happens once. Files that
+          already carry a BPM keep it. Turning this off leaves the scan
+          read-only.
+        </p>
+        <label className="mt-4 flex items-center gap-2 text-sm">
+          <input
+            type="checkbox"
+            checked={settings.analyze_bpm}
+            onChange={(e) => onSettingsChange({ analyze_bpm: e.target.checked })}
+            className="h-4 w-4 rounded border-border-strong bg-surface-2"
+          />
+          <span>Detect BPM and write it into the files</span>
+        </label>
+      </section>
+
       {/* Downloads */}
       <section className="rounded-xl border border-border bg-surface p-5">
         <h2 className="text-sm font-semibold text-fg">Downloads</h2>

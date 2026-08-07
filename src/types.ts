@@ -25,6 +25,8 @@ export interface TrackMetadata {
   catalog_number: string | null;
   label: string | null;
   country: string | null;
+  /** Tempo in beats per minute (tag value or detected during the scan). */
+  bpm: number | null;
   has_cover: boolean;
 }
 
@@ -137,6 +139,8 @@ export interface ScanProgress {
   done: number;
   total: number;
   running: boolean;
+  /** Which pass the counters refer to ("Analyzing" / "Detecting BPM"). */
+  stage: string;
 }
 
 export interface ScanStatus {
@@ -144,6 +148,7 @@ export interface ScanStatus {
   generation: number;
   done: number;
   total: number;
+  stage: string;
 }
 
 export interface ScanDone {
