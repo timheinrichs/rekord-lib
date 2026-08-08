@@ -1,11 +1,4 @@
-import {
-  useCallback,
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
-  type ReactNode,
-} from "react";
+import { type ReactNode, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { getCurrentWebview } from "@tauri-apps/api/webview";
 import { ask } from "@tauri-apps/plugin-dialog";
 import {
@@ -69,6 +62,7 @@ import {
   UndoIcon,
 } from "./icons";
 import { useScrolled } from "../lib/useScrolled";
+import { resizeHeights, visibleRange, type Range } from "../lib/virtualList";
 import {
   buildAlbumItems,
   pruneGroups,
@@ -1155,6 +1149,62 @@ export default function LibraryView({
     } as Record<string, string[]>;
   }, [tracks, edits]);
 
+  // Row virtualisation. The table scrolls with the page, so the window is
+  // derived from the tbody's own rect — no bookkeeping of page offset needed.
+  // Heights are measured rather than assumed: a status column that wraps to two
+  // badge lines makes a row taller, and a fixed height would drift.
+  const bodyRef = useRef<HTMLTableSectionElement>(null);
+  const rangeRef = useRef<Range>({ start: 0, end: 0, paddingTop: 0, paddingBottom: 0 });
+  const [rowHeights, setRowHeights] = useState<number[]>([]);
+  const [viewport, setViewport] = useState({ top: 0, height: 0 });
+
+  useEffect(() => {
+    let frame = 0;
+    const measure = () => {
+      frame = 0;
+      const top = bodyRef.current?.getBoundingClientRect().top ?? 0;
+      setViewport((prev) =>
+        prev.top === top && prev.height === window.innerHeight
+          ? prev
+          : { top, height: window.innerHeight },
+      );
+    };
+    const onScroll = () => {
+      // One measurement per frame: scroll events fire far more often than that.
+      if (!frame) frame = requestAnimationFrame(measure);
+    };
+    measure();
+    window.addEventListener("scroll", onScroll, { passive: true });
+    window.addEventListener("resize", onScroll);
+    return () => {
+      if (frame) cancelAnimationFrame(frame);
+      window.removeEventListener("scroll", onScroll);
+      window.removeEventListener("resize", onScroll);
+    };
+  }, []);
+
+  // After every render, record what the rendered rows actually measure, so the
+  // next window lands in the right place. Only rows in the current range are
+  // present in the DOM; the rest keep their estimate until they scroll in.
+  useLayoutEffect(() => {
+    const body = bodyRef.current;
+    if (!body) return;
+    const { start } = rangeRef.current;
+    let index = start;
+    let changed = false;
+    const next = rowHeights.slice();
+    for (const child of Array.from(body.children)) {
+      if ((child as HTMLElement).dataset.spacer !== undefined) continue;
+      const h = (child as HTMLElement).getBoundingClientRect().height;
+      if (h > 0 && index < next.length && Math.abs(next[index] - h) > 0.5) {
+        next[index] = h;
+        changed = true;
+      }
+      index++;
+    }
+    if (changed) setRowHeights(next);
+  });
+
   // Sticky "docking" animation + back-to-top.
   const scrolled = useScrolled(4);
   const showTop = useScrolled(400);
@@ -1483,7 +1533,7 @@ export default function LibraryView({
                 <th className="w-16 px-4 py-3 font-medium"></th>
               </tr>
             </thead>
-            <tbody>
+            <tbody ref={bodyRef}>
               {(() => {
                 const renderTrackRow = (
                   t: TrackAnalysis,
@@ -1941,7 +1991,26 @@ export default function LibraryView({
                     rows.push(renderTrackRow(t, i)),
                   );
                 }
-                return rows;
+
+                // Render only the visible window. The heights table is grown to
+                // match the row count here, so a grouping switch or a filter
+                // change is picked up without a separate effect.
+                const heights = resizeHeights(rowHeights, rows.length);
+                const range = visibleRange(heights, viewport.top, viewport.height);
+                rangeRef.current = range;
+                return [
+                  range.paddingTop > 0 && (
+                    <tr key="pad-top" data-spacer="" style={{ height: range.paddingTop }} />
+                  ),
+                  ...rows.slice(range.start, range.end),
+                  range.paddingBottom > 0 && (
+                    <tr
+                      key="pad-bottom"
+                      data-spacer=""
+                      style={{ height: range.paddingBottom }}
+                    />
+                  ),
+                ];
               })()}
             </tbody>
           </table>
