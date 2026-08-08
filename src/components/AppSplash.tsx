@@ -1,4 +1,5 @@
 import { bootLabel, type BootPhase } from "../lib/boot";
+import { BuildChip } from "./AppHeader";
 import type { ScanProgress } from "../types";
 
 interface Props {
@@ -22,7 +23,10 @@ export default function AppSplash({ phase, progress, leaving }: Props) {
       role="status"
       aria-live="polite"
     >
-      <Mark />
+      <div className="flex flex-col items-center gap-3">
+        <Mark />
+        <BuildChip />
+      </div>
       {/* Keyed so the text fades again whenever the phase moves on. */}
       <p
         key={phase}

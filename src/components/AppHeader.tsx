@@ -36,17 +36,34 @@ export default function AppHeader({ right, onTitleClick }: Props) {
             draggable={false}
           />
         </button>
-        {import.meta.env.DEV && (
-          <span
-            className="shrink-0 rounded-full bg-warning-500/15 px-2 py-0.5 text-xs text-warning-500 ring-1 ring-warning-500/30"
-            title="Development build"
-          >
-            dev
-          </span>
-        )}
+        <BuildChip />
       </div>
 
       <div className="flex shrink-0 items-center gap-2">{right}</div>
     </header>
+  );
+}
+
+/**
+ * Marks what kind of build this is. Dev keeps the warning tone (it is not a
+ * real build); a shipped build reads "Beta" in accent, because that is a
+ * heads-up and not a compatibility warning — status colours stay semantic.
+ *
+ * Deliberately not tied to the app version: dropping the beta label should be
+ * a decision, not something to remember on every release.
+ */
+export function BuildChip() {
+  const dev = import.meta.env.DEV;
+  return (
+    <span
+      className={`shrink-0 rounded-full px-2 py-0.5 text-xs ring-1 ${
+        dev
+          ? "bg-warning-500/15 text-warning-500 ring-warning-500/30"
+          : "bg-accent-500/15 text-accent-300 ring-accent-500/30"
+      }`}
+      title={dev ? "Development build" : "Beta build – expect rough edges"}
+    >
+      {dev ? "dev" : "Beta"}
+    </span>
   );
 }
