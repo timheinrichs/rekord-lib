@@ -1424,7 +1424,9 @@ export default function LibraryView({
               </button>
             ))}
           </div>
-          <span className="shrink-0 whitespace-nowrap text-sm text-fg-muted">
+          {/* ml-3 on top of the bar's gap-2 — 1.25rem, enough to read as a
+              separate thing from the switch rather than part of it. */}
+          <span className="ml-3 shrink-0 whitespace-nowrap text-sm text-fg-muted">
             {filtering
               ? `${visibleTracks.length} of ${counts.total} tracks`
               : `${counts.total} tracks`}
