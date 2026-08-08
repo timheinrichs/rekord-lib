@@ -9,6 +9,39 @@ contain incompatible changes.
 
 ## [Unreleased]
 
+## [0.4.7] - 2026-08-08
+
+### Added
+- **BPM**: tracks are analysed during the scan and the tempo is written into the
+  file (ID3 `TBPM`, MP4 `tmpo`, Vorbis `BPM`), so Rekordbox picks it up on
+  import. An existing BPM tag always wins and is never overwritten, and an
+  unconvincing detection stores nothing rather than a guess. New sortable BPM
+  column, group headers show the range, and the metadata editor lets you correct
+  a value by clicking it. Can be switched off under *Settings → Analysis*, which
+  also offers a re-run over the whole library after a detector improvement.
+- **Grouping by label**: a fourth mode next to Flat / By album / By folder,
+  nested label → album → tracks. Labels are searchable.
+
+### Fixed
+- **Duplicate detection compared corrupted audio**: raw PCM piped out of the
+  ffmpeg sidecar was read line by line, which re-appended newlines and shifted
+  the 16-bit sample alignment — a 120 s excerpt came out 11,286 samples too
+  long. Fingerprints have been computed from noise all along. **Existing
+  duplicate results should be regenerated.**
+- **Conversion dropped metadata**: ffmpeg's AIFF muxer keeps little more than
+  the title, and the tags were only re-applied when an edit was pending, so a
+  plain conversion silently lost artist, album, label and BPM.
+- **Scan results are no longer lost on cancel**: they stream in as they are
+  produced instead of arriving only at the end, so stopping or quitting costs at
+  most one batch. The scan no longer blocks converting or the duplicate search
+  while the (long) BPM pass runs.
+
+### Changed
+- **Large libraries render far faster**: only the visible rows of the track
+  table are in the DOM, which removes the stutter when switching views.
+- Full sweep, incremental catch-up and BPM backlog are one background job with
+  one progress indicator instead of separate scans.
+
 ## [0.4.6] - 2026-08-01
 
 ### Fixed
