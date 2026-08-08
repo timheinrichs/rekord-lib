@@ -74,15 +74,25 @@ export default function CoverThumb({
     };
   }, [visible, path, hasCover]);
 
+  // Something is on its way: pulse rather than show the empty-cover icon, which
+  // would otherwise flicker in just before the artwork replaces it.
+  const pending = hasCover && !url;
+
   return (
     <div
       ref={ref}
-      className="group/cover relative flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded bg-surface-2"
+      className={`group/cover relative flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded bg-surface-2 ${
+        pending ? "animate-skeleton" : ""
+      }`}
     >
       {url ? (
-        <img src={url} className="h-full w-full object-cover" alt="" />
+        <img
+          src={url}
+          className="animate-fade-in h-full w-full object-cover"
+          alt=""
+        />
       ) : (
-        <MusicIcon />
+        !pending && <MusicIcon />
       )}
       {onPlay && (
         <button

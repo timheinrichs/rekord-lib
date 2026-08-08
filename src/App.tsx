@@ -19,6 +19,7 @@ import {
 } from "./lib/settings";
 import { checkForUpdate, type UpdateInfo } from "./lib/updater";
 import AppSplash from "./components/AppSplash";
+import { useReplayAnimation } from "./lib/useReplayAnimation";
 import type { BootPhase } from "./lib/boot";
 import type { BandcampAccount, ScanProgress, TrackAnalysis } from "./types";
 
@@ -134,6 +135,12 @@ export default function App() {
   const originById = sync.originById;
   const presentKeys = sync.presentKeys;
 
+  // Which surface is on screen. Both main views stay mounted, so the fade is
+  // replayed on the wrapper rather than by remounting.
+  const surface = settingsOpen ? "settings" : view;
+  const libraryFade = useReplayAnimation<HTMLDivElement>(surface);
+  const bandcampFade = useReplayAnimation<HTMLDivElement>(surface);
+
   const nav = (
     <HeaderNav
       view={view}
@@ -160,7 +167,14 @@ export default function App() {
         <>
           {/* Library + Bandcamp stay mounted (only hidden) so scans/downloads
               keep running when switching views or opening the settings. */}
-          <div className={view !== "library" || settingsOpen ? "hidden" : undefined}>
+          {/* The fade is replayed by class, never by `key`: a changed key
+              would remount the view and kill a running scan. */}
+          <div
+            ref={libraryFade}
+            className={
+              view !== "library" || settingsOpen ? "hidden" : "animate-fade-in"
+            }
+          >
             <LibraryView
               settings={settings}
               originById={originById}
@@ -172,7 +186,12 @@ export default function App() {
             />
           </div>
 
-          <div className={view !== "bandcamp" || settingsOpen ? "hidden" : undefined}>
+          <div
+            ref={bandcampFade}
+            className={
+              view !== "bandcamp" || settingsOpen ? "hidden" : "animate-fade-in"
+            }
+          >
             <BandcampView
               account={account}
               libraryDir={settings.library_dir}
@@ -195,7 +214,7 @@ export default function App() {
           </div>
 
           {settingsOpen && (
-            <>
+            <div className="animate-fade-in">
               <AppHeader
                 onTitleClick={() => setSettingsOpen(false)}
                 right={
@@ -219,7 +238,7 @@ export default function App() {
                 update={update}
                 onUpdateChange={setUpdate}
               />
-            </>
+            </div>
           )}
         </>
       )}

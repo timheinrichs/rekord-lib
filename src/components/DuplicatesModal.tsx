@@ -1,5 +1,6 @@
 import { useMemo, useState } from "react";
 import { formatBytes, formatDuration, formatSampleRate } from "../lib/format";
+import { Skeleton } from "./Skeleton";
 import {
   clusterAlbums,
   deleteSetForAlbum,
@@ -117,14 +118,12 @@ export default function DuplicatesModal({
         </header>
 
         <div className="flex-1 overflow-y-auto p-5">
-          {empty ? (
-            <div className="flex flex-col items-center gap-2 py-16 text-center text-fg-muted">
-              <p className="text-lg text-fg">
-                {scanning ? "Searching…" : "No duplicates found"}
-              </p>
-              {!scanning && (
-                <p className="text-sm">All tracks in the library are unique.</p>
-              )}
+          {empty && scanning ? (
+            <DuplicatesSkeleton />
+          ) : empty ? (
+            <div className="animate-fade-in flex flex-col items-center gap-2 py-16 text-center text-fg-muted">
+              <p className="text-lg text-fg">No duplicates found</p>
+              <p className="text-sm">All tracks in the library are unique.</p>
             </div>
           ) : (
             <div className="flex flex-col gap-6">
@@ -410,5 +409,34 @@ function QualityBadge({ f }: { f: DuplicateFile }) {
     <span className="rounded-full bg-surface-2 px-2 py-0.5 text-xs text-fg-muted ring-1 ring-border-strong">
       Lossy
     </span>
+  );
+}
+
+/** Placeholder groups while the duplicate search runs. */
+function DuplicatesSkeleton() {
+  return (
+    <div
+      role="status"
+      aria-label="Searching for duplicates"
+      className="animate-fade-in flex flex-col gap-6"
+    >
+      {Array.from({ length: 3 }, (_, g) => (
+        <div key={g} className="flex flex-col gap-2">
+          <Skeleton className="h-4 w-48" />
+          {Array.from({ length: 2 }, (_, r) => (
+            <div
+              key={r}
+              className="flex items-center gap-4 rounded-lg border border-border p-3"
+            >
+              <Skeleton className="h-10 w-10 shrink-0 rounded" />
+              <div className="flex min-w-0 flex-1 flex-col gap-2">
+                <Skeleton className="h-3 w-1/2" />
+                <Skeleton className="h-3 w-1/3" />
+              </div>
+            </div>
+          ))}
+        </div>
+      ))}
+    </div>
   );
 }

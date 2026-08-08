@@ -2,6 +2,7 @@ import { useState, type ReactNode } from "react";
 import AppHeader from "./AppHeader";
 import HeaderNav from "./HeaderNav";
 import { GridIcon, ListIcon } from "./icons";
+import { CollectionSkeleton } from "./Skeleton";
 import type { BulkProgress, DownloadEntry } from "../lib/useBandcamp";
 import type { BandcampAccount, BandcampItem } from "../types";
 
@@ -153,11 +154,11 @@ export default function BandcampView({
               </div>
             )}
 
-            {collection.length === 0 ? (
-              <div className="flex h-48 flex-col items-center justify-center gap-2 rounded-xl border border-border bg-surface text-fg-subtle">
-                <p className="text-sm">
-                  {refreshing ? "Loading collection…" : "No purchases found."}
-                </p>
+            {collection.length === 0 && refreshing ? (
+              <CollectionSkeleton grid={viewMode === "grid"} />
+            ) : collection.length === 0 ? (
+              <div className="animate-fade-in flex h-48 flex-col items-center justify-center gap-2 rounded-xl border border-border bg-surface text-fg-subtle">
+                <p className="text-sm">No purchases found.</p>
               </div>
             ) : viewMode === "list" ? (
               <div className="flex flex-col gap-2">

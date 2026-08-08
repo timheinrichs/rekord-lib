@@ -80,3 +80,29 @@ describe("BandcampView", () => {
     expect(p.onSyncLibrary).toHaveBeenCalledTimes(1);
   });
 });
+
+describe("BandcampView loading state", () => {
+  it("shows a skeleton while the collection is being fetched", () => {
+    render(<BandcampView {...baseProps()} collection={[]} refreshing />);
+    expect(
+      screen.getByRole("status", { name: "Loading collection" }),
+    ).toBeInTheDocument();
+    expect(screen.queryByText("No purchases found.")).not.toBeInTheDocument();
+  });
+
+  it("shows the empty state once the fetch is done", () => {
+    render(<BandcampView {...baseProps()} collection={[]} refreshing={false} />);
+    expect(screen.getByText("No purchases found.")).toBeInTheDocument();
+    expect(
+      screen.queryByRole("status", { name: "Loading collection" }),
+    ).not.toBeInTheDocument();
+  });
+
+  it("keeps showing the collection while refreshing in the background", () => {
+    render(<BandcampView {...baseProps()} refreshing />);
+    expect(screen.getByText("Album A")).toBeInTheDocument();
+    expect(
+      screen.queryByRole("status", { name: "Loading collection" }),
+    ).not.toBeInTheDocument();
+  });
+});

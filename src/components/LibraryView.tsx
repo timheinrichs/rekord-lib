@@ -67,6 +67,8 @@ import {
 import StatusIcons from "./StatusIcons";
 import { useScrolled } from "../lib/useScrolled";
 import { scanLabel as buildScanLabel, type BootPhase } from "../lib/boot";
+import { useReplayAnimation } from "../lib/useReplayAnimation";
+import { Skeleton, TrackTableSkeleton } from "./Skeleton";
 import { resizeHeights, visibleRange, type Range } from "../lib/virtualList";
 import {
   buildAlbumItems,
@@ -1207,6 +1209,29 @@ export default function LibraryView({
   const [rowHeights, setRowHeights] = useState<number[]>([]);
   const [viewport, setViewport] = useState({ top: 0, height: 0 });
 
+  // What the rendered rows are made of. Anything that reorders or replaces
+  // them belongs in here — see the two effects below.
+  const listSignature = useMemo(
+    () =>
+      [grouping, sortKey, sortDir, search.trim(), JSON.stringify(filter)].join(
+        "|",
+      ),
+    [grouping, sortKey, sortDir, search, filter],
+  );
+
+  // Fade the list in whenever it is recomposed, so a filter or sort change
+  // reads as a transition rather than a jump.
+  const listRef = useReplayAnimation<HTMLDivElement>(listSignature);
+
+  // Measured heights are keyed by position over a list that mixes group
+  // headers and track rows, and resizeHeights only grows or truncates it. After
+  // a recompose, index i may well be a header where a track row was measured,
+  // which puts the visible window in the wrong place for a frame. Start over
+  // instead; the rows re-measure in the same layout pass, hidden by the fade.
+  useEffect(() => {
+    setRowHeights([]);
+  }, [listSignature]);
+
   useEffect(() => {
     let frame = 0;
     const measure = () => {
@@ -1399,8 +1424,20 @@ export default function LibraryView({
         </div>
       )}
 
-      {/* Filter bar (sticky below the header) */}
-      {tracks.length > 0 && (
+      {/* Filter bar (sticky below the header). While the cache is still being
+          read its shape is held by placeholders, so the list below does not
+          jump down once it appears. */}
+      {!hydrated ? (
+        <div className="-mx-6 mb-3 flex h-14 items-center gap-2 border-b border-transparent px-6">
+          <Skeleton className="h-7 w-28" />
+          <div className="ml-auto flex items-center gap-2">
+            <Skeleton className="h-8 w-72 rounded-full" />
+            <Skeleton className="h-9 w-9" />
+            <Skeleton className="h-8 w-56 rounded-lg" />
+          </div>
+        </div>
+      ) : (
+        tracks.length > 0 && (
         <div
           className={`sticky top-16 z-20 -mx-6 mb-3 flex h-14 items-center gap-2 border-b px-6 transition-[box-shadow,background-color,border-color] duration-300 ${
             scrolled
@@ -1493,6 +1530,7 @@ export default function LibraryView({
             />
           </div>
         </div>
+        )
       )}
 
       {/* Track list / drop zone */}
@@ -1503,23 +1541,24 @@ export default function LibraryView({
             : "border-border bg-surface"
         }`}
       >
-        {tracks.length === 0 ? (
-          <div className="flex h-64 flex-col items-center justify-center gap-2 text-fg-subtle">
-            <p className="text-lg">
-              {loading ? scanLabel : "No music in the library yet"}
+        {/* Skeleton while the cached library is being read, and while a scan
+            is filling an empty list — never for the BPM pass, which updates
+            rows that are already on screen. */}
+        {(!hydrated || (tracks.length === 0 && loading)) ? (
+          <TrackTableSkeleton rows={8} />
+        ) : tracks.length === 0 ? (
+          <div className="animate-fade-in flex h-64 flex-col items-center justify-center gap-2 text-fg-subtle">
+            <p className="text-lg">No music in the library yet</p>
+            <p className="text-sm">
+              Drag files here – they will be converted into the library.
             </p>
-            {!loading && (
-              <p className="text-sm">
-                Drag files here – they will be converted into the library.
-              </p>
-            )}
           </div>
         ) : visibleTracks.length === 0 ? (
-          <div className="flex h-40 flex-col items-center justify-center gap-2 text-fg-subtle">
+          <div className="animate-fade-in flex h-40 flex-col items-center justify-center gap-2 text-fg-subtle">
             <p className="text-sm">No tracks match the filter.</p>
           </div>
         ) : (
-          <div className="overflow-x-auto">
+          <div ref={listRef} className="animate-fade-in overflow-x-auto">
           <table className="w-full min-w-[95rem] table-fixed text-sm">
             <thead className="text-left text-fg-muted">
               <tr className="border-b border-border">

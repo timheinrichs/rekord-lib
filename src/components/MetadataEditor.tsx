@@ -324,11 +324,19 @@ export default function MetadataEditor({
           {/* Cover */}
           <div className="flex flex-col gap-3">
             <span className="text-sm text-fg-muted">Cover</span>
-            <div className="flex aspect-square w-full items-center justify-center overflow-hidden rounded-lg border border-border-strong bg-surface-2">
-              {coverLoading ? (
-                <span className="text-xs text-fg-subtle">Loading…</span>
-              ) : coverUrl ? (
-                <img src={coverUrl} className="h-full w-full object-cover" alt="Cover" />
+            <div
+              className={`flex aspect-square w-full items-center justify-center overflow-hidden rounded-lg border border-border-strong bg-surface-2 ${
+                coverLoading ? "animate-skeleton" : ""
+              }`}
+              role={coverLoading ? "status" : undefined}
+              aria-label={coverLoading ? "Loading cover" : undefined}
+            >
+              {coverLoading ? null : coverUrl ? (
+                <img
+                  src={coverUrl}
+                  className="animate-fade-in h-full w-full object-cover"
+                  alt="Cover"
+                />
               ) : (
                 <span className="text-xs text-fg-subtle">No cover</span>
               )}
