@@ -9,6 +9,51 @@ contain incompatible changes.
 
 ## [Unreleased]
 
+## [0.4.8] - 2026-08-08
+
+### Added
+- **Filter menu**: a funnel button next to the grouping switch filters the
+  library by BPM range, genre, year range, conversion need, metadata
+  completeness and origin (Bandcamp or local). A dot on the button marks that
+  something is filtered, and each active facet appears as a chip next to the
+  button that can be removed on its own.
+- **Start-up screen**: the app now shows its logo with the four bars moving
+  while it boots, and says what it is doing underneath ("Loading library",
+  "Analyzing 12/2223"). It replaces a blank window followed by a flash of the
+  "no music in the library yet" empty state.
+- **Skeleton loading**: the track table, the Bandcamp collection, cover
+  thumbnails, the metadata editor's cover and the duplicate search show the
+  shape of what is loading instead of a line of text. Switching views, filters
+  or sorting fades rather than jumps. All of it is disabled when the system asks
+  for reduced motion.
+- Shipped builds carry a **Beta** chip in the header and on the start-up screen.
+
+### Changed
+- **Status is now a column of icons** behind "Downloaded" rather than text
+  badges in the middle of the table, which gives the title, artist and album
+  columns 8rem more room. The explanation is in the tooltip; conversion progress
+  shows as a spinner with its percentage.
+- **Grouping switch** reads Album / Label / Folder / Flat, in that order. The
+  track count sits beside it, and the filter chips moved across to the filter
+  button they belong to.
+- Search now looks through unsaved metadata edits as well, and covers genre and
+  year.
+- Expand/collapse all is gone for the moment; per-group chevrons are unchanged.
+
+### Fixed
+- **Single-track albums were pulled out of their album**: a single or one-track
+  EP rendered as a loose row next to the albums it belongs with, because
+  grouping only started at two tracks. A lone track that carries a real album
+  tag now gets its group; tracks with no album tag stay loose, so a stray file
+  does not get a group named after whatever folder it sits in. Applies to the
+  label view too, which carried its own copy of the rule.
+- **Row heights could land on the wrong row** after a filter, sort or grouping
+  change: the virtualizer keys measured heights by position over a list that
+  mixes group headers and track rows, so index *i* could be a header where a
+  track row had been measured. Heights are now discarded when the list is
+  recomposed.
+- The filter chips' outline was clipped along its top and bottom edge.
+
 ## [0.4.7] - 2026-08-08
 
 ### Added
