@@ -79,13 +79,11 @@ import {
 } from "../lib/grouping";
 import { foldersToPrune, parentDir } from "../lib/dupAlbums";
 import {
-  allFolderPaths,
   buildFolderTree,
   folderTrackList,
   type FolderNode,
 } from "../lib/folderTree";
 import {
-  allLabelIds,
   buildLabelTree,
   labelTrackList,
   type LabelNode,
@@ -640,11 +638,6 @@ export default function LibraryView({
     [grouping, visibleTracks, libraryDir],
   );
 
-  const allFolderKeys = useMemo(
-    () => (folderRoot ? allFolderPaths(folderRoot) : []),
-    [folderRoot],
-  );
-
   // Label tree of the visible tracks (label -> album -> tracks).
   const labelRoot = useMemo(
     () =>
@@ -652,11 +645,6 @@ export default function LibraryView({
         ? buildLabelTree(visibleTracks, edits, sortKey, sortDir)
         : null,
     [grouping, visibleTracks, edits, sortKey, sortDir],
-  );
-
-  const allLabelKeys = useMemo(
-    () => (labelRoot ? allLabelIds(labelRoot) : []),
-    [labelRoot],
   );
 
   // Flat render order (including collapsed) for the shift selection.
@@ -696,14 +684,6 @@ export default function LibraryView({
     [player, toPlayerTrack],
   );
 
-  const allGroupKeys = useMemo(
-    () =>
-      (albumItems ?? [])
-        .filter((it): it is Extract<AlbumItem, { type: "group" }> => it.type === "group")
-        .map((it) => it.key),
-    [albumItems],
-  );
-
   // Column-header sort: same column toggles direction, a new column starts ascending.
   const toggleSort = useCallback(
     (key: SortKey) => {
@@ -725,14 +705,6 @@ export default function LibraryView({
     });
   }, []);
 
-  const toggleAllAlbums = useCallback(() => {
-    setExpandedAlbums((prev) =>
-      prev.size >= allGroupKeys.length && allGroupKeys.length > 0
-        ? new Set()
-        : new Set(allGroupKeys),
-    );
-  }, [allGroupKeys]);
-
   const toggleFolder = useCallback((path: string) => {
     setExpandedFolders((prev) => {
       const next = new Set(prev);
@@ -741,14 +713,6 @@ export default function LibraryView({
     });
   }, []);
 
-  const toggleAllFolders = useCallback(() => {
-    setExpandedFolders((prev) =>
-      prev.size >= allFolderKeys.length && allFolderKeys.length > 0
-        ? new Set()
-        : new Set(allFolderKeys),
-    );
-  }, [allFolderKeys]);
-
   const toggleLabel = useCallback((id: string) => {
     setExpandedLabels((prev) => {
       const next = new Set(prev);
@@ -756,14 +720,6 @@ export default function LibraryView({
       return next;
     });
   }, []);
-
-  const toggleAllLabels = useCallback(() => {
-    setExpandedLabels((prev) =>
-      prev.size >= allLabelKeys.length && allLabelKeys.length > 0
-        ? new Set()
-        : new Set(allLabelKeys),
-    );
-  }, [allLabelKeys]);
 
   // (De)select all tracks of an album group.
   const toggleAlbumSelect = useCallback((tracksInAlbum: TrackAnalysis[]) => {
@@ -1445,17 +1401,42 @@ export default function LibraryView({
               : "border-transparent bg-bg"
           }`}
         >
-          {/* Left: how much is shown, then one removable chip per active
-              facet. Nothing filtered = just the total. */}
+          {/* Left: how the list is grouped, then how much of it is showing. */}
+          <div className="flex shrink-0 items-center rounded-full ring-1 ring-border-strong">
+            {(
+              [
+                ["album", "Album"],
+                ["label", "Label"],
+                ["folder", "Folder"],
+                ["flat", "Flat"],
+              ] as [Grouping, string][]
+            ).map(([key, label]) => (
+              <button
+                key={key}
+                onClick={() => setGrouping(key)}
+                className={`whitespace-nowrap rounded-full px-3 py-1.5 text-sm transition-colors ${
+                  grouping === key
+                    ? "bg-accent-600 text-fg"
+                    : "text-fg-muted hover:text-fg"
+                }`}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
           <span className="shrink-0 whitespace-nowrap text-sm text-fg-muted">
             {filtering
               ? `${visibleTracks.length} of ${counts.total} tracks`
               : `${counts.total} tracks`}
           </span>
-          {/* overflow-x forces overflow-y to compute as auto, which would clip
-              the chips' ring (a box-shadow, drawn outside the box). The
-              negative margin buys it room without changing the bar's height. */}
-          <div className="-my-1 flex min-w-0 flex-1 items-center gap-2 overflow-x-auto py-1">
+
+          {/* Right: the active facets sit directly beside the button that set
+              them, so the two read as one control. Chips grow leftwards from
+              there and scroll once they run out of room.
+              overflow-x forces overflow-y to compute as auto, which would clip
+              their ring (a box-shadow, drawn outside the box). The negative
+              margin buys it room without changing the bar's height. */}
+          <div className="-my-1 ml-auto flex min-w-0 items-center justify-end gap-2 overflow-x-auto py-1">
             {activeChips.map((chip) => (
               <FilterChip
                 key={chip.facet}
@@ -1464,60 +1445,7 @@ export default function LibraryView({
               />
             ))}
           </div>
-          <div className="ml-auto flex shrink-0 items-center gap-2">
-            {/* Grouping switch: flat list / by album / by folder tree / by label. */}
-            <div className="flex items-center rounded-full ring-1 ring-border-strong">
-              {(
-                [
-                  ["flat", "Flat"],
-                  ["album", "By album"],
-                  ["folder", "By folder"],
-                  ["label", "By label"],
-                ] as [Grouping, string][]
-              ).map(([key, label]) => (
-                <button
-                  key={key}
-                  onClick={() => setGrouping(key)}
-                  className={`whitespace-nowrap rounded-full px-3 py-1.5 text-sm transition-colors ${
-                    grouping === key
-                      ? "bg-accent-600 text-fg"
-                      : "text-fg-muted hover:text-fg"
-                  }`}
-                >
-                  {label}
-                </button>
-              ))}
-            </div>
-            {grouping === "album" && allGroupKeys.length > 0 && (
-              <button
-                onClick={toggleAllAlbums}
-                className="whitespace-nowrap rounded-full px-3 py-1.5 text-sm text-fg-muted ring-1 ring-border-strong transition-colors hover:text-fg hover:ring-border-strong"
-              >
-                {expandedAlbums.size >= allGroupKeys.length
-                  ? "Collapse all"
-                  : "Expand all"}
-              </button>
-            )}
-            {grouping === "folder" && allFolderKeys.length > 0 && (
-              <button
-                onClick={toggleAllFolders}
-                className="whitespace-nowrap rounded-full px-3 py-1.5 text-sm text-fg-muted ring-1 ring-border-strong transition-colors hover:text-fg hover:ring-border-strong"
-              >
-                {expandedFolders.size >= allFolderKeys.length
-                  ? "Collapse all"
-                  : "Expand all"}
-              </button>
-            )}
-            {grouping === "label" && allLabelKeys.length > 0 && (
-              <button
-                onClick={toggleAllLabels}
-                className="whitespace-nowrap rounded-full px-3 py-1.5 text-sm text-fg-muted ring-1 ring-border-strong transition-colors hover:text-fg hover:ring-border-strong"
-              >
-                {expandedLabels.size >= allLabelKeys.length
-                  ? "Collapse all"
-                  : "Expand all"}
-              </button>
-            )}
+          <div className="flex shrink-0 items-center gap-2">
             <FilterMenu
               filter={filter}
               onChange={setFilter}
