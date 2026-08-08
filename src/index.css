@@ -1,4 +1,4 @@
-/* Marken-Design-Tokens (Tailwind v4, single source of truth). */
+/* Brand design tokens (Tailwind v4, single source of truth). */
 @import "./styles/tokens.css";
 
 html,
@@ -34,8 +34,23 @@ html {
   animation-iteration-count: infinite;
 }
 
+/* The logo bars scale around their own centre rather than the SVG's origin. */
+.eq-bar {
+  transform-box: fill-box;
+  transform-origin: center;
+}
+
 @media (prefers-reduced-motion: reduce) {
   .group:hover .marquee-track {
+    animation: none;
+  }
+
+  /* Motion is decoration here: the content is fully readable without it, so
+     everything simply lands in its final state. */
+  .animate-fade-in,
+  .animate-fade-out,
+  .animate-skeleton,
+  .animate-eq {
     animation: none;
   }
 }

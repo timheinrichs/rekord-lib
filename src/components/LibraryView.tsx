@@ -66,6 +66,7 @@ import {
 } from "./icons";
 import StatusIcons from "./StatusIcons";
 import { useScrolled } from "../lib/useScrolled";
+import { scanLabel as buildScanLabel, type BootPhase } from "../lib/boot";
 import { resizeHeights, visibleRange, type Range } from "../lib/virtualList";
 import {
   buildAlbumItems,
@@ -113,6 +114,8 @@ interface Props {
   originById: Record<string, string>;
   /** Mirrors the scanned tracks up to the app (for Bandcamp sync). */
   onTracksChange?: (tracks: TrackAnalysis[]) => void;
+  /** Reports start-up progress to the splash (see lib/boot). */
+  onBootPhase?: (phase: BootPhase, progress?: ScanProgress | null) => void;
   /** Notifies the app of deleted files (to prune the Bandcamp download ledger). */
   onFilesDeleted?: (paths: string[]) => void;
   /** Shared header navigation (Library/Bandcamp tabs, downloads, gear). */
@@ -139,6 +142,7 @@ export default function LibraryView({
   settings,
   originById,
   onTracksChange,
+  onBootPhase,
   onFilesDeleted,
   nav,
   onOpenSettings,
@@ -180,6 +184,10 @@ export default function LibraryView({
   const [scanProgress, setScanProgress] = useState<ScanProgress | null>(null);
   // Incremental (auto) sync in progress — drives the inline spinner.
   const [syncing, setSyncing] = useState(false);
+  // False until the cached library has been read. Distinct from `loading`
+  // (which means a scan is running) and from an empty library: without it the
+  // list would render its "no music" empty state during the store read.
+  const [hydrated, setHydrated] = useState(false);
 
   const libraryDir = settings.library_dir;
   // Only persist after the cache has been loaded – otherwise the initial
@@ -351,6 +359,7 @@ export default function LibraryView({
       if (active && dups.length) setDupGroups(dups);
       // From now on persisting is allowed (the cache has been taken into account).
       hydratedRef.current = true;
+      if (active) setHydrated(true);
       if (!active || !libraryDir) return;
       const status = await scanStatus();
       if (!active) return;
@@ -769,9 +778,26 @@ export default function LibraryView({
   // The BPM pass runs in the background for minutes, so the button reports it
   // without blocking: "Scanning…" while probing, "BPM 412/2223" afterwards.
   const bpmRunning = scanProgress?.stage === STAGE_BPM;
-  const scanLabel = bpmRunning
-    ? `BPM ${scanProgress.done}/${scanProgress.total}`
-    : "Scanning…";
+  const scanLabel = buildScanLabel(scanProgress);
+
+  // Tell the splash how far along we are. It comes down as soon as the list is
+  // displayable — a first scan runs for minutes, and the table's own loading
+  // state covers that far better than a splash would.
+  useEffect(() => {
+    if (!onBootPhase) return;
+    if (!hydrated) return;
+    const emptyAndScanning =
+      tracks.length === 0 && !!libraryDir && (loading || !!scanProgress);
+    if (emptyAndScanning) onBootPhase("scanning", scanProgress);
+    else onBootPhase("ready");
+  }, [
+    onBootPhase,
+    hydrated,
+    tracks.length,
+    libraryDir,
+    loading,
+    scanProgress,
+  ]);
 
   const allVisibleSelected =
     visibleTracks.length > 0 && visibleTracks.every((t) => selected.has(t.id));

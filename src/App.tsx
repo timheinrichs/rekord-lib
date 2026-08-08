@@ -18,7 +18,21 @@ import {
   type Settings,
 } from "./lib/settings";
 import { checkForUpdate, type UpdateInfo } from "./lib/updater";
-import type { BandcampAccount, TrackAnalysis } from "./types";
+import AppSplash from "./components/AppSplash";
+import type { BootPhase } from "./lib/boot";
+import type { BandcampAccount, ScanProgress, TrackAnalysis } from "./types";
+
+interface BootState {
+  phase: BootPhase;
+  progress?: ScanProgress | null;
+}
+
+/**
+ * Shortest time the splash stays up. Without it a warm cache resolves within
+ * a frame or two and the splash registers as a flicker — the very thing it is
+ * there to prevent.
+ */
+const MIN_SPLASH_MS = 300;
 
 type MainView = "library" | "bandcamp";
 
@@ -30,6 +44,10 @@ export default function App() {
   const [update, setUpdate] = useState<UpdateInfo | null>(null);
   const [ready, setReady] = useState(false);
   const [libraryTracks, setLibraryTracks] = useState<TrackAnalysis[]>([]);
+  // Start-up state behind the splash. LibraryView reports the later phases,
+  // since only it knows when the cache has been read.
+  const [boot, setBoot] = useState<BootState>({ phase: "starting" });
+  const [splashGone, setSplashGone] = useState(false);
 
   const bc = useBandcamp(settings, account);
 
@@ -50,6 +68,37 @@ export default function App() {
   useEffect(() => {
     void (async () => setUpdate(await checkForUpdate()))();
   }, []);
+
+  // The splash may not disappear before this has elapsed (see MIN_SPLASH_MS).
+  const [minSplashOver, setMinSplashOver] = useState(false);
+  useEffect(() => {
+    const id = setTimeout(() => setMinSplashOver(true), MIN_SPLASH_MS);
+    return () => clearTimeout(id);
+  }, []);
+
+  const splashLeaving = boot.phase === "ready" && minSplashOver;
+
+  // Drop the splash once it has faded, so it stops covering the app.
+  useEffect(() => {
+    if (!splashLeaving) return;
+    const id = setTimeout(() => setSplashGone(true), 150);
+    return () => clearTimeout(id);
+  }, [splashLeaving]);
+
+  const handleBootPhase = useCallback(
+    (phase: BootPhase, progress?: ScanProgress | null) =>
+      setBoot((prev) =>
+        prev.phase === phase && prev.progress === progress
+          ? prev
+          : { phase, progress },
+      ),
+    [],
+  );
+
+  // The settings are in; from here the library decides when it is ready.
+  useEffect(() => {
+    if (ready) handleBootPhase("library");
+  }, [ready, handleBootPhase]);
 
   // Mark the window title in dev builds so the dev instance is identifiable.
   useEffect(() => {
@@ -100,6 +149,13 @@ export default function App() {
   return (
     <PlayerProvider>
     <div className="min-h-screen bg-bg font-mono text-fg">
+      {!splashGone && (
+        <AppSplash
+          phase={boot.phase}
+          progress={boot.progress}
+          leaving={splashLeaving}
+        />
+      )}
       {ready && (
         <>
           {/* Library + Bandcamp stay mounted (only hidden) so scans/downloads
@@ -109,6 +165,7 @@ export default function App() {
               settings={settings}
               originById={originById}
               onTracksChange={setLibraryTracks}
+              onBootPhase={handleBootPhase}
               onFilesDeleted={bc.forgetDownloads}
               nav={nav}
               onOpenSettings={() => setSettingsOpen(true)}

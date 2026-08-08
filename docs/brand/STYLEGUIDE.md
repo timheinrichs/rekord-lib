@@ -205,3 +205,37 @@ compatibility, plenty of contrast on small text.
 
 **Don't:** mix multiple accent colors, gradients/glow, use status colors
 decoratively (semantic only!), body text in monospace, Title Case.
+
+---
+
+## 9. Motion
+
+Motion is a hint, never a performance. It tells you something arrived or
+changed — it does not decorate. Everything below is defined once in
+`tokens.css` (`@theme`) and used through the generated `animate-*` utilities.
+
+| Token | Utility | Use for |
+|---|---|---|
+| `--animate-fade-in` | `animate-fade-in` | content appearing: view switch, filter/sort change, loaded covers, splash text |
+| `--animate-fade-out` | `animate-fade-out` | the splash handing over to the app |
+| `--animate-skeleton` | `animate-skeleton` | placeholders while data loads |
+| `--animate-eq` | `animate-eq` | the four logo bars on the splash |
+
+**Durations.** 150 ms for anything appearing or disappearing — long enough to
+be perceived, short enough never to be waited on. 300 ms for the sticky header
+and filter bar docking on scroll. Loops (skeleton, equalizer) run 1.1–1.6 s.
+Easing: `ease-out` on enter, `ease-in` on exit, `ease-in-out` for loops.
+
+**Skeletons** pulse their opacity on `bg-surface-2`. They do **not** sweep a
+gradient across themselves — that is the "no gradients/glow" rule in §8, and a
+moving highlight draws more attention than the content it stands in for. Give
+a skeleton the size of the content it replaces so nothing jumps on swap.
+
+**Lists.** Animate the container, never the rows. The track table renders only
+its visible rows, so a per-row animation would fire again every time a row
+scrolls into view.
+
+**Reduced motion is mandatory.** Every animation is switched off under
+`@media (prefers-reduced-motion: reduce)` in `index.css`; add new ones to that
+block. Content must be complete and readable in its final state without any
+animation ever running — nothing may depend on motion to become visible.
