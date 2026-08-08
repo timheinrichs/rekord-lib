@@ -134,6 +134,10 @@ export interface ConvertProgress {
   stage: string;
 }
 
+/** Scan stage labels, mirroring the constants in src-tauri/src/commands.rs. */
+export const STAGE_ANALYZING = "Analyzing";
+export const STAGE_BPM = "Detecting BPM";
+
 export interface ScanProgress {
   generation: number;
   done: number;
@@ -154,6 +158,14 @@ export interface ScanStatus {
 export interface ScanDone {
   generation: number;
   cancelled: boolean;
+  /** False when only a subset of paths was processed — do not drop the rest. */
+  full: boolean;
+  tracks: TrackAnalysis[];
+}
+
+/** A batch of tracks streamed while the scan runs. */
+export interface ScanTracks {
+  generation: number;
   tracks: TrackAnalysis[];
 }
 

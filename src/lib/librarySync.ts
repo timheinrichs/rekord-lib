@@ -27,6 +27,37 @@ export function diffAudioFiles(
   return { addedPaths, keptTracks, changed };
 }
 
+/**
+ * Merges a freshly analyzed batch into the known tracks: an incoming track
+ * replaces the one with the same path, anything new is appended. The scan
+ * streams its results, so this runs many times per run — it is reference-stable
+ * when the batch changes nothing, and it never drops tracks the batch did not
+ * mention (a targeted run only covers a subset of the library). Pure.
+ */
+export function mergeScanned(
+  tracks: TrackAnalysis[],
+  incoming: TrackAnalysis[],
+): TrackAnalysis[] {
+  if (!incoming.length) return tracks;
+  const byPath = new Map(incoming.map((t) => [t.path, t]));
+  let changed = false;
+  const merged = tracks.map((t) => {
+    const next = byPath.get(t.path);
+    if (!next) return t;
+    byPath.delete(t.path);
+    if (next === t) return t;
+    changed = true;
+    return next;
+  });
+  if (byPath.size) return [...merged, ...byPath.values()];
+  return changed ? merged : tracks;
+}
+
+/** Paths of tracks that still have no BPM — the backlog for the scan job. */
+export function pathsMissingBpm(tracks: TrackAnalysis[]): string[] {
+  return tracks.filter((t) => t.metadata.bpm == null).map((t) => t.path);
+}
+
 /** Output paths of successful conversions (to re-analyze after a convert). */
 export function convertedOutputs(results: ConvertResult[]): string[] {
   const out = new Set<string>();

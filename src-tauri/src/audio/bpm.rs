@@ -6,8 +6,8 @@
 
 use rustfft::{num_complex::Complex32, FftPlanner};
 use tauri::AppHandle;
-use tauri_plugin_shell::ShellExt;
 
+use super::decode;
 use crate::error::{AppError, AppResult};
 
 /// Sample rate we decode to. Beat energy lives far below the 5.5 kHz Nyquist,
@@ -30,11 +30,39 @@ const HOP: usize = 64;
 const MIN_BPM: f32 = 60.0;
 const MAX_BPM: f32 = 200.0;
 
-/// Range the result is folded into. Wide enough to keep genuine downtempo
-/// (70–100) and drum & bass (174) intact instead of forcing everything to 4/4
-/// club tempo.
-const PREFERRED_MIN: f32 = 70.0;
-const PREFERRED_MAX: f32 = 180.0;
+/// Tempo preference curve: centre and width (in octaves) of a log-normal prior
+/// over plausible tempos. An autocorrelation peak cannot distinguish a tempo
+/// from its half or double — a 137 BPM track correlates at 68.5 just as well,
+/// usually better — so the octave is decided by musical likelihood instead.
+/// Measured on real 137/140 BPM releases, the correct octave scored only
+/// 0.44–0.74 of the half-tempo peak, which no plain threshold separates from
+/// genuine downtempo.
+///
+/// Tuned against 21 tracks with Rekordbox reference values: 7/21 before,
+/// 15/21 after. These sit in the middle of a broad plateau (centre 140–155,
+/// width 0.30–0.50 all score alike) rather than at the fitted optimum, because
+/// the reference set leans heavily on one 160 BPM footwork compilation and a
+/// sharper prior would drag the library's 120–140 BPM mass upwards.
+const PRIOR_CENTRE_BPM: f32 = 140.0;
+const PRIOR_WIDTH_OCTAVES: f32 = 0.45;
+
+/// Ratios the true tempo may sit at relative to the strongest correlation peak.
+/// Powers of two alone are not enough: shuffled and triplet-heavy material
+/// (footwork, jungle, swing) peaks at two thirds or four thirds of the beat,
+/// which measured as a solid quarter of all errors on the reference set.
+const OCTAVE_FACTORS: [f32; 11] = [
+    0.25,
+    1.0 / 3.0,
+    0.5,
+    2.0 / 3.0,
+    0.75,
+    1.0,
+    4.0 / 3.0,
+    1.5,
+    2.0,
+    3.0,
+    4.0,
+];
 
 /// Window of the moving-mean subtraction on the onset envelope (seconds).
 const ENVELOPE_SMOOTH_SECS: f32 = 0.5;
@@ -47,56 +75,21 @@ const MIN_PEAK_RATIO: f32 = 1.30;
 /// Minimum envelope length relative to the longest lag examined.
 const MIN_PERIODS: usize = 4;
 
-/// How close to the best octave's autocorrelation a faster octave must come to
-/// be preferred over it. See [`fold_to_preferred`].
-const OCTAVE_TOLERANCE: f32 = 0.85;
-
-/// Slack on the preferred band, so an estimate sitting a fraction of a BPM
-/// outside it is not flipped to another octave.
-const BAND_MARGIN: f32 = 2.0;
-
 /// Decodes an excerpt of a file to mono PCM via the ffmpeg sidecar and detects
 /// its tempo. `Ok(None)` means "decoded fine, but no convincing tempo".
 pub async fn analyze_bpm(app: &AppHandle, path: &str) -> AppResult<Option<u32>> {
     // Skip the intro; fall back to the start for tracks shorter than the offset.
-    let samples = match decode(app, path, EXCERPT_OFFSET_SECS).await {
+    let decode_at = |offset| decode::mono_pcm(app, path, SAMPLE_RATE, offset, EXCERPT_SECS);
+    let samples = match decode_at(EXCERPT_OFFSET_SECS).await {
         Ok(s) if s.len() >= SAMPLE_RATE as usize * 10 => s,
-        Ok(_) | Err(_) => decode(app, path, 0).await?,
+        Ok(_) | Err(_) => decode_at(0).await?,
     };
-    Ok(detect_bpm(&samples, SAMPLE_RATE))
-}
-
-/// Decodes `EXCERPT_SECS` from `offset` as mono s16le.
-async fn decode(app: &AppHandle, path: &str, offset: u32) -> AppResult<Vec<i16>> {
-    let off = offset.to_string();
-    let dur = EXCERPT_SECS.to_string();
-    let sr = SAMPLE_RATE.to_string();
-    let output = app
-        .shell()
-        .sidecar("ffmpeg")
-        .map_err(|e| AppError::Sidecar(e.to_string()))?
-        .args([
-            "-v", "error", "-ss", &off, "-i", path, "-map", "0:a:0", "-t", &dur,
-            "-ac", "1", "-ar", &sr, "-f", "s16le", "pipe:1",
-        ])
-        .output()
+    // Detection is seconds of pure CPU work. Running it on an async worker
+    // thread would block the very runtime the concurrent decodes and the rest
+    // of the app share — with one task per core, throughput collapses.
+    tauri::async_runtime::spawn_blocking(move || detect_bpm(&samples, SAMPLE_RATE))
         .await
-        .map_err(|e| AppError::Sidecar(e.to_string()))?;
-
-    if !output.status.success() {
-        let stderr = String::from_utf8_lossy(&output.stderr);
-        return Err(AppError::Probe(format!(
-            "ffmpeg decode exit {:?}: {}",
-            output.status.code(),
-            stderr.trim()
-        )));
-    }
-
-    Ok(output
-        .stdout
-        .chunks_exact(2)
-        .map(|c| i16::from_le_bytes([c[0], c[1]]))
-        .collect())
+        .map_err(|e| AppError::Probe(format!("BPM task failed: {e}")))
 }
 
 /// Detects the tempo of mono PCM samples, or `None` when the signal carries no
@@ -248,38 +241,40 @@ fn refine_peak(acf: &[f32], peak: usize) -> f32 {
     peak as f32 + delta
 }
 
-/// Folds a tempo into [`PREFERRED_MIN`, `PREFERRED_MAX`] by halving/doubling.
-/// Half/double-time is the dominant error mode of every autocorrelation tempo
-/// estimator, and the autocorrelation alone cannot break the tie: an isochronous
-/// pulse peaks equally at every multiple of its period.
+/// Picks the octave of `bpm` that best explains the signal *and* is the most
+/// plausible tempo, scoring each candidate by its autocorrelation weighted with
+/// [`tempo_prior`]. Half/double-time is the dominant error mode of every
+/// autocorrelation estimator, and the correlation alone cannot break the tie:
+/// an isochronous pulse peaks at every multiple of its period.
 ///
-/// The tie-breaker is asymmetric. A track really at 174 BPM also correlates at
-/// 87, but a track really at 87 has *no* peak at 174 — there are no events
-/// there. So among the octaves that still explain the signal (within
-/// [`OCTAVE_TOLERANCE`] of the best), the fastest one is the fundamental.
+/// Candidates outside the searched range are dropped — there is no measurement
+/// to judge them by.
 fn fold_to_preferred(bpm: f32, acf: &[f32], env_rate: f32) -> f32 {
     let score = |c: f32| {
         let lag = (env_rate * 60.0 / c).round() as usize;
-        acf.get(lag).copied().unwrap_or(f32::MIN)
+        // Negative correlation means "no events at this rate"; clamping keeps
+        // the prior from turning it into a competitive score.
+        acf.get(lag).copied().unwrap_or(f32::MIN).max(0.0) * tempo_prior(c)
     };
-    // The margin matters: without it an estimate of 69.84 falls just outside the
-    // band and gets pushed to 139.7, an octave away from the right answer.
-    let mut candidates: Vec<f32> = [0.25, 0.5, 1.0, 2.0, 4.0]
+    OCTAVE_FACTORS
         .iter()
         .map(|f| bpm * f)
-        .filter(|c| *c >= PREFERRED_MIN - BAND_MARGIN && *c <= PREFERRED_MAX + BAND_MARGIN)
-        .collect();
+        .filter(|c| *c >= MIN_BPM && *c <= MAX_BPM)
+        .fold((bpm, f32::MIN), |best, c| {
+            let s = score(c);
+            if s > best.1 {
+                (c, s)
+            } else {
+                best
+            }
+        })
+        .0
+}
 
-    let best = candidates.iter().fold(f32::MIN, |m, c| m.max(score(*c)));
-    if candidates.is_empty() || best <= 0.0 {
-        // No octave lands in the band, or none explains the signal — keep the
-        // raw estimate rather than inventing one.
-        return bpm;
-    }
-    let floor = best * OCTAVE_TOLERANCE;
-    // The best-scoring candidate always clears the floor, so this is non-empty.
-    candidates.retain(|c| score(*c) >= floor);
-    candidates.into_iter().fold(f32::MIN, f32::max)
+/// Log-normal likelihood of a tempo, peaking at [`PRIOR_CENTRE_BPM`].
+fn tempo_prior(bpm: f32) -> f32 {
+    let octaves = (bpm / PRIOR_CENTRE_BPM).log2() / PRIOR_WIDTH_OCTAVES;
+    (-0.5 * octaves * octaves).exp()
 }
 
 fn hann(n: usize) -> Vec<f32> {
@@ -361,11 +356,34 @@ mod tests {
         // musically sensible answer.
         let samples = click_track(300.0, 30.0, 1.0);
         let got = detect_bpm(&samples, SR).expect("no BPM detected");
-        assert!(
-            (got as f32) >= PREFERRED_MIN && (got as f32) <= PREFERRED_MAX,
-            "{got} outside the preferred band"
-        );
         assert!((got as f32 - 150.0).abs() <= 1.0, "expected ~150, got {got}");
+    }
+
+    #[test]
+    fn prefers_the_club_tempo_over_its_half_time_peak() {
+        // A backbeat makes the half-tempo period correlate *better* than the
+        // beat itself — on real 137/140 BPM releases the correct octave scored
+        // only 0.44–0.74 of the half-tempo peak. Picking the stronger peak
+        // therefore reports 68 instead of 137, which is what the tempo prior
+        // exists to prevent.
+        for bpm in [137.0, 140.0] {
+            let samples = click_track(bpm, 40.0, 1.8);
+            let got = detect_bpm(&samples, SR).unwrap_or_else(|| panic!("no BPM at {bpm}"));
+            assert!(
+                (got as f32 - bpm).abs() <= 1.0,
+                "expected ~{bpm}, got {got} (half time is {})",
+                bpm / 2.0
+            );
+        }
+    }
+
+    #[test]
+    fn tempo_prior_peaks_in_the_club_range_and_decays_outwards() {
+        assert!(tempo_prior(PRIOR_CENTRE_BPM) > 0.99);
+        assert!(tempo_prior(128.0) > tempo_prior(64.0));
+        assert!(tempo_prior(128.0) > tempo_prior(256.0));
+        // Still meaningful at the edges of the searched range, never zero.
+        assert!(tempo_prior(60.0) > 0.0 && tempo_prior(200.0) > 0.0);
     }
 
     #[test]

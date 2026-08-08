@@ -26,6 +26,10 @@ const LICENSES_URL =
 interface Props {
   settings: Settings;
   onSettingsChange: (patch: Partial<Settings>) => void;
+  /** Re-runs tempo detection over the whole library, overwriting existing values. */
+  onRedetectBpm?: () => void;
+  /** Number of tracks the re-detect run would cover. */
+  trackCount?: number;
   account: BandcampAccount | null;
   onAccountChange: (account: BandcampAccount | null) => void;
   update: UpdateInfo | null;
@@ -35,6 +39,8 @@ interface Props {
 export default function SettingsView({
   settings,
   onSettingsChange,
+  onRedetectBpm,
+  trackCount = 0,
   account,
   onAccountChange,
   update,
@@ -271,6 +277,22 @@ export default function SettingsView({
           />
           <span>Detect BPM and write it into the files</span>
         </label>
+        {onRedetectBpm && (
+          <div className="mt-4 border-t border-border pt-4">
+            <p className="text-sm text-fg-subtle">
+              Tracks that already carry a BPM are never re-analysed, so an
+              earlier result stays put even after the detector improves. This
+              runs detection over the whole library again and overwrites it.
+            </p>
+            <button
+              onClick={onRedetectBpm}
+              disabled={!trackCount}
+              className="mt-3 rounded-lg border border-border-strong px-3 py-2 text-sm hover:border-accent-500 disabled:opacity-50"
+            >
+              Re-detect BPM for all {trackCount || ""} tracks
+            </button>
+          </div>
+        )}
       </section>
 
       {/* Downloads */}

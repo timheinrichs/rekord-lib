@@ -8,7 +8,7 @@ import PlayerBar from "./components/PlayerBar";
 import { PlayerProvider } from "./lib/player";
 import { CloseIcon } from "./components/icons";
 import { getCurrentWindow } from "@tauri-apps/api/window";
-import { bandcampStatus } from "./lib/api";
+import { bandcampStatus, startScan } from "./lib/api";
 import { syncCollection } from "./lib/bandcampSync";
 import { useBandcamp } from "./lib/useBandcamp";
 import {
@@ -59,6 +59,15 @@ export default function App() {
         .catch(() => {});
     }
   }, []);
+
+  // Re-runs tempo detection over the whole library, overwriting existing values.
+  // Needed when the detector improves: tracks that already carry a BPM are
+  // skipped by the normal pass, so without this an old result is permanent.
+  const redetectBpm = useCallback(() => {
+    const dir = settings.library_dir;
+    if (!dir || !libraryTracks.length) return;
+    void startScan(dir, true, libraryTracks.map((t) => t.path), true);
+  }, [settings.library_dir, libraryTracks]);
 
   const updateSettings = useCallback((patch: Partial<Settings>) => {
     setSettings((prev) => {
@@ -146,6 +155,8 @@ export default function App() {
               <SettingsView
                 settings={settings}
                 onSettingsChange={updateSettings}
+                onRedetectBpm={redetectBpm}
+                trackCount={libraryTracks.length}
                 account={account}
                 onAccountChange={setAccount}
                 update={update}

@@ -20,6 +20,7 @@ import type {
   ScanDone,
   ScanProgress,
   ScanStatus,
+  ScanTracks,
   TrackAnalysis,
   TrackMetadata,
 } from "../types";
@@ -53,9 +54,24 @@ export function analyzeFiles(
   return invoke<TrackAnalysis[]>("analyze_files", { paths, analyzeBpm });
 }
 
-/** Starts a library scan (background singleton). false = already running. */
-export function startScan(dir: string, analyzeBpm = false): Promise<boolean> {
-  return invoke<boolean>("start_scan", { dir, analyzeBpm });
+/**
+ * Starts the scan job (background singleton). false = already running.
+ * Without `paths` it sweeps the whole library; with `paths` it processes
+ * exactly those files (new ones, or the backlog still missing a BPM).
+ * `forceBpm` re-detects the tempo even where one is already set.
+ */
+export function startScan(
+  dir: string,
+  analyzeBpm = false,
+  paths?: string[],
+  forceBpm = false,
+): Promise<boolean> {
+  return invoke<boolean>("start_scan", {
+    dir,
+    analyzeBpm,
+    paths: paths ?? null,
+    forceBpm,
+  });
 }
 
 /** Current scan status (for reattaching after a reload). */
@@ -84,6 +100,13 @@ export function onLibraryChanged(cb: () => void): Promise<UnlistenFn> {
 }
 
 /** Subscribes to progress events of the library scan. */
+/** Batches of tracks produced while the scan runs. */
+export function onScanTracks(
+  cb: (t: ScanTracks) => void,
+): Promise<UnlistenFn> {
+  return listen<ScanTracks>("scan://tracks", (e) => cb(e.payload));
+}
+
 export function onScanProgress(
   cb: (p: ScanProgress) => void,
 ): Promise<UnlistenFn> {

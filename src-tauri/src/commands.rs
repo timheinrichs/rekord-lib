@@ -36,13 +36,28 @@ const STAGE_BPM: &str = "Detecting BPM";
 /// search's fingerprint pass.
 const BPM_CONCURRENCY: usize = 8;
 
-/// Completion event of the scan; delivers the result.
+/// Completion event of the scan. The tracks arrive over `scan://tracks` while
+/// the job runs, so this only reports how it ended.
 #[derive(Debug, Clone, serde::Serialize)]
 struct ScanDone {
     generation: u64,
     cancelled: bool,
+    /// True for a full sweep of the library, false when only a subset of paths
+    /// was processed — the frontend must not drop untouched tracks then.
+    full: bool,
     tracks: Vec<TrackAnalysis>,
 }
+
+/// A batch of freshly analyzed tracks, streamed while the job runs so results
+/// are visible and persisted long before it finishes.
+#[derive(Debug, Clone, serde::Serialize)]
+struct ScanTracks {
+    generation: u64,
+    tracks: Vec<TrackAnalysis>,
+}
+
+/// How many tracks to collect before emitting a batch.
+const SCAN_BATCH: usize = 25;
 
 /// Current scan status (for reattaching after a reload).
 #[derive(Debug, Clone, serde::Serialize)]
@@ -112,29 +127,35 @@ pub async fn analyze_files(
         }
     }
     if analyze_bpm {
-        detect_missing_bpm(&app, &mut out, |_, _| {}, || false).await;
+        // Synchronous path: the caller gets the finished tracks as the return
+        // value, so there is nothing to stream and nothing to cancel.
+        detect_bpm_pass(&app, &mut out, false, |_, _| {}, |_| {}, || false).await;
     }
     Ok(out)
 }
 
-/// Detects the BPM of every track that has none yet, writes it into the file's
-/// tag and updates the track in place. Tracks that already carry a BPM tag are
-/// skipped entirely — that, plus writing what we detect, means a given file is
-/// analyzed once ever.
+/// Detects the BPM of tracks, writes it into the file's tag and updates the
+/// track in place. By default tracks that already carry a BPM are skipped —
+/// that, plus writing what we detect, means a given file is analyzed once ever.
+/// `force` re-analyzes regardless, which is what makes an improved detector
+/// reachable for a library that is already tagged.
 ///
 /// Runs [`BPM_CONCURRENCY`] decodes at a time; `progress(done, total)` is called
-/// per finished file and `cancelled()` is polled between chunks. Returns whether
-/// it stopped early.
-async fn detect_missing_bpm(
+/// per finished file, `emit(updated)` after every chunk so results are saved as
+/// they appear, and `cancelled()` is polled between chunks. Returns whether it
+/// stopped early.
+async fn detect_bpm_pass(
     app: &AppHandle,
     tracks: &mut [TrackAnalysis],
+    force: bool,
     mut progress: impl FnMut(usize, usize),
+    mut emit: impl FnMut(Vec<TrackAnalysis>),
     cancelled: impl Fn() -> bool,
 ) -> bool {
     let todo: Vec<(usize, String)> = tracks
         .iter()
         .enumerate()
-        .filter(|(_, t)| t.metadata.bpm.is_none())
+        .filter(|(_, t)| force || t.metadata.bpm.is_none())
         .map(|(i, t)| (i, t.path.clone()))
         .collect();
     let total = todo.len();
@@ -161,6 +182,7 @@ async fn detect_missing_bpm(
             })
             .collect();
 
+        let mut updated = Vec::new();
         for (index, handle) in handles {
             if let Ok(Some(value)) = handle.await {
                 // Persist first: the tag is what keeps the next scan from
@@ -170,10 +192,14 @@ async fn detect_missing_bpm(
                     eprintln!("BPM write failed for {}: {e}", tracks[index].path);
                 }
                 tracks[index].metadata.bpm = Some(value);
+                updated.push(tracks[index].clone());
             }
             done += 1;
             progress(done, total);
         }
+        // Hand the chunk over before starting the next one, so a cancel or a
+        // quit costs at most one chunk of work.
+        emit(updated);
     }
     false
 }
@@ -199,15 +225,23 @@ fn collect_audio_files(dir: &std::path::Path, out: &mut Vec<String>) {
     }
 }
 
-/// Starts a library scan as a background singleton. If one is already running,
-/// nothing happens (returns `false`) - the running process stays in place.
-/// The result arrives via `scan://done`, progress via `scan://progress`.
+/// Starts the library scan as a background singleton. If one is already running,
+/// nothing happens (returns `false`) — the running job stays in place.
+///
+/// One job covers every case: `paths = None` sweeps the whole library, `Some`
+/// processes exactly those files (a handful of new ones, or the backlog of
+/// tracks still missing a BPM), and `force_bpm` re-detects even where a tempo
+/// is already present. Results stream out over `scan://tracks` as they are
+/// produced, so nothing is lost when the job is cancelled or the app quits
+/// mid-run; `scan://done` only reports how it ended.
 #[tauri::command]
 pub fn start_scan(
     app: AppHandle,
     state: State<'_, ScanState>,
     dir: String,
     analyze_bpm: bool,
+    paths: Option<Vec<String>>,
+    force_bpm: bool,
 ) -> bool {
     // Single-flight: only start if a scan is not already running.
     if state.running.swap(true, Ordering::SeqCst) {
@@ -218,33 +252,33 @@ pub fn start_scan(
     state.total.store(0, Ordering::SeqCst);
     set_scan_stage(&state, STAGE_ANALYZING);
     let generation = state.generation.fetch_add(1, Ordering::SeqCst) + 1;
+    let full = paths.is_none();
 
-    // A fresh scan means: the library has (possibly) changed -
-    // so a cached duplicate result is now invalid.
-    if let Ok(mut r) = app.state::<DedupeState>().result.lock() {
-        *r = None;
+    // A fresh full sweep means the library has (possibly) changed, so a cached
+    // duplicate result is now invalid. A targeted run leaves it alone.
+    if full {
+        if let Ok(mut r) = app.state::<DedupeState>().result.lock() {
+            *r = None;
+        }
     }
 
     let app = app.clone();
     tauri::async_runtime::spawn(async move {
-        let mut paths = Vec::new();
-        collect_audio_files(std::path::Path::new(&dir), &mut paths);
+        let _running = ScanRunningGuard(app.clone());
+        let paths = paths.unwrap_or_else(|| {
+            let mut found = Vec::new();
+            collect_audio_files(std::path::Path::new(&dir), &mut found);
+            found
+        });
         let total = paths.len();
         app.state::<ScanState>().total.store(total, Ordering::SeqCst);
-        let _ = app.emit(
-            "scan://progress",
-            ScanProgress {
-                generation,
-                done: 0,
-                total,
-                running: true,
-                stage: STAGE_ANALYZING.into(),
-            },
-        );
+        emit_progress(&app, generation, 0, total, true, STAGE_ANALYZING);
 
-        // Stage 1: audio properties, compatibility and existing tags. Cheap
-        // (one ffprobe per file), so the list is ready quickly.
+        // Phase 1: audio properties, compatibility and existing tags. Cheap (one
+        // ffprobe per file) and streamed in batches, so the list fills up while
+        // it runs instead of appearing only at the end.
         let mut out = Vec::with_capacity(total);
+        let mut batch = Vec::with_capacity(SCAN_BATCH);
         let mut cancelled = false;
         for (i, path) in paths.into_iter().enumerate() {
             if app.state::<ScanState>().cancel.load(Ordering::SeqCst) {
@@ -252,83 +286,103 @@ pub fn start_scan(
                 break;
             }
             if let Some(track) = analyze_path(&app, path).await {
+                batch.push(track.clone());
                 out.push(track);
             }
+            if batch.len() >= SCAN_BATCH {
+                emit_tracks(&app, generation, std::mem::take(&mut batch));
+            }
             app.state::<ScanState>().done.store(i + 1, Ordering::SeqCst);
-            let _ = app.emit(
-                "scan://progress",
-                ScanProgress {
-                    generation,
-                    done: i + 1,
-                    total,
-                    running: true,
-                    stage: STAGE_ANALYZING.into(),
-                },
-            );
+            emit_progress(&app, generation, i + 1, total, true, STAGE_ANALYZING);
+        }
+        if !batch.is_empty() {
+            emit_tracks(&app, generation, std::mem::take(&mut batch));
         }
 
-        // Stage 2: BPM for the tracks that carry none. Far more expensive (a
-        // full decode each), hence its own concurrent pass and progress stage.
+        // Phase 2: BPM for the tracks that carry none. Far more expensive (a full
+        // decode each), hence its own concurrent pass, progress stage and
+        // per-chunk streaming.
         if !cancelled && analyze_bpm {
             let state = app.state::<ScanState>();
             set_scan_stage(&state, STAGE_BPM);
             state.done.store(0, Ordering::SeqCst);
-            let app_progress = app.clone();
-            cancelled = detect_missing_bpm(
+            let progress_app = app.clone();
+            let emit_app = app.clone();
+            cancelled = detect_bpm_pass(
                 &app,
                 &mut out,
+                force_bpm,
                 |done, total| {
-                    app_progress
-                        .state::<ScanState>()
-                        .done
-                        .store(done, Ordering::SeqCst);
-                    app_progress
-                        .state::<ScanState>()
-                        .total
-                        .store(total, Ordering::SeqCst);
-                    let _ = app_progress.emit(
-                        "scan://progress",
-                        ScanProgress {
-                            generation,
-                            done,
-                            total,
-                            running: true,
-                            stage: STAGE_BPM.into(),
-                        },
-                    );
+                    let state = progress_app.state::<ScanState>();
+                    state.done.store(done, Ordering::SeqCst);
+                    state.total.store(total, Ordering::SeqCst);
+                    emit_progress(&progress_app, generation, done, total, true, STAGE_BPM);
                 },
-                || {
-                    app.state::<ScanState>()
-                        .cancel
-                        .load(Ordering::SeqCst)
-                },
+                |updated| emit_tracks(&emit_app, generation, updated),
+                || app.state::<ScanState>().cancel.load(Ordering::SeqCst),
             )
             .await;
         }
 
         let state = app.state::<ScanState>();
-        state.running.store(false, Ordering::SeqCst);
         let stage = scan_stage(&state);
-        let _ = app.emit(
-            "scan://progress",
-            ScanProgress {
-                generation,
-                done: state.done.load(Ordering::SeqCst),
-                total: state.total.load(Ordering::SeqCst),
-                running: false,
-                stage,
-            },
-        );
+        let done = state.done.load(Ordering::SeqCst);
+        let total = state.total.load(Ordering::SeqCst);
+        state.running.store(false, Ordering::SeqCst);
+        emit_progress(&app, generation, done, total, false, &stage);
         let _ = app.emit(
             "scan://done",
             ScanDone {
                 generation,
                 cancelled,
+                full,
                 tracks: out,
             },
         );
     });
     true
+}
+
+/// Clears `ScanState::running` when it goes out of scope — including when the
+/// scan task unwinds. Without this, one panic would leave the job flagged as
+/// running forever, and the single-flight guard would then reject every later
+/// scan until the app is restarted.
+struct ScanRunningGuard(AppHandle);
+
+impl Drop for ScanRunningGuard {
+    fn drop(&mut self) {
+        self.0
+            .state::<ScanState>()
+            .running
+            .store(false, Ordering::SeqCst);
+    }
+}
+
+fn emit_progress(
+    app: &AppHandle,
+    generation: u64,
+    done: usize,
+    total: usize,
+    running: bool,
+    stage: &str,
+) {
+    let _ = app.emit(
+        "scan://progress",
+        ScanProgress {
+            generation,
+            done,
+            total,
+            running,
+            stage: stage.to_string(),
+        },
+    );
+}
+
+fn emit_tracks(app: &AppHandle, generation: u64, tracks: Vec<TrackAnalysis>) {
+    if tracks.is_empty() {
+        return;
+    }
+    let _ = app.emit("scan://tracks", ScanTracks { generation, tracks });
 }
 
 /// Current scan status (for attaching to a running scan after a reload).
@@ -473,6 +527,15 @@ pub async fn convert_tracks(
 
     for job in jobs {
         let cover = job.cover.clone().unwrap_or_default();
+        // ffmpeg's muxers carry only a small subset of tags — the AIFF muxer
+        // keeps little more than the title — so everything is re-applied with
+        // lofty afterwards. Without the fallback to the source's own tags, a
+        // plain conversion (no pending edit) silently drops artist, album,
+        // label and BPM.
+        let metadata = match &job.metadata {
+            Some(md) => Some(md.clone()),
+            None => read_metadata(&job.path).ok(),
+        };
 
         let result = match convert::convert_file(&app, &job.id, &job.path, &options).await {
             Ok(converted) => {
@@ -490,7 +553,7 @@ pub async fn convert_tracks(
                 let finalized = write::finalize(
                     &converted.written_path,
                     &job.path,
-                    &job.metadata,
+                    &metadata,
                     &cover,
                     // Convert keeps existing tags for fields left unset.
                     false,

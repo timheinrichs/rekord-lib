@@ -3,8 +3,10 @@ import {
   convertedOutputs,
   diffAudioFiles,
   mergeConverted,
+  mergeScanned,
+  pathsMissingBpm,
 } from "./librarySync";
-import { makeTrack } from "../test/factories";
+import { makeMetadata, makeTrack } from "../test/factories";
 import type { ConvertResult } from "../types";
 
 function result(over: Partial<ConvertResult>): ConvertResult {
@@ -93,5 +95,57 @@ describe("mergeConverted", () => {
     expect(
       mergeConverted(tracks, [result({ success: false, output_path: null })], []),
     ).toBe(tracks);
+  });
+});
+
+describe("mergeScanned", () => {
+  const t = (path: string, bpm: number | null = null) =>
+    makeTrack({ id: path, path, metadata: makeMetadata({ bpm }) });
+
+  it("replaces a track by path and keeps the order", () => {
+    const before = [t("/a.aiff"), t("/b.aiff"), t("/c.aiff")];
+    const merged = mergeScanned(before, [t("/b.aiff", 128)]);
+    expect(merged.map((x) => x.path)).toEqual(["/a.aiff", "/b.aiff", "/c.aiff"]);
+    expect(merged[1].metadata.bpm).toBe(128);
+  });
+
+  it("appends tracks it has not seen before", () => {
+    const merged = mergeScanned([t("/a.aiff")], [t("/new.aiff", 120)]);
+    expect(merged.map((x) => x.path)).toEqual(["/a.aiff", "/new.aiff"]);
+  });
+
+  it("never drops tracks the batch does not mention", () => {
+    // A targeted run only covers a subset — the rest must survive.
+    const before = [t("/a.aiff"), t("/b.aiff")];
+    expect(mergeScanned(before, [t("/a.aiff", 90)]).map((x) => x.path)).toEqual([
+      "/a.aiff",
+      "/b.aiff",
+    ]);
+  });
+
+  it("is reference-stable when nothing changes", () => {
+    const before = [t("/a.aiff")];
+    expect(mergeScanned(before, [])).toBe(before);
+    expect(mergeScanned(before, [before[0]])).toBe(before);
+  });
+
+  it("handles a batch that is entirely new", () => {
+    expect(mergeScanned([], [t("/a.aiff"), t("/b.aiff")])).toHaveLength(2);
+  });
+});
+
+describe("pathsMissingBpm", () => {
+  it("lists exactly the tracks without a tempo", () => {
+    const tracks = [
+      makeTrack({ id: "a", path: "/a.aiff", metadata: makeMetadata({ bpm: 128 }) }),
+      makeTrack({ id: "b", path: "/b.aiff", metadata: makeMetadata({ bpm: null }) }),
+      makeTrack({ id: "c", path: "/c.aiff", metadata: makeMetadata({ bpm: 0 }) }),
+    ];
+    // 0 is not a real tempo but it is a value; only null counts as missing.
+    expect(pathsMissingBpm(tracks)).toEqual(["/b.aiff"]);
+  });
+
+  it("returns an empty list when everything is tagged", () => {
+    expect(pathsMissingBpm([])).toEqual([]);
   });
 });

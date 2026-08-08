@@ -21,6 +21,7 @@ import {
   onLibraryChanged,
   onScanDone,
   onScanProgress,
+  onScanTracks,
   pruneEmptyDirs,
   scanStatus,
   startDedupe,
@@ -51,6 +52,7 @@ import type {
   TrackAnalysis,
   TrackEdit,
 } from "../types";
+import { STAGE_ANALYZING, STAGE_BPM } from "../types";
 import MetadataEditor from "./MetadataEditor";
 import BulkMetadataEditor, { type BulkPatch } from "./BulkMetadataEditor";
 import CoverThumb from "./CoverThumb";
@@ -92,6 +94,8 @@ import {
   convertedOutputs,
   diffAudioFiles,
   mergeConverted,
+  mergeScanned,
+  pathsMissingBpm,
 } from "../lib/librarySync";
 
 interface Props {
@@ -106,6 +110,19 @@ interface Props {
   nav?: ReactNode;
   onOpenSettings: () => void;
 }
+
+/** Minimum gap between writes of the library cache (see the save effect). */
+const SAVE_THROTTLE_MS = 3000;
+
+/**
+ * The same gap while a scan streams results. Much longer on purpose: the cache
+ * is several megabytes, and rewriting it every few seconds churned enough JSON
+ * to grow the process by ~130 MB per minute, which throttled the run itself.
+ * Measured over one two-minute window: 32 files processed, 254 MB gained — the
+ * growth tracked elapsed time, not work done. Losing up to this much of the
+ * cache costs nothing: the tags are already on disk and a scan re-reads them.
+ */
+const SAVE_THROTTLE_SCANNING_MS = 30_000;
 
 type Filter = "all" | "convert" | "incomplete";
 type Grouping = "flat" | "album" | "folder" | "label";
@@ -196,17 +213,11 @@ export default function LibraryView({
         const disk = await listAudioFiles(libraryDir);
         const { addedPaths, keptTracks, changed } = diffAudioFiles(disk, current);
         if (!changed) break;
-        const analyzed = addedPaths.length
-          ? await analyzeFiles(addedPaths, settings.analyze_bpm)
-          : [];
+        // No BPM here — the background job below picks it up, so the sync
+        // stays fast no matter how many files arrived.
+        const analyzed = addedPaths.length ? await analyzeFiles(addedPaths) : [];
         current = [...keptTracks, ...analyzed];
         setTracks(current);
-        const valid = new Set(current.map((t) => t.path));
-        setDupGroups((prev) => {
-          const pruned = pruneGroups(prev, (p) => valid.has(p));
-          if (pruned !== prev) void saveDuplicates(pruned);
-          return pruned;
-        });
       } while (dirtyRef.current);
     } catch (e) {
       setError(`Sync failed: ${e}`);
@@ -214,35 +225,83 @@ export default function LibraryView({
       syncingRef.current = false;
       setSyncing(false);
     }
+  }, [libraryDir]);
+
+  // Paths already handed to a BPM run this session. Without this, files whose
+  // tempo cannot be detected would be re-queued forever, since they keep
+  // showing up as "missing a BPM".
+  const bpmAttemptedRef = useRef<Set<string>>(new Set());
+
+  // Hands whatever still lacks a BPM to the scan job, in the background. Cheap
+  // to call: it is a no-op when nothing is missing or a job is already running,
+  // which is what lets it be triggered from every place the library changes.
+  const startBpmBacklog = useCallback(() => {
+    if (!libraryDir || !settings.analyze_bpm) return;
+    const paths = pathsMissingBpm(tracksRef.current).filter(
+      (p) => !bpmAttemptedRef.current.has(p),
+    );
+    if (!paths.length) return;
+    void startScan(libraryDir, true, paths).then((started) => {
+      // Only mark them once the job actually took them, otherwise a run that
+      // lost the single-flight race would never be retried.
+      if (started) paths.forEach((p) => bpmAttemptedRef.current.add(p));
+    });
   }, [libraryDir, settings.analyze_bpm]);
 
-  // Persistent scan listeners (one-time): progress + result.
+  // The scan-done listener is registered once, so it reaches the current
+  // callback through a ref instead of capturing a stale one.
+  const backlogRef = useRef(startBpmBacklog);
+  useEffect(() => {
+    backlogRef.current = startBpmBacklog;
+  }, [startBpmBacklog]);
+
+  // Persistent scan listeners (one-time): progress, streamed tracks, result.
   useEffect(() => {
     let unProg: (() => void) | undefined;
+    let unTracks: (() => void) | undefined;
     let unDone: (() => void) | undefined;
     void (async () => {
       unProg = await onScanProgress((p) => {
-        setLoading(p.running);
+        // Only the probing pass blocks the UI. The BPM pass runs alongside for
+        // minutes and must not disable converting or the duplicate search.
+        setLoading(p.running && p.stage === STAGE_ANALYZING);
         setScanProgress(p.running ? p : null);
+      });
+      // Results stream in while the job runs; merging them here is what makes
+      // them visible and (via the library-save effect) persisted straight away,
+      // so a cancel or a quit costs at most one batch.
+      unTracks = await onScanTracks((t) => {
+        setTracks((prev) => mergeScanned(prev, t.tracks));
       });
       unDone = await onScanDone((d) => {
         setLoading(false);
-        if (d.cancelled) return;
-        setTracks(d.tracks);
-        // Prune persisted duplicates against the current files.
-        const valid = new Set(d.tracks.map((t) => t.path));
-        setDupGroups((prev) => {
-          const pruned = pruneGroups(prev, (p) => valid.has(p));
-          if (pruned !== prev) void saveDuplicates(pruned);
-          return pruned;
-        });
+        // A full sweep is the only run that may drop tracks: it saw every file,
+        // so anything it did not report is gone from disk. A targeted run only
+        // touched a subset, and a cancelled one did not even finish that.
+        if (!d.cancelled && d.full) setTracks(d.tracks);
+        // Keep working through the library: a full sweep leaves a backlog, and
+        // a targeted run may have been capped by the single-flight guard. Not
+        // after a cancel — that was a deliberate stop.
+        if (!d.cancelled) backlogRef.current();
       });
     })();
     return () => {
       unProg?.();
+      unTracks?.();
       unDone?.();
     };
   }, []);
+
+  // Duplicate groups must never reference files that are gone. This follows the
+  // track list rather than a single event, because the scan streams its updates.
+  useEffect(() => {
+    const valid = new Set(tracks.map((t) => t.path));
+    setDupGroups((prev) => {
+      const pruned = pruneGroups(prev, (p) => valid.has(p));
+      if (pruned !== prev) void saveDuplicates(pruned);
+      return pruned;
+    });
+  }, [tracks]);
 
   // Persistent dedupe listeners: running state + completion.
   useEffect(() => {
@@ -291,8 +350,11 @@ export default function LibraryView({
         // Dock onto a running full scan instead of restarting.
         setLoading(true);
       } else {
-        // Otherwise just reconcile incrementally against what's on disk.
-        void incrementalSync();
+        // Otherwise just reconcile incrementally against what's on disk, then
+        // start chewing through whatever still has no tempo.
+        await incrementalSync();
+        if (!active) return;
+        backlogRef.current();
       }
     })();
     return () => {
@@ -306,7 +368,10 @@ export default function LibraryView({
     if (!libraryDir) return;
     void startLibraryWatch(libraryDir);
     let un: (() => void) | undefined;
-    void onLibraryChanged(() => void incrementalSync()).then((fn) => {
+    // New files on disk get analyzed, then queued for their tempo.
+    void onLibraryChanged(() => {
+      void incrementalSync().then(() => backlogRef.current());
+    }).then((fn) => {
       un = fn;
     });
     return () => {
@@ -317,10 +382,26 @@ export default function LibraryView({
 
   // Keep the track database persisted (only after hydration, so the initial
   // empty state doesn't overwrite the cache).
+  //
+  // Throttled rather than debounced: the scan streams its results, so a plain
+  // debounce would keep resetting and never save at all, while saving per batch
+  // would rewrite the whole multi-megabyte store ~90 times per run. The wait
+  // shrinks with the time since the last save, so writes happen at a steady
+  // interval and the most that can be lost on a quit is one window. During a
+  // scan the interval widens (see SAVE_THROTTLE_SCANNING_MS); when the scan
+  // ends, `scanning` flips and this re-runs, so the final state lands promptly.
+  const lastSaveRef = useRef(0);
+  const scanning = scanProgress !== null;
   useEffect(() => {
     if (!libraryDir || !hydratedRef.current) return;
-    void saveLibrary({ library_dir: libraryDir, tracks, edits });
-  }, [libraryDir, tracks, edits]);
+    const interval = scanning ? SAVE_THROTTLE_SCANNING_MS : SAVE_THROTTLE_MS;
+    const wait = Math.max(0, interval - (Date.now() - lastSaveRef.current));
+    const id = setTimeout(() => {
+      lastSaveRef.current = Date.now();
+      void saveLibrary({ library_dir: libraryDir, tracks, edits });
+    }, wait);
+    return () => clearTimeout(id);
+  }, [libraryDir, tracks, edits, scanning]);
 
   // Mirror the scanned tracks up to the app (used by the Bandcamp sync).
   useEffect(() => {
@@ -375,7 +456,7 @@ export default function LibraryView({
         // in incrementalSync() can't detect on its own.
         const outputs = convertedOutputs(res);
         if (outputs.length) {
-          const analyzed = await analyzeFiles(outputs, settings.analyze_bpm);
+          const analyzed = await analyzeFiles(outputs);
           setTracks((prev) => mergeConverted(prev, res, analyzed));
           // Drop edits of sources that a format change replaced with a new path
           // (their metadata is now written into the freshly analyzed output).
@@ -668,11 +749,12 @@ export default function LibraryView({
     });
   }, []);
 
-  // "Scanning…" while probing, "BPM 412/2223" during the (long) BPM pass.
-  const scanLabel =
-    scanProgress && scanProgress.stage === "Detecting BPM"
-      ? `BPM ${scanProgress.done}/${scanProgress.total}`
-      : "Scanning…";
+  // The BPM pass runs in the background for minutes, so the button reports it
+  // without blocking: "Scanning…" while probing, "BPM 412/2223" afterwards.
+  const bpmRunning = scanProgress?.stage === STAGE_BPM;
+  const scanLabel = bpmRunning
+    ? `BPM ${scanProgress.done}/${scanProgress.total}`
+    : "Scanning…";
 
   const allVisibleSelected =
     visibleTracks.length > 0 && visibleTracks.every((t) => selected.has(t.id));
@@ -1084,10 +1166,11 @@ export default function LibraryView({
       <button
         onClick={() => void rescan()}
         disabled={loading || converting || dedupeRunning}
+        title={bpmRunning ? "Detecting BPM in the background" : undefined}
         className="inline-flex items-center gap-1.5 rounded-lg border border-border-strong px-3 py-2 text-sm hover:border-accent-500 disabled:opacity-50"
       >
-        {loading && <SpinnerIcon />}
-        {loading ? scanLabel : "Rescan"}
+        {(loading || bpmRunning) && <SpinnerIcon />}
+        {loading || bpmRunning ? scanLabel : "Rescan"}
       </button>
       {/* Auto-sync indicator (incremental), left of the Duplicates button. */}
       {syncing && !loading && (
