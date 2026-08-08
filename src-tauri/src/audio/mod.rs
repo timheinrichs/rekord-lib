@@ -1,5 +1,6 @@
 pub mod bpm;
 pub mod compat;
+pub mod decode;
 pub mod convert;
 pub mod dedupe;
 pub mod fingerprint;
