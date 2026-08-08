@@ -91,6 +91,13 @@ import {
   mergeScanned,
   pathsMissingBpm,
 } from "../lib/librarySync";
+import {
+  EMPTY_FILTER,
+  filterCounts,
+  filterTracks,
+  type FilterContext,
+  type TrackFilter,
+} from "../lib/trackFilter";
 
 interface Props {
   settings: Settings;
@@ -118,7 +125,6 @@ const SAVE_THROTTLE_MS = 3000;
  */
 const SAVE_THROTTLE_SCANNING_MS = 30_000;
 
-type Filter = "all" | "convert" | "incomplete";
 type Grouping = "flat" | "album" | "folder" | "label";
 
 export default function LibraryView({
@@ -151,7 +157,7 @@ export default function LibraryView({
   // track ids are held here so applyBulk writes to them instead of `selected`.
   const [bulkFolderIds, setBulkFolderIds] = useState<Set<string> | null>(null);
   const [selected, setSelected] = useState<Set<string>>(new Set());
-  const [filter, setFilter] = useState<Filter>("all");
+  const [filter, setFilter] = useState<TrackFilter>(EMPTY_FILTER);
   const [search, setSearch] = useState("");
   const [grouping, setGrouping] = useState<Grouping>("album");
   const [expandedAlbums, setExpandedAlbums] = useState<Set<string>>(new Set());
@@ -556,28 +562,28 @@ export default function LibraryView({
     [edits],
   );
 
-  // Visible tracks according to filter + search.
-  const visibleTracks = useMemo(() => {
-    const q = search.trim().toLowerCase();
-    return tracks.filter((t) => {
-      if (filter === "convert" && t.compat.compatible) return false;
-      if (filter === "incomplete" && !isIncomplete(t)) return false;
-      if (q) {
-        const hay = [
-          t.metadata.title,
-          t.metadata.artist,
-          t.metadata.album,
-          t.metadata.label,
-          t.file_name,
-        ]
-          .filter(Boolean)
-          .join(" ")
-          .toLowerCase();
-        if (!hay.includes(q)) return false;
-      }
-      return true;
-    });
-  }, [tracks, filter, search, isIncomplete]);
+  // Everything the pure filter cannot derive from a track on its own.
+  const filterCtx = useMemo<FilterContext>(
+    () => ({
+      edits,
+      isIncomplete,
+      isFromBandcamp: (t) => !!originById[t.id],
+    }),
+    [edits, isIncomplete, originById],
+  );
+
+  // Visible tracks according to filter + search (pure logic in lib/trackFilter).
+  const visibleTracks = useMemo(
+    () => filterTracks(tracks, filter, search, filterCtx),
+    [tracks, filter, search, filterCtx],
+  );
+
+  // Tallies over the whole library, for the filter menu and its chips. One pass
+  // instead of one per counter.
+  const counts = useMemo(
+    () => filterCounts(tracks, filterCtx),
+    [tracks, filterCtx],
+  );
 
   // Grouping by album + top-level sorting (pure logic lives in lib/grouping).
   const albumItems = useMemo<AlbumItem[] | null>(
@@ -1360,21 +1366,23 @@ export default function LibraryView({
           }`}
         >
           <FilterChip
-            active={filter === "all"}
-            onClick={() => setFilter("all")}
-            label={`All (${tracks.length})`}
+            active={!filter.needsConvert && !filter.incompleteOnly}
+            onClick={() => setFilter(EMPTY_FILTER)}
+            label={`All (${counts.total})`}
           />
           <FilterChip
-            active={filter === "convert"}
-            onClick={() => setFilter("convert")}
-            label={`To convert (${
-              tracks.filter((t) => !t.compat.compatible).length
-            })`}
+            active={filter.needsConvert}
+            onClick={() =>
+              setFilter({ ...EMPTY_FILTER, needsConvert: true })
+            }
+            label={`To convert (${counts.needsConvert})`}
           />
           <FilterChip
-            active={filter === "incomplete"}
-            onClick={() => setFilter("incomplete")}
-            label={`Metadata incomplete (${tracks.filter(isIncomplete).length})`}
+            active={filter.incompleteOnly}
+            onClick={() =>
+              setFilter({ ...EMPTY_FILTER, incompleteOnly: true })
+            }
+            label={`Metadata incomplete (${counts.incomplete})`}
           />
           <div className="ml-auto flex items-center gap-2">
             {/* Grouping switch: flat list / by album / by folder tree / by label. */}
