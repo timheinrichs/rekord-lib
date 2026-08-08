@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { formatBytes } from "../lib/format";
+import { useDismiss } from "../lib/useDismiss";
 import type { DownloadEntry } from "../lib/useBandcamp";
 import { DownloadIcon, GearIcon } from "./icons";
 
@@ -29,6 +30,9 @@ export default function HeaderNav({
   updateAvailable,
 }: Props) {
   const [downloadsOpen, setDownloadsOpen] = useState(false);
+  const downloadsRef = useDismiss<HTMLDivElement>(downloadsOpen, () =>
+    setDownloadsOpen(false),
+  );
 
   const downloadList = Object.values(downloads);
   const active = downloadList.filter((d) => d.state === "loading").length;
@@ -49,7 +53,7 @@ export default function HeaderNav({
       </nav>
 
       {downloadList.length > 0 && (
-        <div className="relative shrink-0">
+        <div ref={downloadsRef} className="relative shrink-0">
           <button
             onClick={() => setDownloadsOpen((o) => !o)}
             className="relative flex items-center justify-center rounded-lg border border-border-strong p-2 text-fg-muted hover:border-accent-500 hover:text-accent-400"

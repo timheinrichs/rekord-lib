@@ -92,12 +92,16 @@ import {
   pathsMissingBpm,
 } from "../lib/librarySync";
 import {
+  activeFilterChips,
+  clearFacet,
+  collectGenres,
   EMPTY_FILTER,
   filterCounts,
   filterTracks,
   type FilterContext,
   type TrackFilter,
 } from "../lib/trackFilter";
+import FilterMenu from "./FilterMenu";
 
 interface Props {
   settings: Settings;
@@ -584,6 +588,15 @@ export default function LibraryView({
     () => filterCounts(tracks, filterCtx),
     [tracks, filterCtx],
   );
+
+  const genreOptions = useMemo(
+    () => collectGenres(tracks, edits),
+    [tracks, edits],
+  );
+  const activeChips = useMemo(() => activeFilterChips(filter), [filter]);
+  // Whether the list is narrowed at all — the search counts, the chips do not
+  // cover it.
+  const filtering = activeChips.length > 0 || search.trim() !== "";
 
   // Grouping by album + top-level sorting (pure logic lives in lib/grouping).
   const albumItems = useMemo<AlbumItem[] | null>(
@@ -1365,26 +1378,23 @@ export default function LibraryView({
               : "border-transparent bg-bg"
           }`}
         >
-          <FilterChip
-            active={!filter.needsConvert && !filter.incompleteOnly}
-            onClick={() => setFilter(EMPTY_FILTER)}
-            label={`All (${counts.total})`}
-          />
-          <FilterChip
-            active={filter.needsConvert}
-            onClick={() =>
-              setFilter({ ...EMPTY_FILTER, needsConvert: true })
-            }
-            label={`To convert (${counts.needsConvert})`}
-          />
-          <FilterChip
-            active={filter.incompleteOnly}
-            onClick={() =>
-              setFilter({ ...EMPTY_FILTER, incompleteOnly: true })
-            }
-            label={`Metadata incomplete (${counts.incomplete})`}
-          />
-          <div className="ml-auto flex items-center gap-2">
+          {/* Left: how much is shown, then one removable chip per active
+              facet. Nothing filtered = just the total. */}
+          <span className="shrink-0 whitespace-nowrap text-sm text-fg-muted">
+            {filtering
+              ? `${visibleTracks.length} of ${counts.total} tracks`
+              : `${counts.total} tracks`}
+          </span>
+          <div className="flex min-w-0 flex-1 items-center gap-2 overflow-x-auto">
+            {activeChips.map((chip) => (
+              <FilterChip
+                key={chip.facet}
+                label={chip.label}
+                onRemove={() => setFilter(clearFacet(filter, chip.facet))}
+              />
+            ))}
+          </div>
+          <div className="ml-auto flex shrink-0 items-center gap-2">
             {/* Grouping switch: flat list / by album / by folder tree / by label. */}
             <div className="flex items-center rounded-full ring-1 ring-border-strong">
               {(
@@ -1438,6 +1448,12 @@ export default function LibraryView({
                   : "Expand all"}
               </button>
             )}
+            <FilterMenu
+              filter={filter}
+              onChange={setFilter}
+              genres={genreOptions}
+              counts={counts}
+            />
             <input
               type="search"
               value={search}
@@ -2120,25 +2136,25 @@ function SortableHeader({
   );
 }
 
+/** One active filter facet, removable via the trailing ✕. */
 function FilterChip({
-  active,
-  onClick,
   label,
+  onRemove,
 }: {
-  active: boolean;
-  onClick: () => void;
   label: string;
+  onRemove: () => void;
 }) {
   return (
-    <button
-      onClick={onClick}
-      className={`rounded-full px-3 py-1.5 text-sm ring-1 transition-colors ${
-        active
-          ? "bg-accent-600/20 text-accent-200 ring-accent-500/40"
-          : "text-fg-muted ring-border hover:text-fg hover:ring-border-strong"
-      }`}
-    >
+    <span className="flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full bg-accent-600/20 py-1.5 pl-3 pr-1.5 text-sm text-accent-200 ring-1 ring-accent-500/40">
       {label}
-    </button>
+      <button
+        onClick={onRemove}
+        className="flex h-5 w-5 items-center justify-center rounded-full text-accent-200/70 transition-colors hover:bg-accent-500/20 hover:text-accent-200"
+        title={`Remove filter: ${label}`}
+        aria-label={`Remove filter: ${label}`}
+      >
+        ✕
+      </button>
+    </span>
   );
 }
