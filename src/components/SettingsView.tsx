@@ -5,6 +5,7 @@ import {
   bandcampConnect,
   bandcampDisconnect,
   bandcampLogin,
+  onScanProgress,
   pickOutputDir,
 } from "../lib/api";
 import { checkForUpdate, installUpdate, type UpdateInfo } from "../lib/updater";
@@ -16,7 +17,9 @@ import {
 import {
   FORMAT_LABELS,
   NEWER_PLAYERS_ONLY,
+  STAGE_BPM,
   type BandcampAccount,
+  type ScanProgress,
   type TargetFormat,
 } from "../types";
 
@@ -48,6 +51,20 @@ export default function SettingsView({
 }: Props) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // The re-detect run reports itself here: it starts in the background and the
+  // library table is a view away, so without this the button looks inert for
+  // the minutes the pass takes.
+  const [scan, setScan] = useState<ScanProgress | null>(null);
+  const [starting, setStarting] = useState(false);
+  useEffect(() => {
+    let un: (() => void) | undefined;
+    void onScanProgress((p) => {
+      setScan(p.running ? p : null);
+      if (p.running) setStarting(false);
+    }).then((f) => (un = f));
+    return () => un?.();
+  }, []);
 
   // App version + update state for the About section.
   const [version, setVersion] = useState<string>("");
@@ -285,12 +302,26 @@ export default function SettingsView({
               runs detection over the whole library again and overwrites it.
             </p>
             <button
-              onClick={onRedetectBpm}
-              disabled={!trackCount}
+              onClick={() => {
+                setStarting(true);
+                onRedetectBpm();
+              }}
+              disabled={!trackCount || !!scan || starting}
               className="mt-3 rounded-lg border border-border-strong px-3 py-2 text-sm hover:border-accent-500 disabled:opacity-50"
             >
-              Re-detect BPM for all {trackCount || ""} tracks
+              {scan
+                ? scan.stage === STAGE_BPM
+                  ? `Detecting BPM · ${scan.done}/${scan.total}`
+                  : `${scan.stage}… ${scan.done}/${scan.total}`
+                : starting
+                  ? "Starting…"
+                  : `Re-detect BPM for all ${trackCount || ""} tracks`}
             </button>
+            {scan && (
+              <p className="mt-2 text-sm text-fg-subtle">
+                Runs in the background — you can keep using the app.
+              </p>
+            )}
           </div>
         )}
       </section>
