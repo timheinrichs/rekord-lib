@@ -4,6 +4,7 @@ import {
   compareNumbers,
   compareValues,
   groupNumber,
+  isAlbumGroup,
   isNumericSort,
   metaOf,
   trackNumberOf,
@@ -17,9 +18,6 @@ export const NO_LABEL_KEY = "";
 
 /** Display name of that bucket. */
 export const NO_LABEL = "(No label)";
-
-/** Albums with at least this many tracks get their own header inside a label. */
-const MIN_ALBUM_SIZE = 2;
 
 /**
  * Stable expand key. JSON-encoded so that a label or album name containing the
@@ -45,9 +43,9 @@ export interface LabelNode {
   key: string;
   /** Display name (`NO_LABEL` for the unknown bucket). */
   name: string;
-  /** Albums with >= 2 tracks under this label. */
+  /** Albums under this label (see `isAlbumGroup`). */
   albums: LabelAlbumNode[];
-  /** Tracks whose album has only one track under this label. */
+  /** Tracks with no album tag under this label. */
   tracks: TrackAnalysis[];
   /** Every track of the label, in render order (albums first, then loose). */
   all: TrackAnalysis[];
@@ -87,11 +85,12 @@ function labelNumber(node: LabelNode, edits: Edits, sortKey: SortKey): number | 
 }
 
 /**
- * Groups tracks by record label and, inside each label, by album. Albums with a
- * single track stay loose so a lone track does not get a header of its own.
- * Every label gets a node — even with one track — because when browsing by
- * label the label list itself is the information. The `NO_LABEL_KEY` bucket is
- * always last, regardless of column and direction. Pure.
+ * Groups tracks by record label and, inside each label, by album (see
+ * `isAlbumGroup`). Tracks without an album tag stay loose, so a stray file does
+ * not get a header named after its folder. Every label gets a node — even with
+ * one track — because when browsing by label the label list itself is the
+ * information. The `NO_LABEL_KEY` bucket is always last, regardless of column
+ * and direction. Pure.
  */
 export function buildLabelTree(
   tracks: TrackAnalysis[],
@@ -121,7 +120,7 @@ export function buildLabelTree(
     const grouped: LabelAlbumNode[] = [];
     const loose: TrackAnalysis[] = [];
     for (const [album, albumTracks] of albums) {
-      if (albumTracks.length >= MIN_ALBUM_SIZE) {
+      if (isAlbumGroup(albumTracks, edits)) {
         grouped.push({
           id: nodeId("album", key, album),
           album,

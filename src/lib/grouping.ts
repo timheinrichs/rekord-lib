@@ -12,7 +12,7 @@ export function isNumericSort(key: SortKey): boolean {
 
 export type SortDir = "asc" | "desc";
 
-/** A rendered top-level entry: an album group (>= 2 tracks) or a single track. */
+/** A rendered top-level entry: an album group or a loose single track. */
 export type AlbumItem =
   | { type: "group"; key: string; tracks: TrackAnalysis[] }
   | { type: "track"; track: TrackAnalysis };
@@ -30,6 +30,25 @@ export function albumOf(t: TrackAnalysis, edits: Edits): string {
   if (md.album?.trim()) return md.album.trim();
   const parts = t.path.split("/");
   return parts[parts.length - 2] || "(No album)";
+}
+
+/**
+ * Does the track carry a real album tag? `albumOf` falls back to the parent
+ * folder name, which is a guess — this tells the two apart.
+ */
+export function hasAlbumTag(t: TrackAnalysis, edits: Edits): boolean {
+  return !!metaOf(t, edits).album?.trim();
+}
+
+/**
+ * Does this bucket of same-album tracks deserve a group header? Yes from two
+ * tracks up, and also for a lone track that is genuinely tagged with an album —
+ * a single or a one-track EP belongs under its album, not next to it. Tracks
+ * without an album tag stay loose, otherwise every stray file would get a
+ * group named after whatever folder it happens to sit in.
+ */
+export function isAlbumGroup(tracks: TrackAnalysis[], edits: Edits): boolean {
+  return tracks.length >= 2 || tracks.some((t) => hasAlbumTag(t, edits));
 }
 
 /** Album artist of a track for the group header (falls back to artist). */
@@ -78,9 +97,9 @@ export function trackNumberOf(t: TrackAnalysis, edits: Edits): number {
 }
 
 /**
- * Groups tracks by album (>= 2 tracks = group, otherwise a single row) and
- * sorts the top level by the active column. Tracks within a group are always
- * hard-sorted by track number regardless of the top-level criterion.
+ * Groups tracks by album (see `isAlbumGroup`; everything else becomes a single
+ * row) and sorts the top level by the active column. Tracks within a group are
+ * always hard-sorted by track number regardless of the top-level criterion.
  */
 export function buildAlbumItems(
   tracks: TrackAnalysis[],
@@ -99,7 +118,7 @@ export function buildAlbumItems(
 
   const items: AlbumItem[] = [];
   for (const [key, tr] of map) {
-    if (tr.length >= 2) {
+    if (isAlbumGroup(tr, edits)) {
       const sorted = [...tr].sort(
         (a, b) => trackNumberOf(a, edits) - trackNumberOf(b, edits),
       );

@@ -69,14 +69,33 @@ describe("buildLabelTree", () => {
     expect(aztec.all.map((t) => t.id)).toEqual(["a-1"]);
   });
 
-  it("groups albums with >= 2 tracks and keeps single-track albums loose", () => {
+  it("gives a tagged album its own node even with a single track", () => {
     const stroom = buildLabelTree(scene(), NO_EDITS, "artist", "asc").find(
       (n) => n.key === "Stroom",
     )!;
-    expect(stroom.albums.map((a) => a.album)).toEqual(["Deep EP"]);
+    expect(stroom.albums.map((a) => a.album)).toEqual(["Deep EP", "Solo Single"]);
     expect(stroom.albums[0].tracks.map((t) => t.id)).toEqual(["s-a1", "s-a2"]);
-    expect(stroom.tracks.map((t) => t.id)).toEqual(["s-solo"]);
+    expect(stroom.albums[1].tracks.map((t) => t.id)).toEqual(["s-solo"]);
+    expect(stroom.tracks).toEqual([]);
     expect(stroom.all.map((t) => t.id)).toEqual(["s-a1", "s-a2", "s-solo"]);
+  });
+
+  it("keeps tracks without an album tag loose under their label", () => {
+    // No album tag, so albumOf falls back to the folder name — that must not
+    // become an album node.
+    const stray = makeTrack({
+      id: "stray",
+      path: "/lib/Randoms/stray.aiff",
+      metadata: makeMetadata({ label: "Stroom", album: null, title: "stray" }),
+    });
+    const stroom = buildLabelTree(
+      [...scene(), stray],
+      NO_EDITS,
+      "artist",
+      "asc",
+    ).find((n) => n.key === "Stroom")!;
+    expect(stroom.albums.map((a) => a.album)).toEqual(["Deep EP", "Solo Single"]);
+    expect(stroom.tracks.map((t) => t.id)).toEqual(["stray"]);
   });
 
   it("puts null and whitespace-only labels in the same unknown bucket, last", () => {
@@ -225,9 +244,10 @@ describe("allLabelIds", () => {
   it("lists label and album ids without duplicates", () => {
     const nodes = buildLabelTree(scene(), NO_EDITS, "artist", "asc");
     const ids = allLabelIds(nodes);
-    // 3 labels + 1 album group ("Deep EP").
-    expect(ids).toHaveLength(4);
-    expect(new Set(ids).size).toBe(4);
+    // 3 labels + 4 albums (every track in the scene carries an album tag:
+    // "Deep EP", "Solo Single", "Aztec EP", "Orphan").
+    expect(ids).toHaveLength(7);
+    expect(new Set(ids).size).toBe(7);
     expect(ids).toContain(nodes[0].id);
     expect(ids).toContain(nodes.find((n) => n.key === "Stroom")!.albums[0].id);
   });

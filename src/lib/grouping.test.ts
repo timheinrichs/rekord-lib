@@ -4,6 +4,8 @@ import {
   albumOf,
   buildAlbumItems,
   compareValues,
+  hasAlbumTag,
+  isAlbumGroup,
   isNumericSort,
   pruneGroups,
   sortTracks,
@@ -30,7 +32,14 @@ function scene() {
     metadata: makeMetadata({ album: "Alpha", title: "Solo", album_artist: "Mike" }),
     audio: makeAudio({ duration_secs: 50 }),
   });
-  return { a1, a2, solo };
+  // No album tag at all: albumOf falls back to the folder name ("Randoms").
+  const loose = makeTrack({
+    id: "loose",
+    path: "/music/Randoms/loose.aiff",
+    metadata: makeMetadata({ album: null, title: "Loose", album_artist: "Nobody" }),
+    audio: makeAudio({ duration_secs: 60 }),
+  });
+  return { a1, a2, solo, loose };
 }
 
 describe("compareValues", () => {
@@ -77,14 +86,61 @@ describe("albumOf / albumArtistOf", () => {
   });
 });
 
+describe("isAlbumGroup / hasAlbumTag", () => {
+  it("recognises a real album tag, blank or missing counts as none", () => {
+    expect(hasAlbumTag(makeTrack({ metadata: makeMetadata() }), NO_EDITS)).toBe(true);
+    expect(
+      hasAlbumTag(makeTrack({ metadata: makeMetadata({ album: null }) }), NO_EDITS),
+    ).toBe(false);
+    expect(
+      hasAlbumTag(makeTrack({ metadata: makeMetadata({ album: "  " }) }), NO_EDITS),
+    ).toBe(false);
+  });
+
+  it("groups a lone tagged track but not a lone untagged one", () => {
+    const { solo, loose } = scene();
+    expect(isAlbumGroup([solo], NO_EDITS)).toBe(true);
+    expect(isAlbumGroup([loose], NO_EDITS)).toBe(false);
+  });
+
+  it("groups two untagged tracks that share a folder", () => {
+    const { loose } = scene();
+    const sibling = makeTrack({
+      id: "sibling",
+      path: "/music/Randoms/other.aiff",
+      metadata: makeMetadata({ album: null }),
+    });
+    expect(isAlbumGroup([loose, sibling], NO_EDITS)).toBe(true);
+  });
+
+  it("follows a pending edit that adds an album tag", () => {
+    const { loose } = scene();
+    const edits = {
+      loose: {
+        metadata: makeMetadata({ album: "Late Tag" }),
+        cover: { kind: "keep" as const },
+      },
+    };
+    expect(isAlbumGroup([loose], edits)).toBe(true);
+  });
+});
+
 describe("buildAlbumItems", () => {
-  it("groups albums with >= 2 tracks and keeps singles as track rows", () => {
+  it("groups a single track that carries an album tag", () => {
     const { a1, a2, solo } = scene();
     const items = buildAlbumItems([a1, a2, solo], NO_EDITS, "album", "asc");
-    const group = items.find((i) => i.type === "group");
+    expect(items.every((i) => i.type === "group")).toBe(true);
+    const alpha = items.find((i) => i.type === "group" && i.key === "Alpha");
+    expect(alpha && alpha.type === "group" && alpha.tracks).toHaveLength(1);
+  });
+
+  it("keeps a track without an album tag as a loose row", () => {
+    const { a1, a2, loose } = scene();
+    const items = buildAlbumItems([a1, a2, loose], NO_EDITS, "album", "asc");
     const single = items.find((i) => i.type === "track");
-    expect(group && group.type === "group" && group.key).toBe("Beta");
-    expect(single && single.type === "track" && single.track.id).toBe("solo");
+    expect(single && single.type === "track" && single.track.id).toBe("loose");
+    // The folder name must not become a group of its own.
+    expect(items.some((i) => i.type === "group" && i.key === "Randoms")).toBe(false);
   });
 
   it("hard-sorts tracks within a group by track number", () => {
@@ -97,20 +153,21 @@ describe("buildAlbumItems", () => {
   });
 
   it("sorts the top level by album ascending", () => {
-    const { a1, a2, solo } = scene();
-    const items = buildAlbumItems([a1, a2, solo], NO_EDITS, "album", "asc");
-    // Alpha (single) before Beta (group)
-    expect(items[0].type).toBe("track");
-    expect(items[1].type).toBe("group");
+    const { a1, a2, solo, loose } = scene();
+    const items = buildAlbumItems([a1, a2, solo, loose], NO_EDITS, "album", "asc");
+    // Alpha, Beta, then the folder-derived "Randoms" of the loose track.
+    expect(
+      items.map((i) => (i.type === "group" ? i.key : "Randoms")),
+    ).toEqual(["Alpha", "Beta", "Randoms"]);
   });
 
   it("sorts the top level by total length", () => {
     const { a1, a2, solo } = scene();
     const asc = buildAlbumItems([a1, a2, solo], NO_EDITS, "length", "asc");
-    // single (50s) before group (200s total)
-    expect(asc[0].type).toBe("track");
+    // Alpha (50s) before Beta (200s total)
+    expect(asc[0].type === "group" && asc[0].key).toBe("Alpha");
     const desc = buildAlbumItems([a1, a2, solo], NO_EDITS, "length", "desc");
-    expect(desc[0].type).toBe("group");
+    expect(desc[0].type === "group" && desc[0].key).toBe("Beta");
   });
 });
 
@@ -142,9 +199,11 @@ describe("sort by download date", () => {
       download_date: 500,
     });
     const items = buildAlbumItems([beta1, beta2, solo], NO_EDITS, "date", "asc");
-    // Album Beta (max date 300) before the single (500).
-    expect(items[0].type).toBe("group");
-    expect(items[1].type).toBe("track");
+    // Album Beta (newest date 300) before Alpha (500).
+    expect(items.map((i) => (i.type === "group" ? i.key : "?"))).toEqual([
+      "Beta",
+      "Alpha",
+    ]);
   });
 });
 
@@ -250,13 +309,12 @@ describe("BPM sorting", () => {
   });
 
   it("sorts album groups by their mean tempo", () => {
-    // Group "Beta" averages 130, the single track sits at 100.
+    // Group "Beta" averages 130, the one-track "Alpha" sits at 100.
     const b1 = bpmTrack("b1", 120, "Beta");
     const b2 = bpmTrack("b2", 140, "Beta");
     const solo = bpmTrack("solo", 100, "Alpha");
     const items = buildAlbumItems([b1, b2, solo], NO_EDITS, "bpm", "asc");
-    const first = items[0];
-    expect(first.type === "track" && first.track.id).toBe("solo");
+    expect(items[0].type === "group" && items[0].key).toBe("Alpha");
   });
 
   it("sorts a group with no BPM at all last", () => {
