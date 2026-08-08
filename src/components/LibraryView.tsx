@@ -1452,7 +1452,10 @@ export default function LibraryView({
               ? `${visibleTracks.length} of ${counts.total} tracks`
               : `${counts.total} tracks`}
           </span>
-          <div className="flex min-w-0 flex-1 items-center gap-2 overflow-x-auto">
+          {/* overflow-x forces overflow-y to compute as auto, which would clip
+              the chips' ring (a box-shadow, drawn outside the box). The
+              negative margin buys it room without changing the bar's height. */}
+          <div className="-my-1 flex min-w-0 flex-1 items-center gap-2 overflow-x-auto py-1">
             {activeChips.map((chip) => (
               <FilterChip
                 key={chip.facet}
@@ -2222,11 +2225,11 @@ function FilterChip({
   onRemove: () => void;
 }) {
   return (
-    <span className="flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full bg-accent-600/20 py-1.5 pl-3 pr-1.5 text-sm text-accent-200 ring-1 ring-accent-500/40">
+    <span className="flex shrink-0 items-center gap-1 whitespace-nowrap rounded-full bg-accent-600/20 py-0.5 pl-2.5 pr-1 text-xs text-accent-200 ring-1 ring-accent-500/40">
       {label}
       <button
         onClick={onRemove}
-        className="flex h-5 w-5 items-center justify-center rounded-full text-accent-200/70 transition-colors hover:bg-accent-500/20 hover:text-accent-200"
+        className="flex h-4 w-4 items-center justify-center rounded-full text-accent-200/70 transition-colors hover:bg-accent-500/20 hover:text-accent-200"
         title={`Remove filter: ${label}`}
         aria-label={`Remove filter: ${label}`}
       >
