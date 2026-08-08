@@ -80,48 +80,53 @@ export function formatBytes(bytes: number): string {
   return `${val.toFixed(val < 10 ? 1 : 0)} ${units[i]}`;
 }
 
-export type Badge = { label: string; className: string; title?: string };
+/** What a status marker on a track can mean. */
+export type StatusKind =
+  | "convert"
+  | "note"
+  | "complete"
+  | "incomplete"
+  | "bandcamp";
 
-/** Builds the status badges for a track (compatibility, metadata, origin). */
-export function trackBadges(
+/** One status marker; `title` is the tooltip and the accessible name. */
+export interface TrackStatus {
+  kind: StatusKind;
+  title: string;
+}
+
+/**
+ * Status of a track (compatibility, metadata, origin) as data — how it looks
+ * is up to the caller (see components/StatusIcons).
+ */
+export function trackStatus(
   t: TrackAnalysis,
   edit?: TrackEdit,
   fromBandcamp?: boolean,
-): Badge[] {
-  const badges: Badge[] = [];
-  // Only flag files that need conversion; compatible files show no badge.
+): TrackStatus[] {
+  const out: TrackStatus[] = [];
+  // Only flag files that need conversion; compatible files show no marker.
   if (!t.compat.compatible) {
-    badges.push({
-      label: "Convert",
-      className: "bg-warning-500/15 text-warning-500 ring-warning-500/30",
-      title: t.compat.issues.map((i) => i.message).join("\n"),
+    const issues = t.compat.issues.map((i) => i.message).join("\n");
+    out.push({
+      kind: "convert",
+      title: issues ? `Needs conversion\n${issues}` : "Needs conversion",
     });
   }
   const warnings = t.compat.issues.filter((i) => i.severity === "warning");
   if (t.compat.compatible && warnings.length) {
-    badges.push({
-      label: "Note",
-      className: "bg-accent-500/15 text-accent-300 ring-accent-500/30",
+    out.push({
+      kind: "note",
       title: warnings.map((i) => i.message).join("\n"),
     });
   }
   const complete = edit ? editComplete(edit) : !t.metadata_incomplete;
   if (edit && complete) {
-    badges.push({
-      label: "Metadata ✓",
-      className: "bg-success-500/15 text-success-500 ring-success-500/30",
-    });
+    out.push({ kind: "complete", title: "Metadata complete" });
   } else if (!complete) {
-    badges.push({
-      label: "Metadata incomplete",
-      className: "bg-warning-500/15 text-warning-500 ring-warning-500/30",
-    });
+    out.push({ kind: "incomplete", title: "Metadata incomplete" });
   }
   if (fromBandcamp) {
-    badges.push({
-      label: "Bandcamp",
-      className: "bg-accent-500/15 text-accent-300 ring-accent-500/30",
-    });
+    out.push({ kind: "bandcamp", title: "From Bandcamp" });
   }
-  return badges;
+  return out;
 }

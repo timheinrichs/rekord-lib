@@ -6,7 +6,7 @@ import {
   formatDuration,
   formatLabel,
   formatSampleRate,
-  trackBadges,
+  trackStatus,
 } from "./format";
 import { makeCompat, makeMetadata, makeTrack } from "../test/factories";
 import type { TrackEdit } from "../types";
@@ -97,32 +97,55 @@ describe("formatBytes", () => {
   });
 });
 
-describe("trackBadges", () => {
-  it("shows no Compatible badge for compatible files, only metadata state", () => {
-    const track = makeTrack({ metadata_incomplete: true });
-    const labels = trackBadges(track).map((b) => b.label);
-    expect(labels).not.toContain("Compatible");
-    expect(labels).toContain("Metadata incomplete");
+describe("trackStatus", () => {
+  const kinds = (...args: Parameters<typeof trackStatus>) =>
+    trackStatus(...args).map((s) => s.kind);
+
+  it("reports nothing for a compatible, fully tagged file", () => {
+    expect(kinds(makeTrack())).toEqual([]);
   });
 
-  it("shows Convert for incompatible files with issue tooltip", () => {
+  it("marks incomplete metadata but never 'compatible'", () => {
+    expect(kinds(makeTrack({ metadata_incomplete: true }))).toEqual([
+      "incomplete",
+    ]);
+  });
+
+  it("marks conversion need and keeps the issues in the tooltip", () => {
     const track = makeTrack({
       compat: makeCompat({
         compatible: false,
         issues: [{ code: "SAMPLE_RATE", message: "bad rate", severity: "error" }],
       }),
     });
-    const convert = trackBadges(track).find((b) => b.label === "Convert");
+    const convert = trackStatus(track).find((s) => s.kind === "convert");
     expect(convert).toBeDefined();
     expect(convert?.title).toContain("bad rate");
   });
 
-  it("adds Metadata ✓ once a complete edit exists, plus Bandcamp origin", () => {
+  it("notes warnings on files that are otherwise compatible", () => {
+    const track = makeTrack({
+      compat: makeCompat({
+        compatible: true,
+        issues: [{ code: "LOUD", message: "very loud", severity: "warning" }],
+      }),
+    });
+    const note = trackStatus(track).find((s) => s.kind === "note");
+    expect(note?.title).toBe("very loud");
+  });
+
+  it("turns incomplete into complete once an edit fills the gaps", () => {
     const track = makeTrack({ metadata_incomplete: true });
     const edit: TrackEdit = { metadata: makeMetadata(), cover: { kind: "keep" } };
-    const labels = trackBadges(track, edit, true).map((b) => b.label);
-    expect(labels).toContain("Metadata ✓");
-    expect(labels).toContain("Bandcamp");
-    expect(labels).not.toContain("Metadata incomplete");
+    expect(kinds(track, edit, true)).toEqual(["complete", "bandcamp"]);
+  });
+
+  it("keeps incomplete when the edit is still missing fields", () => {
+    const track = makeTrack({ metadata_incomplete: true });
+    const edit: TrackEdit = {
+      metadata: makeMetadata({ album_artist: null }),
+      cover: { kind: "keep" },
+    };
+    expect(kinds(track, edit)).toEqual(["incomplete"]);
   });
 });

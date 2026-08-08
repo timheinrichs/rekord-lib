@@ -9,8 +9,9 @@ import {
   formatDuration,
   formatLabel,
   formatSampleRate,
-  trackBadges,
+  trackStatus,
 } from "../lib/format";
+import StatusIcons from "./StatusIcons";
 import type {
   CoverInput,
   MbCandidate,
@@ -215,8 +216,8 @@ export default function MetadataEditor({
   };
 
   const coverKind = cover.kind;
-  // Compatibility/metadata status badges (same as the library table).
-  const statusBadges = trackBadges(track, initial);
+  // Compatibility/metadata status (same source as the library table).
+  const statusBadges = trackStatus(track, initial);
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
@@ -413,21 +414,7 @@ export default function MetadataEditor({
               </div>
               <div className="flex flex-col gap-1">
                 <span className="text-fg-muted">Status</span>
-                <div className="flex flex-wrap gap-1.5">
-                  {statusBadges.length ? (
-                    statusBadges.map((b, i) => (
-                      <span
-                        key={i}
-                        title={b.title}
-                        className={`rounded-full px-2 py-0.5 text-xs ring-1 ${b.className}`}
-                      >
-                        {b.label}
-                      </span>
-                    ))
-                  ) : (
-                    <span className="text-fg-subtle">–</span>
-                  )}
-                </div>
+                <StatusIcons items={statusBadges} withLabels />
               </div>
             </div>
           </div>

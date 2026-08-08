@@ -31,7 +31,8 @@ import {
   formatDuration,
   formatLabel,
   formatSampleRate,
-  trackBadges,
+  trackStatus,
+  type TrackStatus,
 } from "../lib/format";
 import type { Settings } from "../lib/settings";
 import type {
@@ -55,12 +56,15 @@ import DuplicatesModal from "./DuplicatesModal";
 import AppHeader from "./AppHeader";
 import {
   ArrowUpIcon,
+  CheckIcon,
   ChevronIcon,
   EditIcon,
   SpinnerIcon,
   TrashIcon,
   UndoIcon,
+  XIcon,
 } from "./icons";
+import StatusIcons from "./StatusIcons";
 import { useScrolled } from "../lib/useScrolled";
 import { resizeHeights, visibleRange, type Range } from "../lib/virtualList";
 import {
@@ -1490,7 +1494,7 @@ export default function LibraryView({
           </div>
         ) : (
           <div className="overflow-x-auto">
-          <table className="w-full min-w-[103rem] table-fixed text-sm">
+          <table className="w-full min-w-[95rem] table-fixed text-sm">
             <thead className="text-left text-fg-muted">
               <tr className="border-b border-border">
                 <th className="w-10 px-4 py-3">
@@ -1545,7 +1549,6 @@ export default function LibraryView({
                   onSort={toggleSort}
                   className="w-20"
                 />
-                <th className="w-56 px-4 py-3 font-medium">Status</th>
                 <SortableHeader
                   label="Downloaded"
                   sortKey="date"
@@ -1554,6 +1557,7 @@ export default function LibraryView({
                   onSort={toggleSort}
                   className="w-32"
                 />
+                <th className="w-24 px-4 py-3 font-medium">Status</th>
                 <th className="w-16 px-4 py-3 font-medium"></th>
               </tr>
             </thead>
@@ -1628,43 +1632,43 @@ export default function LibraryView({
                     <td className="whitespace-nowrap px-4 py-3 text-fg-muted">
                       {md.bpm ?? "–"}
                     </td>
+                    <td className="whitespace-nowrap px-4 py-3 text-fg-muted">
+                      {formatDate(t.download_date)}
+                    </td>
                     <td className="px-4 py-3">
                       {result ? (
                         result.success ? (
-                          <span className="text-success-500">✓ Done</span>
+                          <span
+                            className="flex text-success-500"
+                            title="Converted"
+                            aria-label="Converted"
+                            role="img"
+                          >
+                            <CheckIcon />
+                          </span>
                         ) : (
-                          <span className="text-danger-500" title={result.error ?? ""}>
-                            ✕ Error
+                          <span
+                            className="flex text-danger-500"
+                            title={result.error ?? "Conversion failed"}
+                            aria-label="Conversion failed"
+                            role="img"
+                          >
+                            <XIcon />
                           </span>
                         )
                       ) : prog && converting ? (
-                        <div className="flex items-center gap-2">
-                          <div className="h-1.5 w-24 overflow-hidden rounded-full bg-surface-2">
-                            <div
-                              className="h-full bg-accent-500 transition-all"
-                              style={{ width: `${prog.percent}%` }}
-                            />
-                          </div>
-                          <span className="text-xs text-fg-muted">
-                            {prog.percent}%
-                          </span>
+                        <div
+                          className="flex items-center gap-1.5 text-fg-muted"
+                          title={`Converting – ${prog.percent}%`}
+                        >
+                          <SpinnerIcon />
+                          <span className="text-xs">{prog.percent}%</span>
                         </div>
                       ) : (
-                        <div className="flex flex-wrap gap-1.5">
-                          {trackBadges(t, edits[t.id], fromBandcamp).map((b, i) => (
-                            <span
-                              key={i}
-                              title={b.title}
-                              className={`rounded-full px-2 py-0.5 text-xs ring-1 ${b.className}`}
-                            >
-                              {b.label}
-                            </span>
-                          ))}
-                        </div>
+                        <StatusIcons
+                          items={trackStatus(t, edits[t.id], fromBandcamp)}
+                        />
                       )}
-                    </td>
-                    <td className="whitespace-nowrap px-4 py-3 text-fg-muted">
-                      {formatDate(t.download_date)}
                     </td>
                     <td
                       className="relative px-4 py-3"
@@ -1735,6 +1739,24 @@ export default function LibraryView({
                   const someSel =
                     !allSel && gTracks.some((t) => selected.has(t.id));
                   const fromBandcamp = gTracks.some((t) => !!originById[t.id]);
+                  // Same markers as a track row, but summarising the group —
+                  // the counts are rendered next to the icons.
+                  const groupStatus: TrackStatus[] = [];
+                  if (s.needConvert > 0) {
+                    groupStatus.push({
+                      kind: "convert",
+                      title: "Tracks needing conversion",
+                    });
+                  }
+                  if (s.needIncomplete > 0) {
+                    groupStatus.push({
+                      kind: "incomplete",
+                      title: "Tracks with incomplete metadata",
+                    });
+                  }
+                  if (fromBandcamp) {
+                    groupStatus.push({ kind: "bandcamp", title: "From Bandcamp" });
+                  }
                   rows.push(
                     <tr
                       key={opts.id}
@@ -1802,27 +1824,17 @@ export default function LibraryView({
                       <td className="whitespace-nowrap px-4 py-2.5 text-fg-muted">
                         {s.bpm}
                       </td>
-                      <td className="px-4 py-2.5">
-                        <div className="flex flex-wrap gap-1.5">
-                          {s.needConvert > 0 && (
-                            <span className="rounded-full bg-warning-500/15 px-2 py-0.5 text-xs text-warning-500 ring-1 ring-warning-500/30">
-                              Convert ({s.needConvert})
-                            </span>
-                          )}
-                          {s.needIncomplete > 0 && (
-                            <span className="rounded-full bg-warning-500/15 px-2 py-0.5 text-xs text-warning-500 ring-1 ring-warning-500/30">
-                              Metadata incomplete ({s.needIncomplete})
-                            </span>
-                          )}
-                          {fromBandcamp && (
-                            <span className="rounded-full bg-accent-500/15 px-2 py-0.5 text-xs text-accent-300 ring-1 ring-accent-500/30">
-                              Bandcamp
-                            </span>
-                          )}
-                        </div>
-                      </td>
                       <td className="whitespace-nowrap px-4 py-2.5 text-fg-muted">
                         {formatDate(s.newestDate)}
+                      </td>
+                      <td className="px-4 py-2.5">
+                        <StatusIcons
+                          items={groupStatus}
+                          counts={{
+                            convert: s.needConvert,
+                            incomplete: s.needIncomplete,
+                          }}
+                        />
                       </td>
                       <td
                         className="relative px-4 py-2.5"
