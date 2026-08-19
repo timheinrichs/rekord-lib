@@ -16,6 +16,7 @@ import {
   type DownloadLedger,
 } from "./bandcampDownloads";
 import { syncCollection } from "./bandcampSync";
+import { listenerGroup } from "./listenerGroup";
 import { bandcampFormatKey, type Settings } from "./settings";
 import type {
   BandcampAccount,
@@ -92,25 +93,27 @@ export function useBandcamp(
 
   // Byte progress from the backend into the matching download entry.
   useEffect(() => {
-    let un: (() => void) | undefined;
+    const group = listenerGroup();
     void (async () => {
-      un = await onBandcampProgress((p: BandcampProgress) => {
-        setDownloads((prev) => {
-          const entry = prev[p.key];
-          if (!entry) return prev;
-          return {
-            ...prev,
-            [p.key]: {
-              ...entry,
-              downloaded: p.downloaded,
-              total: p.total,
-              stage: p.stage,
-            },
-          };
-        });
-      });
+      group.add(
+        await onBandcampProgress((p: BandcampProgress) => {
+          setDownloads((prev) => {
+            const entry = prev[p.key];
+            if (!entry) return prev;
+            return {
+              ...prev,
+              [p.key]: {
+                ...entry,
+                downloaded: p.downloaded,
+                total: p.total,
+                stage: p.stage,
+              },
+            };
+          });
+        }),
+      );
     })();
-    return () => un?.();
+    return () => group.dispose();
   }, []);
 
   // Show the cached collection immediately on start.
