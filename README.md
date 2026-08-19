@@ -54,7 +54,8 @@ track of, without uploading anything anywhere.
 - **The list** — filter and search, grouping by album, label or folder,
   multi-select with shift ranges, virtualized for large collections.
 
-Per-version detail: [CHANGELOG.md](CHANGELOG.md).
+Per-version detail: [CHANGELOG.md](CHANGELOG.md). Where it might go next:
+[docs/FUTURE_CONSIDERATIONS.md](docs/FUTURE_CONSIDERATIONS.md).
 
 ## Install
 
