@@ -214,22 +214,42 @@ pub async fn finalize(
         }
     }
 
-    // 4. Embed cover (replace the existing front cover).
-    if let Some(bytes) = cover_jpeg {
-        tag.remove_picture_type(PictureType::CoverFront);
-        tag.push_picture(Picture::new_unchecked(
-            PictureType::CoverFront,
-            Some(MimeType::Jpeg),
-            None,
-            bytes,
-        ));
-    }
+    // 4. Embed the cover, or strip it when the write asks for no cover.
+    apply_cover(tag, cover_jpeg, cover);
 
     // 5. Save.
     tag.save_to_path(output, WriteOptions::default())
         .map_err(|e| AppError::Metadata(format!("Failed to write tags: {e}")))?;
 
     Ok(())
+}
+
+/// Applies the resolved cover to `tag`: `Some(bytes)` replaces the front cover,
+/// `None` together with [`CoverInput::None`] strips the embedded artwork.
+///
+/// Stripping removes *every* picture, not just `CoverFront`: [`read_cover_bytes`]
+/// falls back to the first picture of any type, so a leftover picture would keep
+/// showing up as the track's cover and "no cover" would look like a no-op.
+fn apply_cover(tag: &mut Tag, cover_jpeg: Option<Vec<u8>>, cover: &CoverInput) {
+    match cover_jpeg {
+        Some(bytes) => {
+            tag.remove_picture_type(PictureType::CoverFront);
+            tag.push_picture(Picture::new_unchecked(
+                PictureType::CoverFront,
+                Some(MimeType::Jpeg),
+                None,
+                bytes,
+            ));
+        }
+        // lofty has no "clear all pictures"; removing the first one repeatedly
+        // is the whole list.
+        None if matches!(cover, CoverInput::None) => {
+            while !tag.pictures().is_empty() {
+                tag.remove_picture(0);
+            }
+        }
+        None => {}
+    }
 }
 
 fn clean(v: &Option<String>) -> Option<String> {
@@ -307,6 +327,111 @@ mod tests {
         assert_eq!(clean(&Some("  hi  ".into())), Some("hi".to_string()));
         assert_eq!(clean(&Some("   ".into())), None);
         assert_eq!(clean(&None), None);
+    }
+
+    /// Smallest WAV lofty will parse: 16-bit mono PCM with a handful of samples.
+    fn wav_bytes() -> Vec<u8> {
+        let samples = [0u8; 64];
+        let mut fmt = Vec::new();
+        fmt.extend_from_slice(&1u16.to_le_bytes()); // PCM
+        fmt.extend_from_slice(&1u16.to_le_bytes()); // mono
+        fmt.extend_from_slice(&44_100u32.to_le_bytes());
+        fmt.extend_from_slice(&88_200u32.to_le_bytes());
+        fmt.extend_from_slice(&2u16.to_le_bytes());
+        fmt.extend_from_slice(&16u16.to_le_bytes());
+
+        let mut body = Vec::new();
+        body.extend_from_slice(b"WAVE");
+        body.extend_from_slice(b"fmt ");
+        body.extend_from_slice(&(fmt.len() as u32).to_le_bytes());
+        body.extend_from_slice(&fmt);
+        body.extend_from_slice(b"data");
+        body.extend_from_slice(&(samples.len() as u32).to_le_bytes());
+        body.extend_from_slice(&samples);
+
+        let mut wav = Vec::new();
+        wav.extend_from_slice(b"RIFF");
+        wav.extend_from_slice(&(body.len() as u32).to_le_bytes());
+        wav.extend_from_slice(&body);
+        wav
+    }
+
+    fn picture(kind: PictureType, data: &[u8]) -> Picture {
+        Picture::new_unchecked(kind, Some(MimeType::Jpeg), None, data.to_vec())
+    }
+
+    #[test]
+    fn no_cover_strips_every_picture_not_just_the_front_one() {
+        // read_cover_bytes falls back to the first picture of any type, so
+        // leaving a non-front picture behind would still read as a cover.
+        let mut tag = Tag::new(TagType::Id3v2);
+        tag.push_picture(picture(PictureType::CoverFront, b"front"));
+        tag.push_picture(picture(PictureType::Other, b"other"));
+
+        apply_cover(&mut tag, None, &CoverInput::None);
+
+        assert!(tag.pictures().is_empty());
+    }
+
+    #[test]
+    fn keeping_the_cover_leaves_the_pictures_alone() {
+        let mut tag = Tag::new(TagType::Id3v2);
+        tag.push_picture(picture(PictureType::CoverFront, b"front"));
+
+        // Keep resolves to the existing bytes; a failed resolve yields None and
+        // must not touch what is already there.
+        apply_cover(&mut tag, None, &CoverInput::Keep);
+
+        assert_eq!(tag.pictures().len(), 1);
+    }
+
+    #[test]
+    fn a_new_cover_replaces_only_the_front_cover() {
+        let mut tag = Tag::new(TagType::Id3v2);
+        tag.push_picture(picture(PictureType::CoverFront, b"old"));
+        tag.push_picture(picture(PictureType::Other, b"other"));
+
+        apply_cover(
+            &mut tag,
+            Some(b"new".to_vec()),
+            &CoverInput::File { path: "cover.jpg".into() },
+        );
+
+        assert_eq!(
+            tag.get_picture_type(PictureType::CoverFront).unwrap().data(),
+            b"new"
+        );
+        assert_eq!(tag.pictures().len(), 2, "unrelated pictures stay");
+    }
+
+    #[test]
+    fn no_cover_removes_the_artwork_from_the_file() {
+        let dir = tempfile::tempdir().unwrap();
+        let audio = dir.path().join("track.wav");
+        fs::write(&audio, wav_bytes()).unwrap();
+        let path = audio.to_string_lossy().to_string();
+
+        // Embed artwork the way a normal write would.
+        let mut tagged = read_from_path(&audio).unwrap();
+        if tagged.primary_tag().is_none() {
+            let tag_type = tagged.file_type().primary_tag_type();
+            tagged.insert_tag(Tag::new(tag_type));
+        }
+        let tag = tagged.primary_tag_mut().unwrap();
+        tag.push_picture(picture(PictureType::CoverFront, b"front"));
+        tag.save_to_path(&audio, WriteOptions::default()).unwrap();
+        assert_eq!(read_cover_bytes(&path).as_deref(), Some(&b"front"[..]));
+
+        // The "no cover" write has to strip it again.
+        let mut tagged = read_from_path(&audio).unwrap();
+        let tag = tagged.primary_tag_mut().unwrap();
+        apply_cover(tag, None, &CoverInput::None);
+        tag.save_to_path(&audio, WriteOptions::default()).unwrap();
+
+        assert!(
+            read_cover_bytes(&path).is_none(),
+            "the cover survived a no-cover write"
+        );
     }
 
     #[test]
