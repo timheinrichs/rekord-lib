@@ -55,19 +55,82 @@ pub fn is_done(conn: &rusqlite::Connection) -> DbResult<bool> {
 /// rebuilds the database anyway).
 pub fn run(app: &AppHandle, db: &Db) -> AppResult<Imported> {
     let mut conn = db.conn()?;
-    if is_done(&conn)? {
-        return Ok(Imported::default());
-    }
 
     // No store at all means nothing was ever saved — there is nothing to
     // import, now or later.
-    let (library, duplicates) = match app.store(STORE_FILE) {
-        Ok(store) => (store.get(LIBRARY_KEY), store.get(DUPLICATES_KEY)),
-        Err(_) => (None, None),
+    let Ok(store) = app.store(STORE_FILE) else {
+        meta_set(&conn, schema::KEY_MIGRATED_FROM_JSON, "1")?;
+        return Ok(Imported::default());
     };
-    let imported = import(&mut conn, library, duplicates)?;
-    meta_set(&conn, schema::KEY_MIGRATED_FROM_JSON, "1")?;
+
+    let imported = if is_done(&conn)? {
+        Imported::default()
+    } else {
+        let result = import(&mut conn, store.get(LIBRARY_KEY), store.get(DUPLICATES_KEY))?;
+        meta_set(&conn, schema::KEY_MIGRATED_FROM_JSON, "1")?;
+        result
+    };
+
+    // Deliberately outside the import gate: the keys have to go on whichever
+    // start it first becomes safe, not only on the one that imported. Deleting
+    // an absent key is a no-op, so this costs nothing once done.
+    shed_legacy_keys(&conn, &store)?;
     Ok(imported)
+}
+
+/// Removes the legacy `library` and `duplicates` keys once the database
+/// demonstrably holds the library.
+///
+/// They are what made the store file multi-megabyte, and every settings change
+/// rewrites the whole file — so keeping them costs on every save. The guard is
+/// the point though: only drop them when the database has at least as many
+/// tracks for that folder as the JSON claims. Anything less means the import
+/// fell short, and the JSON is then the only remaining copy.
+fn shed_legacy_keys(
+    conn: &rusqlite::Connection,
+    store: &std::sync::Arc<tauri_plugin_store::Store<tauri::Wry>>,
+) -> DbResult<()> {
+    let Some(library) = store.get(LIBRARY_KEY) else {
+        return Ok(()); // already gone
+    };
+    let expected = json_track_count(Some(&library));
+    let dir = library
+        .get("library_dir")
+        .and_then(|v| v.as_str())
+        .unwrap_or("");
+    if expected > 0 && !database_holds(conn, dir, expected)? {
+        return Ok(());
+    }
+    store.delete(LIBRARY_KEY);
+    store.delete(DUPLICATES_KEY);
+    if let Err(e) = store.save() {
+        eprintln!("Could not shrink the legacy store: {e}");
+    } else {
+        println!("Legacy library keys removed from the JSON store");
+    }
+    Ok(())
+}
+
+/// Does the database hold at least `expected` tracks for `dir`?
+fn database_holds(conn: &rusqlite::Connection, dir: &str, expected: usize) -> DbResult<bool> {
+    if dir.is_empty() {
+        return Ok(false);
+    }
+    let stored: i64 = conn.query_row(
+        "SELECT count(*) FROM tracks WHERE library_dir = ?1",
+        rusqlite::params![dir],
+        |row| row.get(0),
+    )?;
+    Ok(stored as usize >= expected)
+}
+
+/// Number of tracks the legacy value claims to hold, for the check below.
+fn json_track_count(library: Option<&Value>) -> usize {
+    library
+        .and_then(|v| v.get("tracks"))
+        .and_then(|v| v.as_array())
+        .map(|a| a.len())
+        .unwrap_or(0)
 }
 
 /// The import itself, separated from the store so it can be tested against
@@ -261,6 +324,46 @@ mod tests {
         import(&mut conn, Some(library), None).unwrap();
         // Keyed by path — running twice cannot double the library.
         assert_eq!(super::super::load_tracks(&conn, "/lib").unwrap().len(), 1);
+    }
+
+    #[test]
+    fn json_track_count_reads_the_legacy_shape() {
+        assert_eq!(json_track_count(None), 0);
+        assert_eq!(json_track_count(Some(&serde_json::json!({}))), 0);
+        assert_eq!(json_track_count(Some(&serde_json::json!("nonsense"))), 0);
+        assert_eq!(
+            json_track_count(Some(&serde_json::json!({"tracks": []}))),
+            0
+        );
+        assert_eq!(
+            json_track_count(Some(&serde_json::json!({"tracks": [1, 2, 3]}))),
+            3
+        );
+    }
+
+    #[test]
+    fn legacy_keys_only_go_once_the_rows_are_really_there() {
+        let db = Db::open_in_memory().unwrap();
+        let mut conn = db.0.lock().unwrap();
+        let library = serde_json::json!({
+            "library_dir": "/lib",
+            "tracks": [legacy_track("/lib/a.aiff"), legacy_track("/lib/b.aiff")],
+            "edits": {}
+        });
+
+        // Nothing imported yet: the JSON is the only copy, so it has to stay.
+        assert!(!database_holds(&conn, "/lib", 2).unwrap());
+
+        import(&mut conn, Some(library), None).unwrap();
+        assert!(database_holds(&conn, "/lib", 2).unwrap());
+        // More in the database than the JSON claimed is fine too.
+        assert!(database_holds(&conn, "/lib", 1).unwrap());
+        // A short import must not be mistaken for a complete one.
+        assert!(!database_holds(&conn, "/lib", 3).unwrap());
+        // Another folder's rows do not vouch for this one.
+        assert!(!database_holds(&conn, "/elsewhere", 1).unwrap());
+        // Without a folder there is nothing to compare against.
+        assert!(!database_holds(&conn, "", 1).unwrap());
     }
 
     #[test]
