@@ -1,26 +1,18 @@
-import { Store } from "@tauri-apps/plugin-store";
+import { invoke } from "@tauri-apps/api/core";
 import type { DuplicateGroup } from "../types";
 
-// Same store file as settings/library, with its own key.
-const STORE_FILE = "rekord-lib.json";
-const KEY = "duplicates";
+/**
+ * Duplicate groups are a derived cache, stored alongside the tracks in SQLite.
+ * A finished dedupe run persists its own result in the backend; the frontend
+ * only writes back a pruned version once files are gone.
+ */
 
-let storePromise: Promise<Store> | null = null;
-function getStore(): Promise<Store> {
-  if (!storePromise) storePromise = Store.load(STORE_FILE);
-  return storePromise;
+/** The most recently found duplicate groups (or empty). */
+export function loadDuplicates(): Promise<DuplicateGroup[]> {
+  return invoke<DuplicateGroup[]>("duplicates_load");
 }
 
-/** Loads the most recently found duplicate groups (or empty). */
-export async function loadDuplicates(): Promise<DuplicateGroup[]> {
-  const store = await getStore();
-  const saved = await store.get<DuplicateGroup[]>(KEY);
-  return saved ?? [];
-}
-
-/** Persists the current duplicate groups. */
-export async function saveDuplicates(groups: DuplicateGroup[]): Promise<void> {
-  const store = await getStore();
-  await store.set(KEY, groups);
-  await store.save();
+/** Replaces the stored duplicate groups. */
+export function saveDuplicates(groups: DuplicateGroup[]): Promise<void> {
+  return invoke("duplicates_save", { groups });
 }

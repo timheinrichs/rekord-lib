@@ -38,11 +38,31 @@ describe("diffAudioFiles", () => {
     expect(d.changed).toBe(true);
   });
 
+  it("names the paths that are gone, so they can leave the database", () => {
+    const d = diffAudioFiles(["/lib/a.aiff"], [a, b]);
+    expect(d.removedPaths).toEqual(["/lib/b.aiff"]);
+  });
+
   it("reports no change when disk matches the library", () => {
     const d = diffAudioFiles(["/lib/a.aiff", "/lib/b.aiff"], [a, b]);
     expect(d.addedPaths).toEqual([]);
     expect(d.keptTracks).toHaveLength(2);
+    expect(d.removedPaths).toEqual([]);
     expect(d.changed).toBe(false);
+  });
+
+  it("reports a change when a file was only removed", () => {
+    // Both counts move together here; the flag must not depend on additions.
+    const d = diffAudioFiles([], [a, b]);
+    expect(d.addedPaths).toEqual([]);
+    expect(d.removedPaths).toEqual(["/lib/a.aiff", "/lib/b.aiff"]);
+    expect(d.changed).toBe(true);
+  });
+
+  it("reports nothing for an empty library and an empty disk", () => {
+    const d = diffAudioFiles([], []);
+    expect(d.changed).toBe(false);
+    expect(d.removedPaths).toEqual([]);
   });
 });
 

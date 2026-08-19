@@ -5,14 +5,16 @@ export interface LibraryDiff {
   addedPaths: string[];
   /** Existing tracks whose files still exist. */
   keptTracks: TrackAnalysis[];
+  /** Known tracks whose files are gone from disk (drop them from the database). */
+  removedPaths: string[];
   /** True if anything was added or removed. */
   changed: boolean;
 }
 
 /**
  * Diffs the audio files currently on disk against the known tracks:
- * which paths are new (to analyze) and which tracks still exist (to keep).
- * Pure — the incremental library sync builds on this.
+ * which paths are new (to analyze), which tracks still exist (to keep) and
+ * which are gone. Pure — the incremental library sync builds on this.
  */
 export function diffAudioFiles(
   diskPaths: string[],
@@ -21,10 +23,12 @@ export function diffAudioFiles(
   const disk = new Set(diskPaths);
   const have = new Set(tracks.map((t) => t.path));
   const keptTracks = tracks.filter((t) => disk.has(t.path));
+  const removedPaths = tracks
+    .filter((t) => !disk.has(t.path))
+    .map((t) => t.path);
   const addedPaths = diskPaths.filter((p) => !have.has(p));
-  const changed =
-    addedPaths.length > 0 || keptTracks.length !== tracks.length;
-  return { addedPaths, keptTracks, changed };
+  const changed = addedPaths.length > 0 || removedPaths.length > 0;
+  return { addedPaths, keptTracks, removedPaths, changed };
 }
 
 /**

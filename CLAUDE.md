@@ -47,6 +47,37 @@ tokens, status color = state, mono for technical data. When in doubt, check
   `cd src-tauri && cargo check` (backend) must be green.
 - Commit/PR conventions as in the existing history (Conventional Commits).
 
+## Persistence
+
+Two stores, with a clear dividing line — keep new state on the right side of it:
+
+- **SQLite** (`src-tauri/src/db/`, `rekord-lib.sqlite3` in the app data dir) holds
+  everything that grows with the collection: `tracks`, `edits`, `fingerprints`,
+  `duplicate_groups`. Written **from Rust**, incrementally — the scan persists
+  each batch as it produces it, edits are written per row. Access it through the
+  `db` module's functions, never with SQL from a command.
+- **The JSON store** (`tauri-plugin-store`, `rekord-lib.json`) keeps only small
+  config-shaped state: `settings`, `bandcamp_session`, `bandcamp_collection`,
+  `bandcamp_downloads`. Every `save()` rewrites the whole file, so nothing that
+  scales with the library belongs here.
+
+Two rules that keep the caches honest:
+
+- **Derived values are recomputed, never stored.** `compat` and
+  `metadata_incomplete` come back from `compat::evaluate` /
+  `TrackMetadata::is_complete` on read, so a rule change takes effect at once
+  instead of leaving stale verdicts in rows.
+- **Every cache states what invalidates it.** A track row is reused only while
+  the file's mtime+size match (`db::needs_reanalysis`) and the app version is
+  unchanged (`db::invalidate_on_version_change`); a fingerprint additionally
+  depends on `fingerprint::ALGO_VERSION` — **bump that** when the decode window,
+  sample rate or chromaprint config changes. A new cache needs the same
+  treatment plus tests for its invalidation.
+
+The legacy `library` key in `rekord-lib.json` is imported once
+(`db::migrate`) and then left in place deliberately, so a downgrade still finds
+its data. It can be dropped one release after 0.4.8.
+
 ## Testing — mandatory
 
 - **Every new feature or change ships with matching tests.** Cover the new

@@ -7,6 +7,7 @@ use crate::audio::convert::ConvertProgress;
 use crate::audio::{bpm, compat, convert, dedupe, probe};
 use crate::bandcamp::session::BandcampState;
 use crate::bandcamp::{collection, download, session};
+use crate::db::{self, FsIdentity, TrackRecord};
 use crate::error::{AppError, AppResult};
 use crate::jobs::{BandcampDownloadState, DedupeState, ScanState, WatchState};
 use crate::metadata::read::read_metadata;
@@ -35,6 +36,11 @@ const STAGE_BPM: &str = "Detecting BPM";
 /// Concurrent ffmpeg processes in the BPM pass — same budget as the duplicate
 /// search's fingerprint pass.
 const BPM_CONCURRENCY: usize = 8;
+
+/// Concurrent ffprobe processes in the analysis pass. One probe is short
+/// (~100 ms, dominated by process startup rather than CPU), so the pass is
+/// bound by how many can be in flight at once, not by cores.
+const PROBE_CONCURRENCY: usize = 8;
 
 /// Completion event of the scan. The tracks arrive over `scan://tracks` while
 /// the job runs, so this only reports how it ended.
@@ -119,10 +125,15 @@ pub async fn analyze_files(
     app: AppHandle,
     paths: Vec<String>,
     analyze_bpm: bool,
+    library_dir: Option<String>,
 ) -> AppResult<Vec<TrackAnalysis>> {
+    // Stat before probing (see the scan loop for why that order matters).
+    let mut ids: Vec<Option<FsIdentity>> = Vec::with_capacity(paths.len());
     let mut out = Vec::with_capacity(paths.len());
     for path in paths {
+        let fs = db::fs_identity(&path);
         if let Some(track) = analyze_path(&app, path).await {
+            ids.push(fs);
             out.push(track);
         }
     }
@@ -130,8 +141,36 @@ pub async fn analyze_files(
         // Synchronous path: the caller gets the finished tracks as the return
         // value, so there is nothing to stream and nothing to cancel.
         detect_bpm_pass(&app, &mut out, false, |_, _| {}, |_| {}, || false).await;
+        // The tempo write changed every touched file, so the identities taken
+        // above are stale — take them again.
+        ids = out.iter().map(|t| db::fs_identity(&t.path)).collect();
+    }
+
+    // Persist only for a library analysis, and only for files that really sit
+    // inside that folder: this command also serves imported files from
+    // anywhere on disk, which have no business in the library table.
+    if let Some(dir) = library_dir.filter(|d| !d.is_empty()) {
+        let records: Vec<TrackRecord> = out
+            .iter()
+            .zip(&ids)
+            .filter(|(track, _)| is_inside(&dir, &track.path))
+            .map(|(track, fs)| TrackRecord {
+                track: track.clone(),
+                fs: *fs,
+            })
+            .collect();
+        persist_tracks(&app, &dir, &records);
     }
     Ok(out)
+}
+
+/// Is `path` inside `dir`? Used to keep an imported file's analysis out of the
+/// library table. Compared on the path text, which is what both sides carry.
+fn is_inside(dir: &str, path: &str) -> bool {
+    let dir = dir.trim_end_matches(std::path::MAIN_SEPARATOR);
+    path.starts_with(dir)
+        && path.len() > dir.len()
+        && path[dir.len()..].starts_with(std::path::MAIN_SEPARATOR)
 }
 
 /// Detects the BPM of tracks, writes it into the file's tag and updates the
@@ -230,8 +269,9 @@ fn collect_audio_files(dir: &std::path::Path, out: &mut Vec<String>) {
 ///
 /// One job covers every case: `paths = None` sweeps the whole library, `Some`
 /// processes exactly those files (a handful of new ones, or the backlog of
-/// tracks still missing a BPM), and `force_bpm` re-detects even where a tempo
-/// is already present. Results stream out over `scan://tracks` as they are
+/// tracks still missing a BPM), `force_bpm` re-detects even where a tempo is
+/// already present, and `force` re-probes even files the database still
+/// considers unchanged. Results stream out over `scan://tracks` as they are
 /// produced, so nothing is lost when the job is cancelled or the app quits
 /// mid-run; `scan://done` only reports how it ended.
 #[tauri::command]
@@ -242,6 +282,7 @@ pub fn start_scan(
     analyze_bpm: bool,
     paths: Option<Vec<String>>,
     force_bpm: bool,
+    force: bool,
 ) -> bool {
     // Single-flight: only start if a scan is not already running.
     if state.running.swap(true, Ordering::SeqCst) {
@@ -274,29 +315,97 @@ pub fn start_scan(
         app.state::<ScanState>().total.store(total, Ordering::SeqCst);
         emit_progress(&app, generation, 0, total, true, STAGE_ANALYZING);
 
-        // Phase 1: audio properties, compatibility and existing tags. Cheap (one
-        // ffprobe per file) and streamed in batches, so the list fills up while
-        // it runs instead of appearing only at the end.
-        let mut out = Vec::with_capacity(total);
-        let mut batch = Vec::with_capacity(SCAN_BATCH);
+        // Phase 1: audio properties, compatibility and existing tags.
+        //
+        // Two things keep this cheap on a library that was scanned before: a
+        // file whose mtime and size still match its stored row is served from
+        // the database instead of being probed again, and the probes that do
+        // run go out PROBE_CONCURRENCY at a time. A probe costs ~100 ms, a stat
+        // costs microseconds, so a sweep over an unchanged library is bound by
+        // the directory walk rather than by ffprobe. `force` skips the cache
+        // for a deliberate deep rescan.
+        let cached = if force {
+            std::collections::HashMap::new()
+        } else {
+            load_track_cache(&app, &dir)
+        };
+        let mut out: Vec<TrackAnalysis> = Vec::with_capacity(total);
+        // Freshly probed tracks have to be written; cache hits are already in
+        // the database unchanged, so they are only streamed to the UI. Writing
+        // them back would mean thousands of identical UPDATEs per sweep.
+        let mut fresh: Vec<TrackRecord> = Vec::with_capacity(SCAN_BATCH);
+        let mut reused: Vec<TrackAnalysis> = Vec::with_capacity(SCAN_BATCH);
         let mut cancelled = false;
-        for (i, path) in paths.into_iter().enumerate() {
+        let mut done = 0usize;
+
+        for chunk in paths.chunks(PROBE_CONCURRENCY) {
             if app.state::<ScanState>().cancel.load(Ordering::SeqCst) {
                 cancelled = true;
                 break;
             }
-            if let Some(track) = analyze_path(&app, path).await {
-                batch.push(track.clone());
-                out.push(track);
+            // Split the chunk before doing any work: cache hits are taken
+            // straight from the stored row, only the misses are probed.
+            let mut probes = Vec::new();
+            for path in chunk {
+                // Stat before probing, never after: if the file changes while
+                // we read it, storing the older identity means the next scan
+                // re-probes it. The other order would cache a stale analysis
+                // under the new file state.
+                let fs = db::fs_identity(path);
+                match cached.get(path) {
+                    Some(hit) if !db::needs_reanalysis(Some(hit.fs), fs) => {
+                        reused.push(hit.track.clone());
+                    }
+                    _ => {
+                        let app2 = app.clone();
+                        let path2 = path.clone();
+                        probes.push(tauri::async_runtime::spawn(async move {
+                            analyze_path(&app2, path2)
+                                .await
+                                .map(|track| TrackRecord { track, fs })
+                        }));
+                    }
+                }
             }
-            if batch.len() >= SCAN_BATCH {
-                emit_tracks(&app, generation, std::mem::take(&mut batch));
+            for handle in probes {
+                if let Ok(Some(record)) = handle.await {
+                    fresh.push(record);
+                }
             }
-            app.state::<ScanState>().done.store(i + 1, Ordering::SeqCst);
-            emit_progress(&app, generation, i + 1, total, true, STAGE_ANALYZING);
+
+            done += chunk.len();
+            if fresh.len() + reused.len() >= SCAN_BATCH {
+                flush_scan_batch(
+                    &app,
+                    generation,
+                    &dir,
+                    std::mem::take(&mut fresh),
+                    std::mem::take(&mut reused),
+                    &mut out,
+                );
+            }
+            app.state::<ScanState>().done.store(done, Ordering::SeqCst);
+            emit_progress(&app, generation, done, total, true, STAGE_ANALYZING);
         }
-        if !batch.is_empty() {
-            emit_tracks(&app, generation, std::mem::take(&mut batch));
+        if !fresh.is_empty() || !reused.is_empty() {
+            flush_scan_batch(
+                &app,
+                generation,
+                &dir,
+                std::mem::take(&mut fresh),
+                std::mem::take(&mut reused),
+                &mut out,
+            );
+        }
+
+        // A completed full sweep saw every file, so anything still in the
+        // database for this folder is gone from disk. A targeted or cancelled
+        // run has no such licence.
+        if full && !cancelled {
+            let seen: Vec<String> = out.iter().map(|t| t.path.clone()).collect();
+            if let Err(e) = retain_scanned_tracks(&app, &dir, &seen) {
+                eprintln!("Pruning removed tracks failed: {e}");
+            }
         }
 
         // Phase 2: BPM for the tracks that carry none. Far more expensive (a full
@@ -308,6 +417,7 @@ pub fn start_scan(
             state.done.store(0, Ordering::SeqCst);
             let progress_app = app.clone();
             let emit_app = app.clone();
+            let bpm_dir = dir.clone();
             cancelled = detect_bpm_pass(
                 &app,
                 &mut out,
@@ -318,7 +428,21 @@ pub fn start_scan(
                     state.total.store(total, Ordering::SeqCst);
                     emit_progress(&progress_app, generation, done, total, true, STAGE_BPM);
                 },
-                |updated| emit_tracks(&emit_app, generation, updated),
+                |updated| {
+                    // Writing the tempo tag rewrote the file, so its identity
+                    // changed. Re-stat before storing, otherwise every file the
+                    // BPM pass touched would look modified to the next scan and
+                    // be probed again for nothing.
+                    let records: Vec<TrackRecord> = updated
+                        .iter()
+                        .map(|track| TrackRecord {
+                            fs: db::fs_identity(&track.path),
+                            track: track.clone(),
+                        })
+                        .collect();
+                    persist_tracks(&emit_app, &bpm_dir, &records);
+                    emit_tracks(&emit_app, generation, updated);
+                },
                 || app.state::<ScanState>().cancel.load(Ordering::SeqCst),
             )
             .await;
@@ -341,6 +465,150 @@ pub fn start_scan(
         );
     });
     true
+}
+
+/// Reads the scan cache for `dir`, or an empty one if the database is
+/// unavailable. A missing cache only costs a re-probe, so it must never be the
+/// reason a scan refuses to run.
+fn load_track_cache(
+    app: &AppHandle,
+    dir: &str,
+) -> std::collections::HashMap<String, db::CachedTrack> {
+    let result = db::require(app)
+        .and_then(|database| {
+            let conn = database.conn()?;
+            Ok(db::load_track_cache(&conn, dir)?)
+        });
+    match result {
+        Ok(cache) => cache,
+        Err(e) => {
+            eprintln!("Could not read the scan cache: {e}");
+            std::collections::HashMap::new()
+        }
+    }
+}
+
+/// Writes a batch of analyzed tracks to the database.
+///
+/// Failures are logged rather than propagated: the tracks are already on their
+/// way to the UI, and losing the cache is a slower next scan, not a broken one.
+fn persist_tracks(app: &AppHandle, dir: &str, records: &[TrackRecord]) {
+    let result = db::require(app).and_then(|database| {
+        let mut conn = database.conn()?;
+        Ok(db::upsert_tracks(&mut conn, dir, records)?)
+    });
+    if let Err(e) = result {
+        eprintln!("Could not persist {} tracks: {e}", records.len());
+    }
+}
+
+/// Persists the freshly probed tracks, records the whole batch for the
+/// completion event and streams it to the frontend — in that order, so a quit
+/// right after the UI update cannot leave the database behind what the user just
+/// saw. `reused` came out of the database unchanged and is not written back.
+fn flush_scan_batch(
+    app: &AppHandle,
+    generation: u64,
+    dir: &str,
+    fresh: Vec<TrackRecord>,
+    reused: Vec<TrackAnalysis>,
+    out: &mut Vec<TrackAnalysis>,
+) {
+    persist_tracks(app, dir, &fresh);
+    let mut tracks: Vec<TrackAnalysis> = fresh.into_iter().map(|r| r.track).collect();
+    tracks.extend(reused);
+    out.extend(tracks.iter().cloned());
+    emit_tracks(app, generation, tracks);
+}
+
+/// Drops database rows of `dir` that the sweep did not see, i.e. files that are
+/// gone from disk. Their cached fingerprints go with them (`ON DELETE CASCADE`).
+fn retain_scanned_tracks(app: &AppHandle, dir: &str, seen: &[String]) -> AppResult<usize> {
+    let database = db::require(app)?;
+    let mut conn = database.conn()?;
+    Ok(db::retain_tracks(&mut conn, dir, seen)?)
+}
+
+/// Stores the duplicate result. Serializing through JSON keeps the database
+/// oblivious to the group shape, which is a display structure owned by the UI.
+fn persist_duplicate_groups(app: &AppHandle, groups: &[DuplicateGroup]) {
+    let result = db::require(app).and_then(|database| {
+        let mut conn = database.conn()?;
+        let values: Vec<serde_json::Value> = groups
+            .iter()
+            .filter_map(|g| serde_json::to_value(g).ok())
+            .collect();
+        Ok(db::save_duplicate_groups(&mut conn, &values)?)
+    });
+    if let Err(e) = result {
+        eprintln!("Could not store the duplicate result: {e}");
+    }
+}
+
+// --- library database -------------------------------------------------------
+
+/// The stored tracks of a library folder, shown before any scan runs.
+#[tauri::command]
+pub fn library_load(app: AppHandle, dir: String) -> AppResult<Vec<TrackAnalysis>> {
+    let database = db::require(&app)?;
+    let conn = database.conn()?;
+    Ok(db::load_tracks(&conn, &dir)?)
+}
+
+/// Forgets tracks by path. The scan prunes a full sweep on its own; this is for
+/// files the frontend noticed had vanished.
+#[tauri::command]
+pub fn library_delete(app: AppHandle, paths: Vec<String>) -> AppResult<usize> {
+    let database = db::require(&app)?;
+    let mut conn = database.conn()?;
+    Ok(db::delete_tracks(&mut conn, &paths)?)
+}
+
+/// All pending metadata edits, keyed by track path.
+#[tauri::command]
+pub fn edits_load(
+    app: AppHandle,
+) -> AppResult<std::collections::HashMap<String, serde_json::Value>> {
+    let database = db::require(&app)?;
+    let conn = database.conn()?;
+    Ok(db::load_edits(&conn)?)
+}
+
+/// Stores one pending edit. Called per change, which is the point of the
+/// database: a single row is written instead of the whole library.
+#[tauri::command]
+pub fn edit_set(app: AppHandle, path: String, edit: serde_json::Value) -> AppResult<()> {
+    let database = db::require(&app)?;
+    let conn = database.conn()?;
+    Ok(db::set_edit(&conn, &path, &edit)?)
+}
+
+/// Drops pending edits (applied, or undone).
+#[tauri::command]
+pub fn edit_clear(app: AppHandle, paths: Vec<String>) -> AppResult<()> {
+    let database = db::require(&app)?;
+    let conn = database.conn()?;
+    for path in &paths {
+        db::clear_edit(&conn, path)?;
+    }
+    Ok(())
+}
+
+/// The last duplicate result.
+#[tauri::command]
+pub fn duplicates_load(app: AppHandle) -> AppResult<Vec<serde_json::Value>> {
+    let database = db::require(&app)?;
+    let conn = database.conn()?;
+    Ok(db::load_duplicate_groups(&conn)?)
+}
+
+/// Replaces the stored duplicate result. The dedupe run stores its own output;
+/// this is how the frontend writes back a pruned version.
+#[tauri::command]
+pub fn duplicates_save(app: AppHandle, groups: Vec<serde_json::Value>) -> AppResult<()> {
+    let database = db::require(&app)?;
+    let mut conn = database.conn()?;
+    Ok(db::save_duplicate_groups(&mut conn, &groups)?)
 }
 
 /// Clears `ScanState::running` when it goes out of scope — including when the
@@ -672,6 +940,9 @@ pub fn start_dedupe(
         let state = app.state::<DedupeState>();
         if !cancelled {
             *state.result.lock().unwrap() = Some(groups.clone());
+            // The run produced the groups here, so it stores them here too -
+            // the frontend only ever writes back a pruned version.
+            persist_duplicate_groups(&app, &groups);
         }
         state.running.store(false, Ordering::SeqCst);
         let _ = app.emit(
@@ -806,9 +1077,11 @@ pub async fn write_metadata(
 
 /// Moves the given files to the trash (reversible, no Finder sound).
 #[tauri::command]
-pub async fn delete_files(paths: Vec<String>) -> Vec<DeleteResult> {
+pub async fn delete_files(app: AppHandle, paths: Vec<String>) -> Vec<DeleteResult> {
     let ctx = trash_ctx();
-    paths.into_iter().map(|p| trash_one(&ctx, p)).collect()
+    let results: Vec<DeleteResult> = paths.into_iter().map(|p| trash_one(&ctx, p)).collect();
+    forget_deleted(&app, &results);
+    results
 }
 
 /// Deletes a whole album: if `dir` contains no audio outside `paths`, the entire
@@ -817,22 +1090,44 @@ pub async fn delete_files(paths: Vec<String>) -> Vec<DeleteResult> {
 /// Either way the result reports one entry per track path so the caller can
 /// update its state uniformly.
 #[tauri::command]
-pub async fn delete_album(dir: String, paths: Vec<String>) -> Vec<DeleteResult> {
+pub async fn delete_album(app: AppHandle, dir: String, paths: Vec<String>) -> Vec<DeleteResult> {
     let ctx = trash_ctx();
-    if dir_holds_only(&dir, &paths) {
-        if ctx.delete(&dir).is_ok() {
-            return paths
-                .into_iter()
-                .map(|path| DeleteResult {
-                    path,
-                    success: true,
-                    error: None,
-                })
-                .collect();
-        }
-        // Folder trash failed — fall through to trashing the files individually.
+    let results: Vec<DeleteResult> = if dir_holds_only(&dir, &paths) && ctx.delete(&dir).is_ok() {
+        paths
+            .into_iter()
+            .map(|path| DeleteResult {
+                path,
+                success: true,
+                error: None,
+            })
+            .collect()
+    } else {
+        // No folder trash, or it failed — trash the files individually.
+        paths.into_iter().map(|p| trash_one(&ctx, p)).collect()
+    };
+    forget_deleted(&app, &results);
+    results
+}
+
+/// Removes the rows of files that were actually trashed, so the library does
+/// not keep serving them from the cache until the next full sweep. Their
+/// fingerprints go with them via `ON DELETE CASCADE`.
+fn forget_deleted(app: &AppHandle, results: &[DeleteResult]) {
+    let gone: Vec<String> = results
+        .iter()
+        .filter(|r| r.success)
+        .map(|r| r.path.clone())
+        .collect();
+    if gone.is_empty() {
+        return;
     }
-    paths.into_iter().map(|p| trash_one(&ctx, p)).collect()
+    let result = db::require(app).and_then(|database| {
+        let mut conn = database.conn()?;
+        Ok(db::delete_tracks(&mut conn, &gone)?)
+    });
+    if let Err(e) = result {
+        eprintln!("Could not drop {} deleted tracks: {e}", gone.len());
+    }
 }
 
 /// Trashes directories that no longer contain any audio files (re-checked here
@@ -1026,5 +1321,20 @@ mod tests {
         // Empty / non-existent folder → nothing to trash.
         assert!(!dir_holds_only(&root, &[]));
         assert!(!dir_holds_only("/no/such/dir", &[a]));
+    }
+
+    #[test]
+    fn is_inside_accepts_only_real_descendants() {
+        assert!(is_inside("/Users/me/Music", "/Users/me/Music/a.aiff"));
+        assert!(is_inside("/Users/me/Music", "/Users/me/Music/sub/a.aiff"));
+        // A trailing separator on the folder must not change the verdict.
+        assert!(is_inside("/Users/me/Music/", "/Users/me/Music/a.aiff"));
+        // A sibling folder that merely shares the prefix is not inside — this
+        // is what keeps an imported file out of the library table.
+        assert!(!is_inside("/Users/me/Music", "/Users/me/MusicOld/a.aiff"));
+        assert!(!is_inside("/Users/me/Music", "/Users/me/Downloads/a.aiff"));
+        // The folder itself is not a track in it.
+        assert!(!is_inside("/Users/me/Music", "/Users/me/Music"));
+        assert!(!is_inside("/Users/me/Music", ""));
     }
 }

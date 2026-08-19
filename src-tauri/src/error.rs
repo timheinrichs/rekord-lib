@@ -21,6 +21,12 @@ pub enum AppError {
 
     #[error("I/O error: {0}")]
     Io(#[from] std::io::Error),
+
+    #[error("Database error: {0}")]
+    Db(String),
+
+    #[error("Database error: {0}")]
+    Sqlite(#[from] rusqlite::Error),
 }
 
 impl Serialize for AppError {

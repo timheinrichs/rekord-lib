@@ -1,33 +1,40 @@
-import { Store } from "@tauri-apps/plugin-store";
+import { invoke } from "@tauri-apps/api/core";
 import type { TrackAnalysis, TrackEdit } from "../types";
 
-/** Persisted state of the track database (per library folder). */
-export interface LibraryCache {
-  library_dir: string | null;
-  tracks: TrackAnalysis[];
-  edits: Record<string, TrackEdit>;
+/**
+ * The track database lives in SQLite in the Rust backend, not in the JSON
+ * store: it grows with the collection and is written incrementally while a scan
+ * runs, which a store file rewritten in full on every save cannot do. The scan
+ * persists its own results, so there is deliberately no "save the whole
+ * library" call here — only reads and the targeted writes below.
+ */
+
+/** The stored tracks of a library folder (empty before the first scan). */
+export function loadLibraryTracks(dir: string): Promise<TrackAnalysis[]> {
+  return invoke<TrackAnalysis[]>("library_load", { dir });
 }
 
-// Same store file as settings/backend, with its own key.
-const STORE_FILE = "rekord-lib.json";
-const LIBRARY_KEY = "library";
-
-let storePromise: Promise<Store> | null = null;
-function getStore(): Promise<Store> {
-  if (!storePromise) storePromise = Store.load(STORE_FILE);
-  return storePromise;
+/**
+ * Forgets tracks by path. A full sweep prunes what it did not see on its own;
+ * this is for files the frontend noticed had vanished (the disk diff in
+ * `diffAudioFiles`), so the cache does not keep serving them.
+ */
+export function forgetTracks(paths: string[]): Promise<number> {
+  return invoke<number>("library_delete", { paths });
 }
 
-/** Loads the cached track database (or null). */
-export async function loadLibrary(): Promise<LibraryCache | null> {
-  const store = await getStore();
-  const saved = await store.get<LibraryCache>(LIBRARY_KEY);
-  return saved ?? null;
+/** All pending metadata edits, keyed by track path. */
+export function loadEdits(): Promise<Record<string, TrackEdit>> {
+  return invoke<Record<string, TrackEdit>>("edits_load");
 }
 
-/** Persists the track database. */
-export async function saveLibrary(cache: LibraryCache): Promise<void> {
-  const store = await getStore();
-  await store.set(LIBRARY_KEY, cache);
-  await store.save();
+/** Stores one pending edit — one row, not the whole library. */
+export function saveEdit(path: string, edit: TrackEdit): Promise<void> {
+  return invoke("edit_set", { path, edit });
+}
+
+/** Drops pending edits, once they are written to the files or undone. */
+export function clearEdits(paths: string[]): Promise<void> {
+  if (!paths.length) return Promise.resolve();
+  return invoke("edit_clear", { paths });
 }

@@ -6,6 +6,7 @@ use serde::Serialize;
 use tauri::{AppHandle, Emitter, Manager};
 
 use crate::audio::fingerprint;
+use crate::db::{self, FsIdentity};
 use crate::jobs::DedupeState;
 use crate::models::{DupCandidate, DuplicateFile, DuplicateGroup};
 
@@ -223,6 +224,32 @@ fn quality_key(f: &DuplicateFile) -> (bool, u32, u32, u64) {
     (f.lossless, f.sample_rate, f.bits_per_sample, f.size_bytes)
 }
 
+/// Looks up a stored fingerprint for this exact file state. Any database
+/// trouble reads as a miss - the fingerprint is a cache, so the worst case is
+/// recomputing it.
+fn cached_fingerprint(app: &AppHandle, path: &str, fs: FsIdentity) -> Option<Vec<u32>> {
+    let database = db::require(app).ok()?;
+    let conn = database.conn().ok()?;
+    db::fingerprint_get(&conn, path, fs, fingerprint::ALGO_VERSION).ok()?
+}
+
+/// Stores a freshly computed fingerprint. Logged but not fatal on failure.
+fn store_fingerprint(app: &AppHandle, path: &str, fs: FsIdentity, fp: &[u32]) {
+    let result = db::require(app).and_then(|database| {
+        let conn = database.conn()?;
+        Ok(db::fingerprint_put(
+            &conn,
+            path,
+            fs,
+            fingerprint::ALGO_VERSION,
+            fp,
+        )?)
+    });
+    if let Err(e) = result {
+        eprintln!("Could not cache the fingerprint for {path}: {e}");
+    }
+}
+
 /// Searches for duplicates across all formats/file names: first pre-group by
 /// length, then confirm via acoustic fingerprint.
 pub async fn find_duplicates(
@@ -330,9 +357,32 @@ pub async fn find_duplicates(
     // Compute fingerprints (the expensive part) - in parallel with progress.
     // Only needed for files that have an equal-length but differently named file
     // (Tier-1 matches need no fingerprint).
-    let to_fp: Vec<usize> = (0..n).filter(|&i| needs_fp[i]).collect();
-    let total = to_fp.len();
+    let needed: Vec<usize> = (0..n).filter(|&i| needs_fp[i]).collect();
     let mut fps: Vec<Option<Vec<u32>>> = vec![None; n];
+
+    // Serve what the database already holds. A fingerprint depends only on the
+    // file's audio and on ALGO_VERSION, so a cached one is as good as a fresh
+    // decode - and a decode is the single most expensive thing this app does.
+    // Only the misses are counted in the progress, so the numbers reflect the
+    // work that actually happens.
+    let mut fs_ids: HashMap<usize, FsIdentity> = HashMap::new();
+    let mut to_fp: Vec<usize> = Vec::new();
+    for &i in &needed {
+        let Some(fs) = db::fs_identity(&candidates[i].path) else {
+            continue; // unreadable file - nothing to fingerprint or cache
+        };
+        fs_ids.insert(i, fs);
+        match cached_fingerprint(app, &candidates[i].path, fs) {
+            Some(fp) => fps[i] = Some(fp),
+            None => to_fp.push(i),
+        }
+    }
+    let hits = needed.len() - to_fp.len();
+    if hits > 0 {
+        println!("Fingerprint cache: {hits} hits, {} to compute", to_fp.len());
+    }
+
+    let total = to_fp.len();
     let mut done = 0usize;
     emit(app, generation, 0, total, "Analyzing", true);
     for chunk in to_fp.chunks(FP_CONCURRENCY) {
@@ -355,6 +405,11 @@ pub async fn find_duplicates(
             .collect();
         for (i, handle) in handles {
             if let Ok(Some(fp)) = handle.await {
+                // Store it before the comparison so a cancel or a crash during
+                // the (long) comparing phase does not throw the decode away.
+                if let Some(&fs) = fs_ids.get(&i) {
+                    store_fingerprint(app, &candidates[i].path, fs, &fp);
+                }
                 fps[i] = Some(fp);
             }
             done += 1;

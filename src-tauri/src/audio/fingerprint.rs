@@ -16,6 +16,12 @@ pub fn config() -> Configuration {
     Configuration::default()
 }
 
+/// Version of everything that shapes a fingerprint: the decode window, the
+/// sample rate and [`config`]. Cached fingerprints carry this number, so
+/// changing any of the above invalidates them instead of silently comparing
+/// values computed under different rules. **Bump this on every such change.**
+pub const ALGO_VERSION: i64 = 1;
+
 /// Decodes the beginning of a file to mono PCM (11025 Hz, s16le) via ffmpeg
 /// and computes a Chromaprint fingerprint from it. Independent of format/file
 /// name, since it is based on the actual audio content.

@@ -23,7 +23,13 @@ import {
   writeMetadata,
   type WriteMetadataItem,
 } from "../lib/api";
-import { loadLibrary, saveLibrary } from "../lib/library";
+import {
+  clearEdits,
+  forgetTracks,
+  loadEdits,
+  loadLibraryTracks,
+  saveEdit as persistEdit,
+} from "../lib/library";
 import { loadDuplicates, saveDuplicates } from "../lib/duplicates";
 import {
   editComplete,
@@ -123,19 +129,6 @@ interface Props {
   onOpenSettings: () => void;
 }
 
-/** Minimum gap between writes of the library cache (see the save effect). */
-const SAVE_THROTTLE_MS = 3000;
-
-/**
- * The same gap while a scan streams results. Much longer on purpose: the cache
- * is several megabytes, and rewriting it every few seconds churned enough JSON
- * to grow the process by ~130 MB per minute, which throttled the run itself.
- * Measured over one two-minute window: 32 files processed, 254 MB gained — the
- * growth tracked elapsed time, not work done. Losing up to this much of the
- * cache costs nothing: the tags are already on disk and a scan re-reads them.
- */
-const SAVE_THROTTLE_SCANNING_MS = 30_000;
-
 type Grouping = "flat" | "album" | "folder" | "label";
 
 export default function LibraryView({
@@ -227,11 +220,21 @@ export default function LibraryView({
       do {
         dirtyRef.current = false;
         const disk = await listAudioFiles(libraryDir);
-        const { addedPaths, keptTracks, changed } = diffAudioFiles(disk, current);
+        const { addedPaths, keptTracks, removedPaths, changed } = diffAudioFiles(
+          disk,
+          current,
+        );
         if (!changed) break;
+        // Files that vanished outside the app (a move in Finder, an external
+        // delete) have to leave the database too — otherwise the next start
+        // would serve them from the cache again.
+        if (removedPaths.length) await forgetTracks(removedPaths);
         // No BPM here — the background job below picks it up, so the sync
-        // stays fast no matter how many files arrived.
-        const analyzed = addedPaths.length ? await analyzeFiles(addedPaths) : [];
+        // stays fast no matter how many files arrived. Passing the folder lets
+        // the backend store what it analyzed.
+        const analyzed = addedPaths.length
+          ? await analyzeFiles(addedPaths, false, libraryDir)
+          : [];
         current = [...keptTracks, ...analyzed];
         setTracks(current);
       } while (dirtyRef.current);
@@ -350,11 +353,14 @@ export default function LibraryView({
     let active = true;
     hydratedRef.current = false;
     void (async () => {
-      const cache = await loadLibrary();
-      if (active && cache && cache.library_dir === libraryDir) {
-        setTracks(cache.tracks);
-        setEdits(cache.edits ?? {});
-      }
+      // Rows are stored per library folder, so this only ever returns tracks
+      // that belong to the current one — no folder check needed here.
+      const [stored, storedEdits] = await Promise.all([
+        libraryDir ? loadLibraryTracks(libraryDir) : Promise.resolve([]),
+        loadEdits(),
+      ]);
+      if (active && stored.length) setTracks(stored);
+      if (active) setEdits(storedEdits);
       const dups = await loadDuplicates();
       if (active && dups.length) setDupGroups(dups);
       // From now on persisting is allowed (the cache has been taken into account).
@@ -397,28 +403,9 @@ export default function LibraryView({
     };
   }, [libraryDir, incrementalSync]);
 
-  // Keep the track database persisted (only after hydration, so the initial
-  // empty state doesn't overwrite the cache).
-  //
-  // Throttled rather than debounced: the scan streams its results, so a plain
-  // debounce would keep resetting and never save at all, while saving per batch
-  // would rewrite the whole multi-megabyte store ~90 times per run. The wait
-  // shrinks with the time since the last save, so writes happen at a steady
-  // interval and the most that can be lost on a quit is one window. During a
-  // scan the interval widens (see SAVE_THROTTLE_SCANNING_MS); when the scan
-  // ends, `scanning` flips and this re-runs, so the final state lands promptly.
-  const lastSaveRef = useRef(0);
-  const scanning = scanProgress !== null;
-  useEffect(() => {
-    if (!libraryDir || !hydratedRef.current) return;
-    const interval = scanning ? SAVE_THROTTLE_SCANNING_MS : SAVE_THROTTLE_MS;
-    const wait = Math.max(0, interval - (Date.now() - lastSaveRef.current));
-    const id = setTimeout(() => {
-      lastSaveRef.current = Date.now();
-      void saveLibrary({ library_dir: libraryDir, tracks, edits });
-    }, wait);
-    return () => clearTimeout(id);
-  }, [libraryDir, tracks, edits, scanning]);
+  // No save effect: the backend persists the library itself. The scan writes
+  // each batch as it produces it, and edits are written per change — so there
+  // is nothing here to throttle, and nothing to lose on a quit.
 
   // Mirror the scanned tracks up to the app (used by the Bandcamp sync).
   useEffect(() => {
@@ -473,26 +460,33 @@ export default function LibraryView({
         // in incrementalSync() can't detect on its own.
         const outputs = convertedOutputs(res);
         if (outputs.length) {
-          const analyzed = await analyzeFiles(outputs);
+          const analyzed = await analyzeFiles(
+            outputs,
+            false,
+            libraryDir ?? undefined,
+          );
           setTracks((prev) => mergeConverted(prev, res, analyzed));
           // Drop edits of sources that a format change replaced with a new path
           // (their metadata is now written into the freshly analyzed output).
-          setEdits((prev) => {
-            let dirty = false;
-            const next = { ...prev };
-            for (const r of res) {
-              if (
-                r.success &&
-                r.output_path &&
-                r.output_path !== r.source_path &&
-                next[r.source_path]
-              ) {
-                delete next[r.source_path];
-                dirty = true;
+          const replaced = res
+            .filter(
+              (r) => r.success && r.output_path && r.output_path !== r.source_path,
+            )
+            .map((r) => r.source_path);
+          if (replaced.length) {
+            setEdits((prev) => {
+              let dirty = false;
+              const next = { ...prev };
+              for (const path of replaced) {
+                if (next[path]) {
+                  delete next[path];
+                  dirty = true;
+                }
               }
-            }
-            return dirty ? next : prev;
-          });
+              return dirty ? next : prev;
+            });
+            void clearEdits(replaced);
+          }
         }
         await incrementalSync();
       } catch (e) {
@@ -843,6 +837,7 @@ export default function LibraryView({
             for (const id of writtenIds) delete next[id];
             return next;
           });
+          void clearEdits([...writtenIds]);
         }
         const failed = results.filter((r) => r.error);
         if (failed.length) {
@@ -877,6 +872,9 @@ export default function LibraryView({
       if (!track) return;
       // Show the edit immediately; the write re-analyzes and clears it.
       setEdits((prev) => ({ ...prev, [id]: edit }));
+      // One row, written straight away — a pending edit must survive a quit
+      // even though the tags are not on disk yet.
+      void persistEdit(id, edit);
       void writeToFiles([
         { path: track.path, metadata: edit.metadata, cover: edit.cover },
       ]);

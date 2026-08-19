@@ -46,12 +46,23 @@ const AUDIO_EXTENSIONS = [
   "wma",
 ];
 
-/** Analyzes the given file paths in the Rust backend. */
+/**
+ * Analyzes the given file paths in the Rust backend.
+ *
+ * Pass `libraryDir` when the files belong to the library — the backend then
+ * stores the results, so a later scan can skip them. Imported files from
+ * elsewhere on disk are analyzed without being written to the library.
+ */
 export function analyzeFiles(
   paths: string[],
   analyzeBpm = false,
+  libraryDir?: string,
 ): Promise<TrackAnalysis[]> {
-  return invoke<TrackAnalysis[]>("analyze_files", { paths, analyzeBpm });
+  return invoke<TrackAnalysis[]>("analyze_files", {
+    paths,
+    analyzeBpm,
+    libraryDir: libraryDir ?? null,
+  });
 }
 
 /**
@@ -59,18 +70,24 @@ export function analyzeFiles(
  * Without `paths` it sweeps the whole library; with `paths` it processes
  * exactly those files (new ones, or the backlog still missing a BPM).
  * `forceBpm` re-detects the tempo even where one is already set.
+ *
+ * A sweep normally reuses the stored analysis of every file whose size and
+ * modification time are unchanged, which is what makes a rescan cheap. `force`
+ * re-probes regardless — the deliberate deep rescan.
  */
 export function startScan(
   dir: string,
   analyzeBpm = false,
   paths?: string[],
   forceBpm = false,
+  force = false,
 ): Promise<boolean> {
   return invoke<boolean>("start_scan", {
     dir,
     analyzeBpm,
     paths: paths ?? null,
     forceBpm,
+    force,
   });
 }
 
