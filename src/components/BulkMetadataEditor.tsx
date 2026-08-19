@@ -1,4 +1,5 @@
 import { useState } from "react";
+import Overlay from "./Overlay";
 import type { TrackMetadata } from "../types";
 
 /** Fields that can be set via bulk edit. */
@@ -81,7 +82,7 @@ export default function BulkMetadataEditor({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
+    <Overlay>
       <div className="flex w-full max-w-lg flex-col overflow-hidden rounded-2xl border border-border bg-surface shadow-2xl">
         <header className="flex items-center justify-between border-b border-border px-5 py-3">
           <h2 className="text-sm font-medium">
@@ -127,7 +128,7 @@ export default function BulkMetadataEditor({
                   onChange={(e) =>
                     setValues((s) => ({ ...s, [key]: e.target.value }))
                   }
-                  className="flex-1 rounded-lg border border-border-strong bg-surface-2 px-3 py-2 text-sm outline-none focus:border-accent-500 disabled:opacity-40"
+                  className="flex-1 rounded-lg border border-border-strong bg-surface-2 px-3 py-2 text-sm outline-none focus:border-accent-500 disabled:border-border disabled:text-fg-disabled"
                 />
                 {listId && (
                   <datalist id={listId}>
@@ -151,12 +152,12 @@ export default function BulkMetadataEditor({
           <button
             onClick={handleApply}
             disabled={!anyEnabled}
-            className="rounded-lg bg-accent-600 px-4 py-2 text-sm font-medium hover:bg-accent-500 disabled:opacity-40"
+            className="rounded-lg bg-accent-600 px-4 py-2 text-sm font-medium enabled:hover:bg-accent-500 disabled:bg-surface-2 disabled:text-fg-disabled"
           >
             Apply
           </button>
         </footer>
       </div>
-    </div>
+    </Overlay>
   );
 }

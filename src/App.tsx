@@ -5,6 +5,8 @@ import BandcampView from "./components/BandcampView";
 import SettingsView from "./components/SettingsView";
 import HeaderNav from "./components/HeaderNav";
 import PlayerBar from "./components/PlayerBar";
+import { ArrowUpIcon } from "./components/icons";
+import { useScrolled } from "./lib/useScrolled";
 import { PlayerProvider } from "./lib/player";
 import { CloseIcon } from "./components/icons";
 import { getCurrentWindow } from "@tauri-apps/api/window";
@@ -36,6 +38,32 @@ interface BootState {
 const MIN_SPLASH_MS = 300;
 
 type MainView = "library" | "bandcamp";
+
+/**
+ * Back to the top of the list.
+ *
+ * App-wide chrome, and a sibling of the view wrappers on purpose: `position:
+ * fixed` resolves against the nearest ancestor that establishes a containing
+ * block, and the wrappers' `animate-fade-in` touches `transform`. Inside one,
+ * this button anchors to the bottom of the *document* instead of the screen —
+ * the same reason the modals render through a portal (see `Overlay`).
+ */
+function BackToTop() {
+  const showTop = useScrolled(400);
+  return (
+    <button
+      onClick={() => window.scrollTo({ top: 0, behavior: "smooth" })}
+      aria-label="Back to top"
+      className={`fixed bottom-6 right-6 z-40 flex h-11 w-11 items-center justify-center rounded-full border border-border-strong bg-surface text-fg shadow-lg shadow-black/40 backdrop-blur transition-all duration-300 hover:border-accent-500 hover:text-accent-400 ${
+        showTop
+          ? "translate-y-0 opacity-100"
+          : "pointer-events-none translate-y-4 opacity-0"
+      }`}
+    >
+      <ArrowUpIcon />
+    </button>
+  );
+}
 
 export default function App() {
   const [view, setView] = useState<MainView>("library");
@@ -243,6 +271,7 @@ export default function App() {
         </>
       )}
     </div>
+      <BackToTop />
       <PlayerBar />
     </PlayerProvider>
   );

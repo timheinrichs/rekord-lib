@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import Overlay from "./Overlay";
 import { revealItemInDir } from "@tauri-apps/plugin-opener";
 import {
   coverPreview,
@@ -220,7 +221,7 @@ export default function MetadataEditor({
   const statusBadges = trackStatus(track, initial);
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
+    <Overlay>
       <div className="flex max-h-[90vh] w-[80vw] max-w-[80vw] flex-col overflow-hidden rounded-2xl border border-border bg-surface shadow-2xl">
         <header className="flex items-center justify-between border-b border-border px-5 py-3">
           <h2 className="text-lg font-medium">Metadata</h2>
@@ -476,13 +477,13 @@ export default function MetadataEditor({
           <button
             onClick={handleSave}
             disabled={!canSave}
-            className="rounded-lg bg-accent-600 px-4 py-2 text-sm font-medium hover:bg-accent-500 disabled:opacity-40"
+            className="rounded-lg bg-accent-600 px-4 py-2 text-sm font-medium enabled:hover:bg-accent-500 disabled:bg-surface-2 disabled:text-fg-disabled"
           >
             Confirm
           </button>
         </footer>
       </div>
-    </div>
+    </Overlay>
   );
 }
 
