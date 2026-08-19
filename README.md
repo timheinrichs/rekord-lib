@@ -147,6 +147,12 @@ in SQLite and is written from Rust, while `tauri-plugin-store` keeps only small
 config-shaped state. See the *Persistence* section of
 [CLAUDE.md](CLAUDE.md).
 
+### Hardware validation
+
+CDJ compatibility is only as good as what has actually been played on a player.
+[docs/CDJ_TEST_MATRIX.md](docs/CDJ_TEST_MATRIX.md) records which scenarios were
+validated on which model and firmware — and, right now, that none have been.
+
 ### Design
 
 The visual identity is fixed: colors only through tokens

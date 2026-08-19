@@ -178,18 +178,40 @@ in `audio/bpm.rs` stay — they test behaviour, not an implementation.
 
 ## C — Robustness and data safety
 
-### C1 · Backup and undo before destructive writes
+### C1 · Backup and undo before destructive writes — **done**
 
-**What** — make destructive operations reversible. Store the original tag block
-before the first metadata write so it can be reverted; send deletions to the
-system trash instead of unlinking.
+**What shipped** — three things, after checking what was actually already in
+place rather than what the comparison suggested:
 
-**Why** — dj-usb-tkit copies the database files to a timestamped backup before
-*every* write, and ships a panel to browse and restore them. We write tags into
-users' own files and delete originals after conversion with no way back. That
-asymmetry is the single biggest robustness gap on our side.
+- **Tag writes are undoable across restarts.** The undo history moved out of
+  React state into the database (`undo_entries`, schema v3), and the snapshot is
+  now taken *in the backend* from the files' real tags rather than from whatever
+  the library view last displayed. `undo_last` restores and drops the entry in
+  one step, so a failed restore does not lose the entry.
+- **Covers survive an undo.** The old snapshot carried no cover at all, so
+  undoing an artwork change restored the text and left the new cover in place.
+  A write that replaces embedded artwork now captures the previous bytes
+  (`CoverInput::Data`); a write that leaves the cover alone stores nothing, which
+  is what keeps a 200-track bulk edit's undo entry small.
+- **Conversion no longer unlinks the original.** `replace_source` used
+  `std::fs::remove_file` on the user's own audio; it goes to the trash now, like
+  every other delete in the app.
 
-*Size: M*
+**What the comparison got wrong** — worth recording, because it is why this item
+was smaller than it looked: deletions already went to the system trash
+(`delete_files`, `delete_album`, `prune_empty_dirs` have used the `trash` crate
+all along), and an undo for tag writes already existed — it was just in-memory
+and session-only.
+
+**What is left** (as follow-ups, not part of this item):
+
+- **C1a** — the scan's BPM pass writes a tag into every file it detects a tempo
+  for, with no undo record. It is additive by default (it only fills an empty
+  BPM), but `force` overwrites an existing value. Undoing it through
+  `write_metadata` would rewrite every tag in the file, which is a heavier
+  operation than the write being undone — it needs its own narrow path.
+- **C1b** — a conversion is still only reversible by hand: the original is in
+  the trash and the output is on disk, but nothing ties the two together.
 
 ### C2 · Relocate a moved library folder instead of pruning
 
@@ -384,12 +406,18 @@ Homebrew binaries into the bundle; every change ships with tests).
 
 *Size: S*
 
-### F4 · CDJ hardware test matrix
+### F4 · CDJ hardware test matrix — **started**
 
-**What** — `docs/CDJ_TEST_MATRIX.md`: which player models and firmware versions
-were actually validated, with which app version and which converted format, and
-the result. Every `warn` or `fail` row carries a fixed block —
-symptoms, reproduction, context, artifacts, open questions.
+**What** — [`docs/CDJ_TEST_MATRIX.md`](CDJ_TEST_MATRIX.md): which player models
+and firmware versions were actually validated, with which app version and which
+converted format, and the result. Every `warn` or `fail` row carries a fixed
+block — symptoms, reproduction, context, artifacts, open questions.
+
+**Status** — the file exists with its scenario catalogue (`aiff-16-44`,
+`downsample-96-to-44`, `aiff-c-to-pcm`, `embedded-cover`, …), the rules for what
+a row has to cover, and an explicit note that **no row has been validated yet**.
+Filling it needs a player; until then the file is honest about the claim being
+derived from Pioneer's documented limits rather than measured.
 
 **Why** — this matters more for us than it does for them. Our entire promise is
 "runs without error codes on every CDJ/XDJ", and right now that claim rests on

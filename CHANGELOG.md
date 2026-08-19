@@ -9,6 +9,25 @@ contain incompatible changes.
 
 ## [Unreleased]
 
+### Changed
+- **Undo survives a restart.** The undo history for tag writes moved into the
+  database, and the snapshot is taken from what is really in the files rather
+  than from what the list happened to be showing. The last 20 writes stay
+  undoable, each labelled with what it was — a filename, a bulk edit, a batch of
+  pending edits.
+- **Undoing an artwork change puts the old artwork back.** It used to restore
+  the text fields and leave the new cover in place, because the snapshot did not
+  cover it.
+- **Converting with "replace original" moves the original to the trash** instead
+  of deleting it outright. Every other delete in the app already did.
+
+### Added
+- `docs/CDJ_TEST_MATRIX.md` — where hardware-validated CDJ compatibility results
+  go, with the scenarios to cover and what a row has to record. No scenario has
+  been validated on a player yet, and the file says so.
+- `docs/FUTURE_CONSIDERATIONS.md` — the roadmap, from the comparison with
+  dj-usb-tkit.
+
 ## [0.4.9] - 2026-08-19
 
 ### Changed
