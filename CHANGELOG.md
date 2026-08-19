@@ -9,6 +9,55 @@ contain incompatible changes.
 
 ## [Unreleased]
 
+## [0.4.9] - 2026-08-19
+
+### Changed
+- **Rescanning is fast now.** The library moved from a JSON file into a database,
+  and a scan reuses what it already knows about every file whose size and
+  modification time are unchanged — so it only re-reads what actually changed.
+  Measured on a 2225-track library, a full rescan went from about four minutes to
+  seconds. The files that do need reading are probed eight at a time instead of
+  one after another. A rescan also picks up files you re-tagged outside the app,
+  which it never used to notice.
+- **The duplicate search is part of the scan.** It no longer needs starting: it
+  runs at the end of every scan that changed something, and its acoustic
+  fingerprints are kept, so a repeat search decodes nothing. On the same library
+  the second run reused 2147 fingerprints and computed none. A tempo-only
+  background pass does not trigger it — tempo is not something the matching
+  looks at.
+- **"Find duplicates" is now "Duplicates (n)"** and only appears when there are
+  any. It opens the panel; the panel no longer opens itself when a search
+  finishes, since nothing you did asked for that search. "Search again" is gone
+  with it — the scan button is the one way in.
+- **The scan button** reads "Scan library", has a scanner icon rather than a
+  reload arrow, and confirms a finished run for a moment with a check in green.
+- Groups you mark as **"not a duplicate" stay dismissed** across searches. They
+  used to only disappear from the current result, which was enough while the
+  search was manual and would have handed every one of them back now that it
+  runs on its own.
+- Saving is **incremental**: a single metadata edit writes one row instead of
+  rewriting a multi-megabyte file. During a scan that rewriting had been growing
+  the app by around 130 MB per minute and slowing down the very run it was
+  recording.
+- **Disabled buttons all look the same now.** The greyed-out state was drawn with
+  transparency in three different strengths, which came out as a different grey
+  on every kind of button — and made the same scan step look lighter in one pass
+  than in the next. It is a defined colour instead.
+
+### Fixed
+- **Dialogs opened off-screen.** The metadata editor, bulk edit and the
+  duplicates panel centred themselves on the whole track list rather than on the
+  window, so on a long library they opened far below what you were looking at and
+  had to be scrolled to. Back to top was misplaced for the same reason.
+- **Background listeners could pile up**, one per library-folder switch, each
+  still reacting to events for a screen that no longer existed.
+
+### Note
+The first scan after updating re-reads every file once. A new version may analyse
+differently than the one that filled the cache, and a file's size and timestamp
+cannot show that — so the cache is retired on a version change. Every scan after
+that one is fast again.
+
 ## [0.4.8] - 2026-08-08
 
 ### Added
