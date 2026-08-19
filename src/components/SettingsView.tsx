@@ -9,6 +9,7 @@ import {
   pickOutputDir,
 } from "../lib/api";
 import { checkForUpdate, installUpdate, type UpdateInfo } from "../lib/updater";
+import { HeartIcon } from "./icons";
 import {
   DOWNLOAD_FORMAT_LABELS,
   type DownloadFormat,
@@ -25,6 +26,8 @@ import {
 
 const LICENSES_URL =
   "https://github.com/timheinrichs/rekord-lib/blob/main/THIRD_PARTY_LICENSES.md";
+const DONATE_URL =
+  "https://www.paypal.com/donate/?hosted_button_id=UJGTJEK598ZFS";
 
 interface Props {
   settings: Settings;
@@ -431,6 +434,23 @@ export default function SettingsView({
             )}
           </div>
         )}
+
+        {/* Support. Outlined rather than accent-filled: the page's primary
+            action is the update, and the styleguide keeps one accent. The heart
+            is deliberately not danger-red — colour here would read as a state. */}
+        <div className="mt-4 flex flex-wrap items-center gap-3 border-t border-border pt-4">
+          <button
+            onClick={() => void openUrl(DONATE_URL)}
+            className="inline-flex items-center gap-1.5 rounded-lg border border-border-strong px-3 py-1.5 text-sm enabled:hover:border-accent-500 enabled:hover:text-accent-400"
+          >
+            <HeartIcon />
+            Donate
+          </button>
+          <p className="font-sans text-xs text-fg-subtle">
+            rekord-lib is free and MIT-licensed. If it saves you an evening of
+            re-encoding, you can chip in towards its development.
+          </p>
+        </div>
 
         {/* Version + license note (subtle, at the very bottom). */}
         <p className="mt-4 text-xs text-fg-subtle">

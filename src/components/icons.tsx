@@ -297,6 +297,22 @@ export function ScanIcon() {
   );
 }
 
+/** Support the project — a heart, filled, since it is not a status. */
+export function HeartIcon() {
+  return (
+    <svg
+      xmlns="http://www.w3.org/2000/svg"
+      width="16"
+      height="16"
+      viewBox="0 0 24 24"
+      fill="currentColor"
+      aria-hidden="true"
+    >
+      <path d="M12 20.5 3.9 12.6a5 5 0 0 1 7.1-7.1l1 1 1-1a5 5 0 0 1 7.1 7.1Z" />
+    </svg>
+  );
+}
+
 export function UndoIcon() {
   return (
     <svg
