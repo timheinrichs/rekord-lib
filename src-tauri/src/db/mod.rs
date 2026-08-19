@@ -21,7 +21,8 @@ use tauri::{AppHandle, Manager, State};
 use crate::audio::compat;
 use crate::error::{AppError, AppResult};
 use crate::models::{
-    AudioInfo, RelocateResult, TrackAnalysis, TrackMetadata, UndoEntry, WriteMetadataItem,
+    AppEvent, AudioInfo, EventLevel, RelocateResult, TrackAnalysis, TrackMetadata, UndoEntry,
+    WriteMetadataItem,
 };
 
 pub type DbResult<T> = Result<T, rusqlite::Error>;
@@ -539,6 +540,82 @@ pub fn dismiss_group(conn: &Connection, id: &str) -> DbResult<()> {
         "INSERT INTO dismissed_groups (id) VALUES (?1) ON CONFLICT(id) DO NOTHING",
         params![id],
     )?;
+    Ok(())
+}
+
+// --- event log --------------------------------------------------------------
+
+/// How many events are kept. Enough that a scan over a large library still fits
+/// with room to spare, few enough that the log stays a diagnostic record rather
+/// than something that grows with the collection.
+pub const MAX_EVENTS: usize = 500;
+
+/// Key under which the newest event the user has already looked at is stored.
+const KEY_EVENTS_SEEN: &str = "events_seen_id";
+
+/// Appends an event and prunes the log back to [`MAX_EVENTS`].
+pub fn push_event(
+    conn: &mut Connection,
+    level: EventLevel,
+    source: &str,
+    message: &str,
+    detail: Option<&str>,
+) -> DbResult<i64> {
+    let tx = conn.transaction()?;
+    tx.execute(
+        "INSERT INTO events (created_ms, level, source, message, detail)
+         VALUES (?1, ?2, ?3, ?4, ?5)",
+        params![now_ms(), level.as_str(), source, message, detail],
+    )?;
+    let id = tx.last_insert_rowid();
+    tx.execute(
+        "DELETE FROM events WHERE id NOT IN
+             (SELECT id FROM events ORDER BY id DESC LIMIT ?1)",
+        params![MAX_EVENTS as i64],
+    )?;
+    tx.commit()?;
+    Ok(id)
+}
+
+/// The log, newest first — the order the panel reads in.
+pub fn load_events(conn: &Connection) -> DbResult<Vec<AppEvent>> {
+    let mut stmt = conn.prepare(
+        "SELECT id, created_ms, level, source, message, detail
+         FROM events ORDER BY id DESC",
+    )?;
+    let rows = stmt.query_map([], |row| {
+        Ok(AppEvent {
+            id: row.get(0)?,
+            created_ms: row.get(1)?,
+            level: EventLevel::from_str(&row.get::<_, String>(2)?),
+            source: row.get(3)?,
+            message: row.get(4)?,
+            detail: row.get(5)?,
+        })
+    })?;
+    rows.collect()
+}
+
+/// Empties the log, when the user has read it and wants a clean slate.
+pub fn clear_events(conn: &Connection) -> DbResult<usize> {
+    Ok(conn.execute("DELETE FROM events", [])?)
+}
+
+/// The newest event the user has already seen, or 0 for a log never opened.
+/// Drives the badge, which is why it is stored next to the events rather than
+/// in the settings: it is bookkeeping for this table, not a preference.
+pub fn events_seen(conn: &Connection) -> DbResult<i64> {
+    Ok(meta_get(conn, KEY_EVENTS_SEEN)?
+        .and_then(|v| v.parse::<i64>().ok())
+        .unwrap_or(0))
+}
+
+/// Marks everything up to `id` as seen. Never moves backwards: opening the
+/// panel twice must not make older entries unread again.
+pub fn mark_events_seen(conn: &Connection, id: i64) -> DbResult<()> {
+    if id > events_seen(conn)? {
+        meta_set(conn, KEY_EVENTS_SEEN, &id.to_string())?;
+    }
     Ok(())
 }
 
@@ -1303,6 +1380,78 @@ mod tests {
 
         push_undo(&mut conn, "nothing", &[]).unwrap();
         assert!(latest_undo(&conn).unwrap().is_none());
+    }
+
+    #[test]
+    fn events_come_back_newest_first() {
+        let db = Db::open_in_memory().unwrap();
+        let mut conn = db.0.lock().unwrap();
+        push_event(&mut conn, EventLevel::Info, "scan", "started", None).unwrap();
+        push_event(
+            &mut conn,
+            EventLevel::Error,
+            "scan",
+            "failed",
+            Some("no space left"),
+        )
+        .unwrap();
+
+        let events = load_events(&conn).unwrap();
+        assert_eq!(events.len(), 2);
+        // The panel reads top-down, so the newest belongs first.
+        assert_eq!(events[0].message, "failed");
+        assert_eq!(events[0].level, EventLevel::Error);
+        assert_eq!(events[0].detail.as_deref(), Some("no space left"));
+        assert_eq!(events[1].message, "started");
+        assert!(events[1].detail.is_none());
+    }
+
+    #[test]
+    fn the_log_stops_at_the_cap() {
+        let db = Db::open_in_memory().unwrap();
+        let mut conn = db.0.lock().unwrap();
+        for i in 0..(MAX_EVENTS + 5) {
+            push_event(&mut conn, EventLevel::Info, "scan", &format!("event {i}"), None).unwrap();
+        }
+
+        let events = load_events(&conn).unwrap();
+        assert_eq!(events.len(), MAX_EVENTS);
+        // The oldest ones go, not the newest.
+        assert_eq!(events[0].message, format!("event {}", MAX_EVENTS + 4));
+    }
+
+    #[test]
+    fn an_unknown_level_reads_as_info_rather_than_alarming() {
+        let db = Db::open_in_memory().unwrap();
+        let mut conn = db.0.lock().unwrap();
+        push_event(&mut conn, EventLevel::Warn, "scan", "x", None).unwrap();
+        conn.execute("UPDATE events SET level = 'catastrophe'", []).unwrap();
+
+        assert_eq!(load_events(&conn).unwrap()[0].level, EventLevel::Info);
+    }
+
+    #[test]
+    fn seen_marker_only_ever_moves_forward() {
+        let db = Db::open_in_memory().unwrap();
+        let mut conn = db.0.lock().unwrap();
+        // Nothing read yet, so every event counts as new.
+        assert_eq!(events_seen(&conn).unwrap(), 0);
+
+        mark_events_seen(&conn, 7).unwrap();
+        assert_eq!(events_seen(&conn).unwrap(), 7);
+        // Opening the panel again must not make older entries unread.
+        mark_events_seen(&conn, 3).unwrap();
+        assert_eq!(events_seen(&conn).unwrap(), 7);
+    }
+
+    #[test]
+    fn clearing_empties_the_log() {
+        let db = Db::open_in_memory().unwrap();
+        let mut conn = db.0.lock().unwrap();
+        push_event(&mut conn, EventLevel::Warn, "scan", "x", None).unwrap();
+
+        assert_eq!(clear_events(&conn).unwrap(), 1);
+        assert!(load_events(&conn).unwrap().is_empty());
     }
 
     #[test]

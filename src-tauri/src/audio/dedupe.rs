@@ -242,7 +242,12 @@ fn cached_fingerprints(
     match result {
         Ok(found) => found,
         Err(e) => {
-            eprintln!("Could not read the fingerprint cache: {e}");
+            crate::events::warn(
+                app,
+                "duplicates",
+                "Could not read the fingerprint cache — the files will be fingerprinted again",
+                Some(&e.to_string()),
+            );
             HashMap::new()
         }
     }
@@ -261,7 +266,12 @@ fn store_fingerprint(app: &AppHandle, path: &str, fs: FsIdentity, fp: &[u32]) {
         )?)
     });
     if let Err(e) = result {
-        eprintln!("Could not cache the fingerprint for {path}: {e}");
+        crate::events::warn(
+            app,
+            "duplicates",
+            "Could not cache a fingerprint — the next search recomputes it",
+            Some(&format!("{path}: {e}")),
+        );
     }
 }
 

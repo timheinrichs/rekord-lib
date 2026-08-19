@@ -26,6 +26,9 @@ interface Props {
   onNavigate: (v: "library" | "bandcamp") => void;
   onOpenSettings: () => void;
   updateAvailable?: boolean;
+  /** Loudest unread level in the event log (see lib/events). */
+  eventBadge?: "warn" | "error" | null;
+  onOpenEventLog: () => void;
   onTitleClick?: () => void;
 }
 
@@ -47,6 +50,8 @@ export default function BandcampView({
   onNavigate,
   onOpenSettings,
   updateAvailable,
+  eventBadge,
+  onOpenEventLog,
   onTitleClick,
 }: Props) {
   const [viewMode, setViewMode] = useState<"list" | "grid">("list");
@@ -58,6 +63,8 @@ export default function BandcampView({
       onClearDownloads={onClearDownloads}
       onCancelDownload={onCancelDownload}
       onOpenSettings={onOpenSettings}
+      eventBadge={eventBadge}
+      onOpenEventLog={onOpenEventLog}
       updateAvailable={updateAvailable}
     />
   );

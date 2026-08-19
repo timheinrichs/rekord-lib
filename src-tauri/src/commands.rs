@@ -9,12 +9,14 @@ use crate::bandcamp::session::BandcampState;
 use crate::bandcamp::{collection, download, session};
 use crate::db::{self, FsIdentity, TrackRecord};
 use crate::error::{AppError, AppResult};
+use crate::events;
 use crate::jobs::{BandcampDownloadState, DedupeState, ScanState, WatchState};
 use crate::metadata::read::read_metadata;
 use crate::metadata::{artwork, suggest, write};
 use crate::models::{
     BandcampAccount, BandcampDownloadResult, BandcampItem, ConvertJob, ConvertOptions,
-    ConvertResult, CoverInput, DeleteResult, DupCandidate, DuplicateGroup, MetadataSuggestions,
+    ConvertResult, CoverInput, DeleteResult, DupCandidate, DuplicateGroup, EventLog,
+    MetadataSuggestions,
     RelocateResult, SkippedFile, TrackAnalysis, UndoEntry, WriteMetadataItem,
 };
 
@@ -90,7 +92,9 @@ const AUDIO_EXTENSIONS: [&str; 11] = [
 ];
 
 /// Analyzes a single file (audio properties, compatibility, metadata).
-/// Returns `None` if it is not a (readable) audio file.
+///
+/// The error is part of the result on purpose: a file that cannot be probed is
+/// skipped, and the caller needs the reason to be able to report it.
 async fn analyze_path(app: &AppHandle, path: String) -> AppResult<TrackAnalysis> {
     let audio = probe::probe(app, &path).await?;
     let compat = compat::evaluate(&audio);
@@ -117,6 +121,9 @@ async fn analyze_path(app: &AppHandle, path: String) -> AppResult<TrackAnalysis>
 /// away at `analyze_path`. Every path that drops a file now says so here, and
 /// the frontend collects them into one list.
 fn record_skip(app: &AppHandle, path: &str, reason: String) {
+    // Also in the log: the header count is gone on the next restart, and "why
+    // is this track not in my library" outlives the session it happened in.
+    events::warn(app, "scan", &format!("Skipped {}", file_name(path)), Some(&format!("{path}: {reason}")));
     let _ = app.emit(
         "scan://skipped",
         SkippedFile {
@@ -249,7 +256,12 @@ async fn detect_bpm_pass(
                 // re-analyzing this file. A failed write is not fatal — the
                 // value still shows up in the library for this session.
                 if let Err(e) = write::write_bpm(&tracks[index].path, value) {
-                    eprintln!("BPM write failed for {}: {e}", tracks[index].path);
+                    events::warn(
+                        app,
+                        "bpm",
+                        "Detected a tempo but could not write it into the file",
+                        Some(&format!("{}: {e}", tracks[index].path)),
+                    );
                 }
                 tracks[index].metadata.bpm = Some(value);
                 updated.push(tracks[index].clone());
@@ -446,7 +458,12 @@ pub fn start_scan(
             let seen: Vec<String> = out.iter().map(|t| t.path.clone()).collect();
             match retain_scanned_tracks(&app, &dir, &seen) {
                 Ok(n) => removed = n,
-                Err(e) => eprintln!("Pruning removed tracks failed: {e}"),
+                Err(e) => events::error(
+                    &app,
+                    "library",
+                    "Could not drop the tracks that are gone from disk",
+                    Some(&e.to_string()),
+                ),
             }
         }
 
@@ -602,7 +619,12 @@ fn load_track_cache(
     match result {
         Ok(cache) => cache,
         Err(e) => {
-            eprintln!("Could not read the scan cache: {e}");
+            events::warn(
+                app,
+                "scan",
+                "Could not read the scan cache — every file will be probed again",
+                Some(&e.to_string()),
+            );
             std::collections::HashMap::new()
         }
     }
@@ -618,7 +640,12 @@ fn persist_tracks(app: &AppHandle, dir: &str, records: &[TrackRecord]) {
         Ok(db::upsert_tracks(&mut conn, dir, records)?)
     });
     if let Err(e) = result {
-        eprintln!("Could not persist {} tracks: {e}", records.len());
+        events::error(
+            app,
+            "scan",
+            &format!("Could not store {} analyzed track(s)", records.len()),
+            Some(&e.to_string()),
+        );
     }
 }
 
@@ -654,7 +681,12 @@ async fn run_dedupe_phase(app: &AppHandle, dir: &str, generation: u64) -> bool {
     }) {
         Ok(c) => c,
         Err(e) => {
-            eprintln!("Could not read the library for the duplicate search: {e}");
+            events::error(
+            app,
+            "duplicates",
+            "Could not read the library for the duplicate search",
+            Some(&e.to_string()),
+        );
             return false;
         }
     };
@@ -711,7 +743,12 @@ fn drop_dismissed(app: &AppHandle, groups: Vec<DuplicateGroup>) -> Vec<Duplicate
     match dismissed {
         Ok(ids) => groups.into_iter().filter(|g| !ids.contains(&g.id)).collect(),
         Err(e) => {
-            eprintln!("Could not read dismissed groups: {e}");
+            events::warn(
+                app,
+                "duplicates",
+                "Could not read the dismissed groups — they may be offered again",
+                Some(&e.to_string()),
+            );
             groups
         }
     }
@@ -737,7 +774,12 @@ fn persist_duplicate_groups(app: &AppHandle, groups: &[DuplicateGroup]) {
         Ok(db::save_duplicate_groups(&mut conn, &values)?)
     });
     if let Err(e) = result {
-        eprintln!("Could not store the duplicate result: {e}");
+        events::warn(
+            app,
+            "duplicates",
+            "Could not store the duplicate result — the next start searches again",
+            Some(&e.to_string()),
+        );
     }
 }
 
@@ -749,6 +791,33 @@ pub fn library_load(app: AppHandle, dir: String) -> AppResult<Vec<TrackAnalysis>
     let database = db::require(&app)?;
     let conn = database.conn()?;
     Ok(db::load_tracks(&conn, &dir)?)
+}
+
+/// The event log, newest first, with how far the user has read.
+#[tauri::command]
+pub fn events_load(app: AppHandle) -> AppResult<EventLog> {
+    let database = db::require(&app)?;
+    let conn = database.conn()?;
+    Ok(EventLog {
+        events: db::load_events(&conn)?,
+        seen_id: db::events_seen(&conn)?,
+    })
+}
+
+/// Marks everything up to `id` as read, which is what clears the badge.
+#[tauri::command]
+pub fn events_mark_seen(app: AppHandle, id: i64) -> AppResult<()> {
+    let database = db::require(&app)?;
+    let conn = database.conn()?;
+    Ok(db::mark_events_seen(&conn, id)?)
+}
+
+/// Empties the log.
+#[tauri::command]
+pub fn events_clear(app: AppHandle) -> AppResult<usize> {
+    let database = db::require(&app)?;
+    let conn = database.conn()?;
+    Ok(db::clear_events(&conn)?)
 }
 
 /// Whether the library folder can be listed right now.
@@ -1251,7 +1320,12 @@ pub async fn write_metadata(
                 .unwrap_or_else(|| format!("{} track(s)", snapshot.len()));
             // A failed snapshot costs the undo, not the write the user asked for.
             if let Err(e) = store_undo(&app, &label, &snapshot) {
-                eprintln!("Could not record undo entry: {e}");
+                events::warn(
+                    &app,
+                    "metadata",
+                    "Could not record the undo entry — this write cannot be taken back",
+                    Some(&e.to_string()),
+                );
             }
         }
     }
@@ -1426,7 +1500,12 @@ fn forget_deleted(app: &AppHandle, results: &[DeleteResult]) {
         Ok(db::delete_tracks(&mut conn, &gone)?)
     });
     if let Err(e) = result {
-        eprintln!("Could not drop {} deleted tracks: {e}", gone.len());
+        events::warn(
+            app,
+            "library",
+            &format!("Could not forget {} deleted track(s)", gone.len()),
+            Some(&e.to_string()),
+        );
     }
 }
 

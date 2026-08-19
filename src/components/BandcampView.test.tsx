@@ -39,6 +39,7 @@ function baseProps() {
     onCancelDownload: vi.fn(),
     onNavigate: vi.fn(),
     onOpenSettings: vi.fn(),
+    onOpenEventLog: vi.fn(),
   };
 }
 

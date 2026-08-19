@@ -3,6 +3,7 @@ mod bandcamp;
 mod commands;
 mod db;
 mod error;
+mod events;
 mod jobs;
 mod metadata;
 mod models;
@@ -88,6 +89,9 @@ pub fn run() {
             commands::library_delete,
             commands::library_dir_available,
             commands::library_relocate,
+            commands::events_load,
+            commands::events_mark_seen,
+            commands::events_clear,
             commands::edits_load,
             commands::edit_set,
             commands::edit_clear,

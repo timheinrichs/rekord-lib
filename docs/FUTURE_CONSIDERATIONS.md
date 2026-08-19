@@ -247,13 +247,41 @@ app offers to follow it:
 
 *Size: M*
 
-### C3 · Persistent event log
+### C3 · Persistent event log — **done**
 
-**What** — a durable, copyable log of what the app did and what failed, in a
-panel, instead of transient toasts.
+**What shipped** — a log in SQLite (`events`, schema v4), a button in the shared
+header, and one rule about what goes in it.
 
-**Why** — it is the difference between "it didn't work" and a bug report anyone
-can act on. dj-usb-tkit has this and leans on it heavily in their docs.
+- **What is recorded** are the failures the app *survived*: a cache it could not
+  read, rows it could not persist, a duplicate result it could not store, an
+  undo entry it could not write, a detected tempo it could not save, a file it
+  had to skip. Every one of them used to be an `eprintln!`, which in a bundled
+  `.app` goes nowhere anyone will ever look — and every one of them explains
+  behaviour that looks arbitrary afterwards (why was that file re-probed, why is
+  that track missing, why did undo do nothing). Failures the user is already
+  looking at — a conversion that reports its own error — stay where they are.
+- **`events::record`** writes the row and prints the same line, so a `tauri dev`
+  run still shows it inline. It is best effort by design: the log exists to
+  explain a failure and must never turn a survivable one into a fatal one.
+- **The panel** lives behind a header button, always reachable, with a dot only
+  when something *unread* is a warning or an error — the marker is stored next
+  to the events (`events_seen_id`), so it is bookkeeping for the table rather
+  than a user preference. The whole log copies as text, which is the form a bug
+  report needs.
+- **Capped at 500 entries** (`MAX_EVENTS`), pruned on insert: a diagnostic
+  record, not an archive, and nothing that grows with the collection.
+
+**What is left** — the four `eprintln!` calls in `lib.rs` stay as they are: they
+run during setup, and two of them are about the database that would have to
+record them. `db::migrate` is in the same position.
+
+Testing the panel turned up one more thing, fixed along the way: ffprobe
+identifies a file by its extension as readily as by its contents, so four bytes
+of text named `.flac` probed *successfully* as a FLAC stream with 0 Hz and no
+channels — and landed in the library as a track that could never be played or
+converted. `probe` now rejects a stream without a sample rate or channels, which
+turns it into a skip with a reason instead of a row that fails at everything
+later.
 
 *Size: M*
 

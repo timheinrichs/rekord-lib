@@ -174,6 +174,26 @@ export interface ScanDone {
   tracks: TrackAnalysis[];
 }
 
+/** How much attention an event deserves. */
+export type EventLevel = "info" | "warn" | "error";
+
+/** One line in the event log (see lib/events). */
+export interface AppEvent {
+  id: number;
+  created_ms: number;
+  level: EventLevel;
+  /** Which part of the app produced it — a label, not something to branch on. */
+  source: string;
+  message: string;
+  detail: string | null;
+}
+
+/** The log plus how far the user has read, fetched together so they agree. */
+export interface EventLog {
+  events: AppEvent[];
+  seen_id: number;
+}
+
 /**
  * A file the analysis could not use. Streamed as it happens rather than
  * returned with the result, because the same reporting covers the incremental

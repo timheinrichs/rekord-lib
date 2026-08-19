@@ -75,6 +75,19 @@ fn probe_error(path: &str, code: Option<i32>, stderr: &str) -> String {
     }
 }
 
+/// Whether a probed stream describes audio that can actually be decoded.
+///
+/// ffprobe identifies a file by its extension as readily as by its contents:
+/// four bytes of text named `.flac` come back as a successful probe of a FLAC
+/// stream — with a sample rate of 0, no channels and no bit depth. That is not
+/// a track. It cannot be played, converted or written to a USB stick, and
+/// letting it into the library only produces a row that fails at everything
+/// later. Rejected here it becomes a skip with a reason, which is somewhere the
+/// user can actually see it.
+fn is_playable(sample_rate: u32, channels: u32) -> bool {
+    sample_rate > 0 && channels > 0
+}
+
 pub async fn probe(app: &AppHandle, path: &str) -> AppResult<AudioInfo> {
     let json = run_ffprobe(app, path).await?;
 
@@ -112,6 +125,12 @@ pub async fn probe(app: &AppHandle, path: &str) -> AppResult<AudioInfo> {
         .get("channels")
         .and_then(json_number_as_u32)
         .unwrap_or(0);
+
+    if !is_playable(sample_rate, channels) {
+        return Err(AppError::Probe(format!(
+            "no decodable audio — the {codec} stream reports {sample_rate} Hz and {channels} channel(s)"
+        )));
+    }
 
     // Duration: preferably from the stream, otherwise from the container.
     let duration_secs = audio
@@ -187,6 +206,16 @@ mod tests {
             ),
             "Invalid data found"
         );
+    }
+
+    #[test]
+    fn a_stream_without_rate_or_channels_is_not_audio() {
+        assert!(is_playable(44_100, 2));
+        assert!(is_playable(8_000, 1));
+        // What ffprobe reports for a file it only recognised by its extension.
+        assert!(!is_playable(0, 0));
+        assert!(!is_playable(44_100, 0));
+        assert!(!is_playable(0, 2));
     }
 
     #[test]

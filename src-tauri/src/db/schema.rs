@@ -17,10 +17,11 @@ use super::DbResult;
 /// start. Only changes that transform or drop existing data need a step in
 /// [`super::migrate`].
 ///
+/// - 4: `events`
 /// - 3: `undo_entries`
 /// - 2: `dismissed_groups`
 /// - 1: initial
-pub const SCHEMA_VERSION: i64 = 3;
+pub const SCHEMA_VERSION: i64 = 4;
 
 /// Key under which the schema version lives in `schema_meta`.
 pub const KEY_SCHEMA_VERSION: &str = "schema_version";
@@ -106,6 +107,19 @@ CREATE TABLE IF NOT EXISTS dismissed_groups (
 -- still be taken back after a restart. The payload is a `Vec<WriteMetadataItem>`
 -- as JSON — the same shape the write path consumes, because undoing a write is
 -- itself a write.
+-- What the app did and what failed, so a run can still be explained after the
+-- toast is gone and the app has been restarted. Capped in `push_event`: it is a
+-- diagnostic record, not an archive, and it must not grow with the library.
+CREATE TABLE IF NOT EXISTS events (
+    id         INTEGER PRIMARY KEY AUTOINCREMENT,
+    created_ms INTEGER NOT NULL,
+    level      TEXT NOT NULL,
+    source     TEXT NOT NULL,
+    message    TEXT NOT NULL,
+    -- The path, the raw error, whatever makes the message actionable.
+    detail     TEXT
+);
+
 CREATE TABLE IF NOT EXISTS undo_entries (
     id         INTEGER PRIMARY KEY AUTOINCREMENT,
     created_ms INTEGER NOT NULL,

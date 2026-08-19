@@ -2,7 +2,7 @@ import { useState } from "react";
 import { formatBytes } from "../lib/format";
 import { useDismiss } from "../lib/useDismiss";
 import type { DownloadEntry } from "../lib/useBandcamp";
-import { DownloadIcon, GearIcon } from "./icons";
+import { DownloadIcon, GearIcon, LogIcon } from "./icons";
 
 export type MainView = "library" | "bandcamp";
 
@@ -14,6 +14,9 @@ interface Props {
   onCancelDownload: (key: string) => void;
   onOpenSettings: () => void;
   updateAvailable?: boolean;
+  /** Loudest unread level in the event log, or null for nothing to flag. */
+  eventBadge?: "warn" | "error" | null;
+  onOpenEventLog: () => void;
 }
 
 /**
@@ -28,6 +31,8 @@ export default function HeaderNav({
   onCancelDownload,
   onOpenSettings,
   updateAvailable,
+  eventBadge,
+  onOpenEventLog,
 }: Props) {
   const [downloadsOpen, setDownloadsOpen] = useState(false);
   const downloadsRef = useDismiss<HTMLDivElement>(downloadsOpen, () =>
@@ -51,6 +56,25 @@ export default function HeaderNav({
           onClick={() => onNavigate("bandcamp")}
         />
       </nav>
+
+      {/* The event log. Always reachable — the point of it is the run that went
+          wrong an hour ago — with a dot only when something unread needs
+          attention. */}
+      <button
+        onClick={onOpenEventLog}
+        className="relative flex shrink-0 items-center justify-center rounded-lg border border-border-strong p-2 text-fg-muted hover:border-accent-500 hover:text-accent-400"
+        title="Event log"
+        aria-label="Event log"
+      >
+        <LogIcon />
+        {eventBadge && (
+          <span
+            className={`absolute -right-0.5 -top-0.5 h-2 w-2 rounded-full ${
+              eventBadge === "error" ? "bg-danger-500" : "bg-warning-500"
+            }`}
+          />
+        )}
+      </button>
 
       {downloadList.length > 0 && (
         <div ref={downloadsRef} className="relative shrink-0">

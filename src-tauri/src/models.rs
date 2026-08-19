@@ -323,6 +323,61 @@ pub struct DuplicateGroup {
     pub keep_id: String,
 }
 
+/// How much attention an event deserves. Three levels, because the panel sorts
+/// by "can I ignore this": a finished scan, a file that was left out, a
+/// operation that did not happen.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum EventLevel {
+    Info,
+    Warn,
+    Error,
+}
+
+impl EventLevel {
+    /// The stored form. Spelled out rather than derived so a rename of the
+    /// variant cannot silently orphan the rows already in the database.
+    pub fn as_str(self) -> &'static str {
+        match self {
+            EventLevel::Info => "info",
+            EventLevel::Warn => "warn",
+            EventLevel::Error => "error",
+        }
+    }
+
+    /// Reads a stored level back. Anything unknown counts as `Info`: a row from
+    /// a future version is still worth showing, just not worth alarming about.
+    pub fn from_str(s: &str) -> Self {
+        match s {
+            "error" => EventLevel::Error,
+            "warn" => EventLevel::Warn,
+            _ => EventLevel::Info,
+        }
+    }
+}
+
+/// One line in the event log.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct AppEvent {
+    pub id: i64,
+    pub created_ms: i64,
+    pub level: EventLevel,
+    /// Which part of the app produced it ("scan", "convert", …). Free-form on
+    /// purpose: it is a label in a panel, not something to branch on.
+    pub source: String,
+    pub message: String,
+    pub detail: Option<String>,
+}
+
+/// The event log plus how far the user has read, in one read: the badge needs
+/// both, and fetching them separately could only ever disagree.
+#[derive(Debug, Clone, Serialize)]
+pub struct EventLog {
+    pub events: Vec<AppEvent>,
+    /// Id of the newest event already seen; 0 for a log never opened.
+    pub seen_id: i64,
+}
+
 /// A file the analysis could not use, and why. Reported rather than dropped:
 /// a scan over a mixed collection always meets a few of these, and "the scan
 /// finished but three files are missing from the list" is not something the

@@ -4,6 +4,7 @@ import LibraryView from "./components/LibraryView";
 import BandcampView from "./components/BandcampView";
 import SettingsView from "./components/SettingsView";
 import HeaderNav from "./components/HeaderNav";
+import EventLogModal from "./components/EventLogModal";
 import PlayerBar from "./components/PlayerBar";
 import { ArrowUpIcon } from "./components/icons";
 import { useScrolled } from "./lib/useScrolled";
@@ -12,6 +13,12 @@ import { CloseIcon } from "./components/icons";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { bandcampStatus, startScan } from "./lib/api";
 import { syncCollection } from "./lib/bandcampSync";
+import {
+  badgeLevel,
+  loadEvents,
+  markEventsSeen,
+  onEventLogged,
+} from "./lib/events";
 import { useBandcamp } from "./lib/useBandcamp";
 import {
   DEFAULT_SETTINGS,
@@ -23,7 +30,12 @@ import { checkForUpdate, type UpdateInfo } from "./lib/updater";
 import AppSplash from "./components/AppSplash";
 import { useReplayAnimation } from "./lib/useReplayAnimation";
 import type { BootPhase } from "./lib/boot";
-import type { BandcampAccount, ScanProgress, TrackAnalysis } from "./types";
+import type {
+  AppEvent,
+  BandcampAccount,
+  ScanProgress,
+  TrackAnalysis,
+} from "./types";
 
 interface BootState {
   phase: BootPhase;
@@ -77,6 +89,11 @@ export default function App() {
   // since only it knows when the cache has been read.
   const [boot, setBoot] = useState<BootState>({ phase: "starting" });
   const [splashGone, setSplashGone] = useState(false);
+  // The event log. Held here rather than in a view because it outlives both of
+  // them and the badge sits in the shared header.
+  const [events, setEvents] = useState<AppEvent[]>([]);
+  const [eventsSeen, setEventsSeen] = useState(0);
+  const [logOpen, setLogOpen] = useState(false);
 
   const bc = useBandcamp(settings, account);
 
@@ -147,6 +164,39 @@ export default function App() {
     void startScan(dir, true, libraryTracks.map((t) => t.path), true);
   }, [settings.library_dir, libraryTracks]);
 
+  const refreshEvents = useCallback(() => {
+    void loadEvents()
+      .then((log) => {
+        setEvents(log.events);
+        setEventsSeen(log.seen_id);
+      })
+      // A log that cannot be read is not worth an error of its own — the badge
+      // simply stays quiet.
+      .catch(() => {});
+  }, []);
+
+  useEffect(refreshEvents, [refreshEvents]);
+
+  // The backend says when it recorded something, so the badge follows without
+  // polling.
+  useEffect(() => {
+    const un = onEventLogged(refreshEvents);
+    return () => {
+      void un.then((f) => f());
+    };
+  }, [refreshEvents]);
+
+  // Opening the log is what marks it read: the badge answers "is there
+  // something I have not looked at", not "has anything ever gone wrong".
+  const openEventLog = useCallback(() => {
+    setLogOpen(true);
+    const newest = events[0]?.id ?? 0;
+    if (newest > eventsSeen) {
+      setEventsSeen(newest);
+      void markEventsSeen(newest).catch(() => {});
+    }
+  }, [events, eventsSeen]);
+
   const updateSettings = useCallback((patch: Partial<Settings>) => {
     setSettings((prev) => {
       const next = { ...prev, ...patch };
@@ -178,6 +228,8 @@ export default function App() {
       onCancelDownload={bc.cancelDownload}
       onOpenSettings={() => setSettingsOpen(true)}
       updateAvailable={!!update}
+      eventBadge={badgeLevel(events, eventsSeen)}
+      onOpenEventLog={openEventLog}
     />
   );
 
@@ -239,8 +291,18 @@ export default function App() {
               onNavigate={setView}
               onOpenSettings={() => setSettingsOpen(true)}
               updateAvailable={!!update}
+              eventBadge={badgeLevel(events, eventsSeen)}
+              onOpenEventLog={openEventLog}
             />
           </div>
+
+          {logOpen && (
+            <EventLogModal
+              events={events}
+              onClose={() => setLogOpen(false)}
+              onCleared={refreshEvents}
+            />
+          )}
 
           {settingsOpen && (
             <div className="animate-fade-in">
