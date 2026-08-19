@@ -174,6 +174,17 @@ export interface ScanDone {
   tracks: TrackAnalysis[];
 }
 
+/**
+ * A file the analysis could not use. Streamed as it happens rather than
+ * returned with the result, because the same reporting covers the incremental
+ * sync and a tag write's re-read, neither of which ends in a `ScanDone`.
+ */
+export interface SkippedFile {
+  path: string;
+  file_name: string;
+  reason: string;
+}
+
 /** A batch of tracks streamed while the scan runs. */
 export interface ScanTracks {
   generation: number;

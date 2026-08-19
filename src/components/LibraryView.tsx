@@ -13,6 +13,7 @@ import {
   onLibraryChanged,
   onScanDone,
   onScanProgress,
+  onScanSkipped,
   onScanTracks,
   pickOutputDir,
   pruneEmptyDirs,
@@ -41,6 +42,7 @@ import {
   saveEdit as persistEdit,
 } from "../lib/library";
 import { relocateMessage, shouldRelocate } from "../lib/relocate";
+import { addSkipped, skippedLabel } from "../lib/skipped";
 import { dismissDuplicates, loadDuplicates, saveDuplicates } from "../lib/duplicates";
 import {
   editComplete,
@@ -60,6 +62,7 @@ import type {
   DeleteResult,
   DuplicateGroup,
   ScanProgress,
+  SkippedFile,
   TrackAnalysis,
   TrackEdit,
 } from "../types";
@@ -70,6 +73,7 @@ import CoverThumb from "./CoverThumb";
 import { usePlayer, type PlayerTrack } from "../lib/player";
 import MarqueeText from "./MarqueeText";
 import DuplicatesModal from "./DuplicatesModal";
+import SkippedModal from "./SkippedModal";
 import AppHeader from "./AppHeader";
 import {
   ScanIcon,
@@ -220,6 +224,11 @@ export default function LibraryView({
   // on a volume that is not mounted. Distinct from an empty library, which is
   // what it would otherwise look like here.
   const [dirMissing, setDirMissing] = useState(false);
+  // Files the analysis had to leave out, with the reason each one gave. A scan
+  // over a mixed collection always meets a few; skipping them is right, doing
+  // it silently was not.
+  const [skipped, setSkipped] = useState<SkippedFile[]>([]);
+  const [skippedOpen, setSkippedOpen] = useState(false);
   // Outcome of the last re-link, shown once the folder is back.
   const [relocated, setRelocated] = useState<string | null>(null);
 
@@ -242,6 +251,9 @@ export default function LibraryView({
       return;
     }
     setError(null);
+    // A full sweep meets every file again, so it reports its own skips from
+    // scratch rather than adding to the last run's.
+    setSkipped([]);
     setLoading(true);
     void startScan(libraryDir, settings.analyze_bpm);
   }, [libraryDir, settings.analyze_bpm]);
@@ -368,6 +380,10 @@ export default function LibraryView({
         await onScanTracks((t) => {
           setTracks((prev) => mergeScanned(prev, t.tracks));
         }),
+      );
+      // Files the analysis could not use, reported one by one as they happen.
+      group.add(
+        await onScanSkipped((f) => setSkipped((prev) => addSkipped(prev, f))),
       );
       group.add(
         await onScanDone((d) => {
@@ -1379,6 +1395,15 @@ export default function LibraryView({
           {`Duplicates (${dupGroups.length})`}
         </button>
       )}
+      {skippedLabel(skipped) && (
+        <button
+          onClick={() => setSkippedOpen(true)}
+          className="inline-flex items-center gap-1.5 rounded-lg border border-warning-500/40 px-3 py-2 text-sm text-warning-500 hover:border-warning-500"
+          title="Files the analysis could not use — see why"
+        >
+          {skippedLabel(skipped)}
+        </button>
+      )}
       {writing && (
         <span
           className="flex h-9 w-9 items-center justify-center text-fg-muted"
@@ -2211,6 +2236,10 @@ export default function LibraryView({
           }}
           onApply={applyBulk}
         />
+      )}
+
+      {skippedOpen && (
+        <SkippedModal files={skipped} onClose={() => setSkippedOpen(false)} />
       )}
 
       {dupOpen && (

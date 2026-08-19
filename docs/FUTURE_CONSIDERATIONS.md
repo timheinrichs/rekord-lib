@@ -257,15 +257,35 @@ can act on. dj-usb-tkit has this and leans on it heavily in their docs.
 
 *Size: M*
 
-### C4 · Visible failed-files list
+### C4 · Visible failed-files list — **done**
 
-**What** — verify end to end that a decode failure or unsupported file never
-aborts a scan, and give the user the resulting list of files that were skipped
-and why.
+**What shipped** — the non-fatal half was already true: a file that cannot be
+probed is skipped and the run continues, verified end to end with a garbage
+file and a truncated one in the folder. What was missing was every part of
+*reported*, and it was missing in three places at once:
 
-**Why** — mixed-quality collections always contain a few broken files. Their
-design principle is explicit: error handling is non-fatal, failures are
-reported, the queue continues.
+- **The reason was thrown away** at `analyze_path`, which turned an
+  `AppResult` into an `Option` (`probe(...).ok()?`). It returns the error now,
+  and every caller that drops a file says so through `record_skip`, which emits
+  one `scan://skipped` event per file — the scan, the incremental sync, and a
+  tag write whose re-read fails alike. A probe task that dies outright is named
+  too, since its path travels with the join handle.
+- **The reason was not worth reading.** ffprobe ran with `-v quiet`, so the
+  message could only ever be `ffprobe exit Some(1):` — a Debug-printed `Option`
+  and an empty stderr. It runs with `-v error` now and `probe_error` turns what
+  ffprobe actually says into one line ("Invalid data found when processing
+  input"), falling back to the exit code only when it stays silent.
+- **There was nowhere to see it.** A warning-coloured count in the header opens
+  the list: file, full path, reason, and a copy button, because the reasons come
+  from ffprobe and are worth pasting into a bug report.
+
+Also fixed in passing: `analyzed += fresh.len()` counted the same records once
+per chunk, since `fresh` is only emptied on a flush. Harmless — the value is
+only read as `analyzed > 0` — but wrong.
+
+**What is left** — the list lives in the view's state, so it is gone after a
+restart and a skip that happens while the user is elsewhere is only visible
+until then. That is C3's job, and this is its first real source.
 
 *Size: S*
 

@@ -15,7 +15,7 @@ use crate::metadata::{artwork, suggest, write};
 use crate::models::{
     BandcampAccount, BandcampDownloadResult, BandcampItem, ConvertJob, ConvertOptions,
     ConvertResult, CoverInput, DeleteResult, DupCandidate, DuplicateGroup, MetadataSuggestions,
-    RelocateResult, TrackAnalysis, UndoEntry, WriteMetadataItem,
+    RelocateResult, SkippedFile, TrackAnalysis, UndoEntry, WriteMetadataItem,
 };
 
 /// Progress of the library scan (streamed to the frontend).
@@ -91,14 +91,14 @@ const AUDIO_EXTENSIONS: [&str; 11] = [
 
 /// Analyzes a single file (audio properties, compatibility, metadata).
 /// Returns `None` if it is not a (readable) audio file.
-async fn analyze_path(app: &AppHandle, path: String) -> Option<TrackAnalysis> {
-    let audio = probe::probe(app, &path).await.ok()?;
+async fn analyze_path(app: &AppHandle, path: String) -> AppResult<TrackAnalysis> {
+    let audio = probe::probe(app, &path).await?;
     let compat = compat::evaluate(&audio);
     let metadata = read_metadata(&path).unwrap_or_default();
     let metadata_incomplete = !metadata.is_complete();
     let download_date = file_created_millis(&path);
 
-    Some(TrackAnalysis {
+    Ok(TrackAnalysis {
         id: path.clone(),
         file_name: file_name(&path),
         path,
@@ -108,6 +108,23 @@ async fn analyze_path(app: &AppHandle, path: String) -> Option<TrackAnalysis> {
         metadata_incomplete,
         download_date,
     })
+}
+
+/// Reports a file the analysis could not use.
+///
+/// Skipping is the right behaviour — one unreadable file must never abort a
+/// run over thousands — but it used to happen silently, with the reason thrown
+/// away at `analyze_path`. Every path that drops a file now says so here, and
+/// the frontend collects them into one list.
+fn record_skip(app: &AppHandle, path: &str, reason: String) {
+    let _ = app.emit(
+        "scan://skipped",
+        SkippedFile {
+            path: path.to_string(),
+            file_name: file_name(path),
+            reason,
+        },
+    );
 }
 
 /// File creation time (falling back to modified time) as Unix millis.
@@ -133,9 +150,12 @@ pub async fn analyze_files(
     let mut out = Vec::with_capacity(paths.len());
     for path in paths {
         let fs = db::fs_identity(&path);
-        if let Some(track) = analyze_path(&app, path).await {
-            ids.push(fs);
-            out.push(track);
+        match analyze_path(&app, path.clone()).await {
+            Ok(track) => {
+                ids.push(fs);
+                out.push(track);
+            }
+            Err(e) => record_skip(&app, &path, e.to_string()),
         }
     }
     if analyze_bpm {
@@ -363,22 +383,37 @@ pub fn start_scan(
                     _ => {
                         let app2 = app.clone();
                         let path2 = path.clone();
-                        probes.push(tauri::async_runtime::spawn(async move {
-                            analyze_path(&app2, path2)
-                                .await
-                                .map(|track| TrackRecord { track, fs })
-                        }));
+                        // The path travels with the handle so a task that dies
+                        // outright can still be named below.
+                        probes.push((
+                            path.clone(),
+                            tauri::async_runtime::spawn(async move {
+                                match analyze_path(&app2, path2.clone()).await {
+                                    Ok(track) => Some(TrackRecord { track, fs }),
+                                    Err(e) => {
+                                        record_skip(&app2, &path2, e.to_string());
+                                        None
+                                    }
+                                }
+                            }),
+                        ));
                     }
                 }
             }
-            for handle in probes {
-                if let Ok(Some(record)) = handle.await {
-                    fresh.push(record);
+            let before = fresh.len();
+            for (path, handle) in probes {
+                match handle.await {
+                    Ok(Some(record)) => fresh.push(record),
+                    // The analysis reported the reason itself.
+                    Ok(None) => {}
+                    Err(e) => record_skip(&app, &path, format!("analysis crashed: {e}")),
                 }
             }
 
             done += chunk.len();
-            analyzed += fresh.len();
+            // The delta, not the total: `fresh` is only emptied on a flush, so
+            // adding its length every chunk counted the same records again.
+            analyzed += fresh.len() - before;
             if fresh.len() + reused.len() >= SCAN_BATCH {
                 flush_scan_batch(
                     &app,
@@ -1234,7 +1269,15 @@ async fn write_items(app: &AppHandle, items: Vec<WriteMetadataItem>) -> Vec<Writ
             .await
         {
             Ok(()) => {
-                let track = analyze_path(app, item.path.clone()).await;
+                // The write itself worked; only the re-read for the refreshed
+                // row can still fail, and then the row keeps its old values.
+                let track = match analyze_path(app, item.path.clone()).await {
+                    Ok(track) => Some(track),
+                    Err(e) => {
+                        record_skip(app, &item.path, format!("written, but could not be re-read: {e}"));
+                        None
+                    }
+                };
                 out.push(WriteMetadataResult {
                     path: item.path,
                     track,

@@ -323,6 +323,17 @@ pub struct DuplicateGroup {
     pub keep_id: String,
 }
 
+/// A file the analysis could not use, and why. Reported rather than dropped:
+/// a scan over a mixed collection always meets a few of these, and "the scan
+/// finished but three files are missing from the list" is not something the
+/// user can act on without the reason.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct SkippedFile {
+    pub path: String,
+    pub file_name: String,
+    pub reason: String,
+}
+
 /// Outcome of re-pointing a library folder at a new location.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct RelocateResult {

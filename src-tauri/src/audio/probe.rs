@@ -12,8 +12,12 @@ async fn run_ffprobe(app: &AppHandle, path: &str) -> AppResult<Value> {
         .sidecar("ffprobe")
         .map_err(|e| AppError::Sidecar(e.to_string()))?
         .args([
+            // `error`, not `quiet`: the exit code alone says nothing, and this
+            // is the only place that learns *why* a file cannot be used. The
+            // JSON goes to stdout, diagnostics to stderr, so the output stays
+            // parseable either way.
             "-v",
-            "quiet",
+            "error",
             "-print_format",
             "json",
             "-show_format",
@@ -26,10 +30,10 @@ async fn run_ffprobe(app: &AppHandle, path: &str) -> AppResult<Value> {
 
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr);
-        return Err(AppError::Probe(format!(
-            "ffprobe exit {:?}: {}",
+        return Err(AppError::Probe(probe_error(
+            path,
             output.status.code(),
-            stderr
+            &stderr,
         )));
     }
 
@@ -43,6 +47,34 @@ fn is_lossless_codec(codec: &str) -> bool {
 }
 
 /// Analyzes a file and extracts the relevant audio properties.
+/// Why a probe failed, as a line that is worth putting in front of the user.
+///
+/// ffprobe explains itself on stderr ("Invalid data found when processing
+/// input"); the exit code is only useful when it says nothing at all — and a
+/// raw `Option<i32>` must never reach the UI as `Some(1)`.
+fn probe_error(path: &str, code: Option<i32>, stderr: &str) -> String {
+    // The last line carries the diagnosis: anything before it is context for a
+    // failure that ffprobe then summarises. The full text is one `Copy` away in
+    // the skipped-files list, so nothing is lost by keeping this to one line.
+    let last = stderr
+        .lines()
+        .map(str::trim)
+        .filter(|l| !l.is_empty())
+        .next_back();
+    if let Some(line) = last {
+        // ffprobe prefixes the file it was given; whatever shows this already
+        // names the file.
+        return line
+            .strip_prefix(&format!("{path}: "))
+            .unwrap_or(line)
+            .to_string();
+    }
+    match code {
+        Some(code) => format!("ffprobe failed with exit code {code}"),
+        None => "ffprobe was stopped before it finished".to_string(),
+    }
+}
+
 pub async fn probe(app: &AppHandle, path: &str) -> AppResult<AudioInfo> {
     let json = run_ffprobe(app, path).await?;
 
@@ -120,4 +152,54 @@ fn json_number_as_u32(v: &Value) -> Option<u32> {
 fn json_number_as_f64(v: &Value) -> Option<f64> {
     v.as_f64()
         .or_else(|| v.as_str().and_then(|s| s.parse::<f64>().ok()))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn probe_error_reports_what_ffprobe_said() {
+        let path = "/lib/broken.aiff";
+        // The real shape: ffprobe names the file, then the diagnosis.
+        assert_eq!(
+            probe_error(
+                path,
+                Some(1),
+                "/lib/broken.aiff: Invalid data found when processing input\n"
+            ),
+            "Invalid data found when processing input"
+        );
+        // A different file in the message is not ours to strip.
+        assert_eq!(
+            probe_error(path, Some(1), "/other.aiff: Invalid data"),
+            "/other.aiff: Invalid data"
+        );
+    }
+
+    #[test]
+    fn probe_error_keeps_the_summary_line() {
+        assert_eq!(
+            probe_error(
+                "/lib/a.aiff",
+                Some(1),
+                "[aiff @ 0x1] header missing\n/lib/a.aiff: Invalid data found\n\n"
+            ),
+            "Invalid data found"
+        );
+    }
+
+    #[test]
+    fn probe_error_falls_back_to_the_exit_status() {
+        // Nothing on stderr — then the code is all there is, and it must not
+        // reach the UI as a Debug-printed Option.
+        assert_eq!(
+            probe_error("/lib/a.aiff", Some(1), "   \n"),
+            "ffprobe failed with exit code 1"
+        );
+        assert_eq!(
+            probe_error("/lib/a.aiff", None, ""),
+            "ffprobe was stopped before it finished"
+        );
+    }
 }

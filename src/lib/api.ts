@@ -20,6 +20,7 @@ import type {
   ScanProgress,
   ScanStatus,
   ScanTracks,
+  SkippedFile,
   TrackAnalysis,
   TrackMetadata,
 } from "../types";
@@ -132,6 +133,17 @@ export function onScanProgress(
 /** Subscribes to the scan completion event (delivers the result). */
 export function onScanDone(cb: (d: ScanDone) => void): Promise<UnlistenFn> {
   return listen<ScanDone>("scan://done", (e) => cb(e.payload));
+}
+
+/**
+ * Subscribes to files the analysis had to skip. One event per file, from the
+ * scan, the incremental sync and the tag write alike — every place that used to
+ * drop a file without saying so.
+ */
+export function onScanSkipped(
+  cb: (f: SkippedFile) => void,
+): Promise<UnlistenFn> {
+  return listen<SkippedFile>("scan://skipped", (e) => cb(e.payload));
 }
 
 /** Current dedupe status (running/progress/result available). */
