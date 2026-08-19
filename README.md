@@ -1,68 +1,106 @@
-# rekord-lib
+<div align="center">
 
-Desktop app (Tauri 2 + React 19 + Tailwind v4) that prepares a music library so
-that it runs **without error codes (especially E-8305) on all Pioneer
-CDJ/XDJ** players and is cleanly compatible with **Rekordbox**.
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="src/assets/brand/rekord-lib-logo-horizontal-dark.svg">
+  <img src="src/assets/brand/rekord-lib-logo-horizontal.svg" alt="rekord-lib" width="420">
+</picture>
 
-## Features
+**Prepare a music library so it runs without error codes on every Pioneer CDJ/XDJ — and stays clean in Rekordbox.**
 
-- **Managed library** – central folder, recursive scan with progress
-  (cancelable), persistent track database (the list is available immediately at startup).
-- **Conversion** to a selectable target format (default **AIFF**) with
-  automatic correction of incompatible properties:
-  - Resampling > 48 kHz → 44.1 kHz
-  - uncompressed PCM (no AIFF-C), 16-/24-bit
-  - warning for FLAC/ALAC (only newer players CDJ-3000/NXS2)
-  - output to the source folder, the original is replaced on format change;
-    drag-and-drop import of external files
-- **Metadata editor** with suggestions (filename, MusicBrainz, existing
-  library values), required fields (title/artist), and **bulk edit**.
-- **Cover** – embedded covers as thumbnails; fallback to a cover image
-  in the folder (`cover.jpg` …), which is automatically embedded on conversion.
-- **Duplicate detection** across formats/filenames (length + acoustic fingerprint
-  + name similarity); results are preserved and can be deleted individually or in
-  bulk (trash).
-- **Bandcamp** – login, sync of the purchased collection, download with
-  progress (downloads overlay in the header).
-- **List** – filter + search, album grouping (collapsible),
-  multi-select including shift range, sticky header, back-to-top.
+A local-first desktop app for macOS. Tauri 2 · React 19 · Rust.
 
-Details on each version: see [CHANGELOG.md](CHANGELOG.md).
+[![CI](https://github.com/timheinrichs/rekord-lib/actions/workflows/ci.yml/badge.svg)](https://github.com/timheinrichs/rekord-lib/actions/workflows/ci.yml)
+[![Latest release](https://img.shields.io/github/v/release/timheinrichs/rekord-lib?sort=semver)](https://github.com/timheinrichs/rekord-lib/releases/latest)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+[![Donate](https://img.shields.io/badge/donate-PayPal-00457C.svg)](https://www.paypal.com/donate/?hosted_button_id=UJGTJEK598ZFS)
 
-## Install on macOS
+</div>
 
-Prebuilt for **Apple Silicon (M-series)**.
+<!-- Drop a window screenshot here as docs/media/screenshot.png (PNG, retina is
+     fine, the width attribute scales it). Until it exists GitHub shows the alt
+     text, so the README stays readable either way. -->
+<div align="center">
+  <img src="docs/media/screenshot.png" alt="The rekord-lib library view" width="900">
+</div>
+
+---
+
+## What it does
+
+Dropping a folder of purchases onto a USB stick is where the trouble starts: a
+96 kHz file that a CDJ-2000 refuses with **E-8305**, an AIFF-C the player cannot
+read, three copies of the same track under three different names, and half the
+tags missing. rekord-lib fixes all of that in one pass over a library it keeps
+track of, without uploading anything anywhere.
+
+- **Managed library** — one central folder, recursive scan with cancelable
+  progress. The track database lives in SQLite, so the list is on screen
+  immediately at startup and a rescan only re-reads files that actually changed.
+- **Conversion** to a target format (default **AIFF**), correcting what players
+  reject: resampling above 48 kHz down to 44.1 kHz, uncompressed PCM instead of
+  AIFF-C, 16- or 24-bit. FLAC/ALAC are flagged as CDJ-3000/NXS2-only. External
+  files can be dragged in.
+- **Metadata editor** with suggestions from the filename, MusicBrainz and —
+  once an API key is configured — Discogs, required-field checks, and bulk edit
+  across a selection.
+- **Covers** — embedded artwork as thumbnails, falling back to a `cover.jpg`
+  next to the audio, which conversion then embeds.
+- **Duplicate detection** across formats and filenames, by length, acoustic
+  fingerprint and name similarity. It runs at the end of every scan that changed
+  the library, and fingerprints are cached — so a repeat run decodes nothing.
+  Groups you wave off stay gone.
+- **Bandcamp** — log in, sync your purchases, download with progress straight
+  into the library.
+- **The list** — filter and search, grouping by album, label or folder,
+  multi-select with shift ranges, virtualized for large collections.
+
+Per-version detail: [CHANGELOG.md](CHANGELOG.md).
+
+## Install
+
+Prebuilt for **macOS on Apple Silicon** (M-series).
 
 1. Download the latest `rekord-lib_x.y.z_aarch64.dmg` from the
-   [Releases page](https://github.com/timheinrichs/rekord-lib/releases/latest).
-2. Open the `.dmg` and drag **rekord-lib** into your *Applications* folder.
-3. The app is **not signed with an Apple Developer certificate**, so on first
-   launch macOS Gatekeeper will warn. Either **right-click the app → Open**
-   (then confirm once), or clear the quarantine flag:
+   [releases page](https://github.com/timheinrichs/rekord-lib/releases/latest).
+2. Open the `.dmg` and drag **rekord-lib** into *Applications*.
+3. The app is not signed with an Apple Developer certificate, so Gatekeeper
+   warns on first launch. Either **right-click → Open** and confirm once, or
+   clear the quarantine flag:
+
    ```sh
    xattr -dr com.apple.quarantine /Applications/rekord-lib.app
    ```
 
-After that, the app **updates itself**: on start it checks for a newer release
-and shows an indicator; install it any time from **Settings → About →
-Install & restart**.
+From then on it **updates itself**: it checks for a newer release on start and
+shows an indicator; install any time from **Settings → About → Install &
+restart**.
 
-## Requirements
+## Support
 
-- **Node 22** (see `.nvmrc`):
-  ```sh
-  nvm use
-  ```
-- **Rust** (stable) + Tauri requirements for macOS.
-- ffmpeg/ffprobe sidecar in `src-tauri/binaries/`
-  (`ffmpeg-aarch64-apple-darwin`, `ffprobe-aarch64-apple-darwin`).
+rekord-lib is free and MIT-licensed. If it saves you an evening of re-encoding,
+you can chip in towards its development:
 
-  > **Release builds:** The bundled binaries come from Homebrew and
-  > reference Homebrew dylibs – they only run with Homebrew ffmpeg installed.
-  > For a distributable bundle, replace them with **static** macOS builds
-  > (e.g. evermeet.cx).
+[![Donate with PayPal](https://img.shields.io/badge/Donate-PayPal-00457C?style=for-the-badge&logo=paypal&logoColor=white)](https://www.paypal.com/donate/?hosted_button_id=UJGTJEK598ZFS)
+
+---
 
 ## Development
+
+### Prerequisites
+
+- **Node 22** — see `.nvmrc`, then `nvm use`
+- **Rust** (stable) plus the Tauri prerequisites for macOS
+- The `ffmpeg`/`ffprobe` sidecars in `src-tauri/binaries/`
+  (`ffmpeg-aarch64-apple-darwin`, `ffprobe-aarch64-apple-darwin`)
+
+  > These are **static** builds that link only against system libraries, which
+  > is what lets the bundle run on a Mac with no Homebrew. Regenerate them with
+  > `scripts/build-static-ffmpeg.sh` or the *Build ffmpeg sidecars* workflow —
+  > never by copying Homebrew binaries, which crash with
+  > `dyld: Library not loaded` on other machines. CI enforces this through the
+  > `audio::sidecar::sidecars_are_self_contained` test.
+
+### Run
 
 ```sh
 nvm use
@@ -70,19 +108,18 @@ npm install
 npm run tauri dev
 ```
 
-Before committing non-trivial changes:
+### Checks
+
+All four must be green before committing anything non-trivial:
 
 ```sh
 npx tsc --noEmit                 # frontend types
 npm test                         # frontend unit tests (Vitest)
 cd src-tauri && cargo check      # Rust backend
 cd src-tauri && cargo test       # Rust unit tests
-npm run build                    # production bundle
 ```
 
-## Build
-
-Local production build (Apple Silicon):
+### Build
 
 ```sh
 npm run tauri build -- --target aarch64-apple-darwin
@@ -90,67 +127,74 @@ npm run tauri build -- --target aarch64-apple-darwin
 
 The `.dmg` lands in `src-tauri/target/aarch64-apple-darwin/release/bundle/dmg/`.
 Self-updater artifacts (`*.app.tar.gz` + `.sig`) and `latest.json` are only
-produced when the updater signing key is present (see below) — normally that
-happens in CI, not locally.
+produced when the updater signing key is present — normally in CI, not locally.
 
-## Project structure
+### Project structure
 
 ```
 src/                    React frontend (components, lib, tokens/styles)
 src-tauri/src/          Rust backend
   audio/                probe, conversion, duplicates/fingerprint
   bandcamp/             login, collection, download
+  db/                   SQLite: tracks, edits, fingerprints, duplicates
   metadata/             read/write tags, cover, suggestions
 docs/brand/             styleguide + design tokens
 ```
 
-## Versioning & releases
+Persistence is split deliberately: anything that grows with the collection lives
+in SQLite and is written from Rust, while `tauri-plugin-store` keeps only small
+config-shaped state. See the *Persistence* section of
+[CLAUDE.md](CLAUDE.md).
 
-- **Semantic Versioning** (`MAJOR.MINOR.PATCH`); changes in the
+### Design
+
+The visual identity is fixed: colors only through tokens
+(`src/styles/tokens.css`), dark as the default. Authoritative styleguide:
+[docs/brand/STYLEGUIDE.md](docs/brand/STYLEGUIDE.md).
+
+### IDE
+
+[VS Code](https://code.visualstudio.com/) with
+[Tauri](https://marketplace.visualstudio.com/items?itemName=tauri-apps.tauri-vscode)
+and [rust-analyzer](https://marketplace.visualstudio.com/items?itemName=rust-lang.rust-analyzer).
+
+## Releases
+
+- **Semantic Versioning**; every change recorded in
   [CHANGELOG.md](CHANGELOG.md) (Keep a Changelog).
-- Bump the version in sync in **three places**: `package.json`,
-  `src-tauri/Cargo.toml`, `src-tauri/tauri.conf.json` (then `cargo check`
-  updates `Cargo.lock`), add a CHANGELOG entry, commit.
-- **Cut a release** by pushing a tag — this triggers
-  `.github/workflows/release.yml`, which builds the `.dmg`, the self-updater
-  artifacts and `latest.json`, publishes a GitHub Release and thereby makes the
-  update available to installed apps — **fully automatic**.
+- Bump the version in **three** places — `package.json`,
+  `src-tauri/Cargo.toml`, `src-tauri/tauri.conf.json` — then `cargo check` to
+  sync `Cargo.lock`, add the CHANGELOG entry, commit.
+- Cut the release by pushing a tag. `.github/workflows/release.yml` builds the
+  `.dmg`, the updater artifacts and `latest.json`, and publishes the GitHub
+  Release — which is what makes the update available to installed apps.
+
   ```sh
   git tag -a vX.Y.Z -m "vX.Y.Z"
   git push origin vX.Y.Z
   ```
-  This requires **"Immutable releases" to be OFF** (repo *Settings → General*).
-  With it enabled, a published release becomes read-only before assets are
-  attached and the upload fails; in that case set `releaseDraft: true` in the
-  workflow and publish the draft manually instead.
 
-### Updater signing (one-time setup)
+  This needs **"Immutable releases" switched OFF** (repo *Settings → General*).
+  With it on, a published release turns read-only before the assets are attached
+  and the upload fails; set `releaseDraft: true` in the workflow and publish the
+  draft by hand instead.
+
+### Updater signing (one-time)
 
 The self-updater verifies releases with a minisign keypair.
 
-1. Generate a keypair: `npm run tauri signer generate -- -w ~/.tauri/rekord-lib.key`
+1. `npm run tauri signer generate -- -w ~/.tauri/rekord-lib.key`
 2. Put the **public key** into `src-tauri/tauri.conf.json`
    (`plugins.updater.pubkey`).
-3. Add the **private key** and its password as repository secrets used by the
-   release workflow: `TAURI_SIGNING_PRIVATE_KEY` and
-   `TAURI_SIGNING_PRIVATE_KEY_PASSWORD`.
+3. Add the **private key** and its password as repository secrets:
+   `TAURI_SIGNING_PRIVATE_KEY`, `TAURI_SIGNING_PRIVATE_KEY_PASSWORD`.
 
 Never commit the private key.
 
 ## License
 
-rekord-lib is licensed under the **MIT License** (see [LICENSE](LICENSE)).
+rekord-lib is [MIT](LICENSE) licensed.
 
 The distributed app bundles third-party components under their own licenses —
 notably the **FFmpeg** binaries (LGPL/GPL), which are *not* covered by MIT. See
 [THIRD_PARTY_LICENSES.md](THIRD_PARTY_LICENSES.md).
-
-## Design / Branding
-
-Fixed visual identity – colors only via tokens (`src/styles/tokens.css`),
-dark as the default. Authoritative styleguide: [docs/brand/STYLEGUIDE.md](docs/brand/STYLEGUIDE.md)
-(short version in `CLAUDE.md`).
-
-## Recommended IDE setup
-
-- [VS Code](https://code.visualstudio.com/) + [Tauri](https://marketplace.visualstudio.com/items?itemName=tauri-apps.tauri-vscode) + [rust-analyzer](https://marketplace.visualstudio.com/items?itemName=rust-lang.rust-analyzer)
