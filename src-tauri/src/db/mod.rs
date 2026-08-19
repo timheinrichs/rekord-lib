@@ -20,7 +20,9 @@ use tauri::{AppHandle, Manager, State};
 
 use crate::audio::compat;
 use crate::error::{AppError, AppResult};
-use crate::models::{AudioInfo, TrackAnalysis, TrackMetadata, UndoEntry, WriteMetadataItem};
+use crate::models::{
+    AudioInfo, RelocateResult, TrackAnalysis, TrackMetadata, UndoEntry, WriteMetadataItem,
+};
 
 pub type DbResult<T> = Result<T, rusqlite::Error>;
 
@@ -329,6 +331,71 @@ pub fn delete_tracks(conn: &mut Connection, paths: &[String]) -> DbResult<usize>
     }
     tx.commit()?;
     Ok(removed)
+}
+
+/// The path `path` would have under `new_dir` instead of `old_dir`.
+///
+/// Returns `None` for anything that is not actually below `old_dir`, so a row
+/// that was never part of that folder cannot be dragged along. Matching is on
+/// the path prefix including the separator: `/music/lib-old` must not swallow
+/// `/music/lib-older/track.aiff`.
+fn relocated_path(path: &str, old_dir: &str, new_dir: &str) -> Option<String> {
+    let old = old_dir.trim_end_matches('/');
+    let rest = path.strip_prefix(old)?.strip_prefix('/')?;
+    if rest.is_empty() {
+        return None;
+    }
+    Some(format!("{}/{rest}", new_dir.trim_end_matches('/')))
+}
+
+/// Re-points a library folder: rewrites the stored paths of `old_dir` to
+/// `new_dir` wherever the file is actually there, keeping track identity — and
+/// with it the pending edits and cached fingerprints that hang off the path.
+///
+/// A row is only rewritten when the file exists under the new root and no row
+/// for that path exists yet; everything else is counted as skipped and left
+/// alone, because this runs precisely when the user is trying to recover data.
+/// Foreign keys are deferred for the transaction: `fingerprints.path`
+/// references `tracks(path)`, so updating the parent key would otherwise fail
+/// before the child row can follow.
+pub fn relocate_tracks(
+    conn: &mut Connection,
+    old_dir: &str,
+    new_dir: &str,
+) -> DbResult<RelocateResult> {
+    let rows: Vec<String> = {
+        let mut stmt = conn.prepare("SELECT path FROM tracks WHERE library_dir = ?1")?;
+        let paths = stmt.query_map(params![old_dir], |row| row.get::<_, String>(0))?;
+        paths.collect::<DbResult<Vec<String>>>()?
+    };
+
+    let tx = conn.transaction()?;
+    tx.execute_batch("PRAGMA defer_foreign_keys = ON")?;
+    let mut result = RelocateResult { moved: 0, skipped: 0 };
+    {
+        let mut taken = tx.prepare("SELECT 1 FROM tracks WHERE path = ?1")?;
+        let mut move_track =
+            tx.prepare("UPDATE tracks SET path = ?2, library_dir = ?3 WHERE path = ?1")?;
+        let mut move_fingerprint = tx.prepare("UPDATE fingerprints SET path = ?2 WHERE path = ?1")?;
+        let mut move_edit = tx.prepare("UPDATE edits SET path = ?2 WHERE path = ?1")?;
+
+        for old_path in &rows {
+            let Some(new_path) = relocated_path(old_path, old_dir, new_dir) else {
+                result.skipped += 1;
+                continue;
+            };
+            if !Path::new(&new_path).is_file() || taken.exists(params![new_path])? {
+                result.skipped += 1;
+                continue;
+            }
+            move_track.execute(params![old_path, new_path, new_dir])?;
+            move_fingerprint.execute(params![old_path, new_path])?;
+            move_edit.execute(params![old_path, new_path])?;
+            result.moved += 1;
+        }
+    }
+    tx.commit()?;
+    Ok(result)
 }
 
 /// Drops every track of a library folder that is not in `keep`. Used by the
@@ -853,6 +920,95 @@ mod tests {
         assert_eq!(load_tracks(&conn, "/lib").unwrap().len(), 1);
         // Another folder's rows are none of this sweep's business.
         assert_eq!(load_tracks(&conn, "/other").unwrap().len(), 1);
+    }
+
+    #[test]
+    fn relocated_path_rewrites_only_real_descendants() {
+        assert_eq!(
+            relocated_path("/old/sub/a.aiff", "/old", "/new"),
+            Some("/new/sub/a.aiff".to_string())
+        );
+        // A trailing slash on either root must not double up or drop a segment.
+        assert_eq!(
+            relocated_path("/old/a.aiff", "/old/", "/new/"),
+            Some("/new/a.aiff".to_string())
+        );
+        // Prefix, but not a descendant — the separator is what decides.
+        assert!(relocated_path("/old-archive/a.aiff", "/old", "/new").is_none());
+        // The folder itself is not a track.
+        assert!(relocated_path("/old", "/old", "/new").is_none());
+        assert!(relocated_path("/elsewhere/a.aiff", "/old", "/new").is_none());
+    }
+
+    #[test]
+    fn relocate_keeps_identity_including_edits_and_fingerprints() {
+        let dir = tempfile::tempdir().unwrap();
+        let new_root = dir.path().to_string_lossy().to_string();
+        std::fs::create_dir(dir.path().join("sub")).unwrap();
+        std::fs::write(dir.path().join("sub/a.aiff"), b"x").unwrap();
+
+        let db = Db::open_in_memory().unwrap();
+        let mut conn = db.0.lock().unwrap();
+        let fs = identity(7, 8);
+        upsert_tracks(&mut conn, "/old", &[record("/old/sub/a.aiff", Some(fs))]).unwrap();
+        fingerprint_put(&conn, "/old/sub/a.aiff", fs, 1, &[1, 2, 3]).unwrap();
+        set_edit(&conn, "/old/sub/a.aiff", &serde_json::json!({"title": "x"})).unwrap();
+
+        let result = relocate_tracks(&mut conn, "/old", &new_root).unwrap();
+        assert_eq!(result, RelocateResult { moved: 1, skipped: 0 });
+
+        // The row moved folders rather than being deleted and rediscovered …
+        assert!(load_tracks(&conn, "/old").unwrap().is_empty());
+        let moved = load_tracks(&conn, &new_root).unwrap();
+        assert_eq!(moved.len(), 1);
+        let new_path = format!("{new_root}/sub/a.aiff");
+        assert_eq!(moved[0].path, new_path);
+        // … so everything keyed by the path came along, which is the point.
+        assert!(fp_of(&conn, &new_path, fs, 1).is_some());
+        assert!(load_edits(&conn).unwrap().contains_key(&new_path));
+    }
+
+    #[test]
+    fn relocate_never_drops_what_it_cannot_find() {
+        let dir = tempfile::tempdir().unwrap();
+        let new_root = dir.path().to_string_lossy().to_string();
+        std::fs::write(dir.path().join("here.aiff"), b"x").unwrap();
+
+        let db = Db::open_in_memory().unwrap();
+        let mut conn = db.0.lock().unwrap();
+        upsert_tracks(
+            &mut conn,
+            "/old",
+            &[record("/old/here.aiff", None), record("/old/missing.aiff", None)],
+        )
+        .unwrap();
+
+        let result = relocate_tracks(&mut conn, "/old", &new_root).unwrap();
+        assert_eq!(result, RelocateResult { moved: 1, skipped: 1 });
+        // The unfound row stays where it was; a later full sweep may prune it,
+        // but a recovery attempt must not delete anything itself.
+        let left = load_tracks(&conn, "/old").unwrap();
+        assert_eq!(left.len(), 1);
+        assert_eq!(left[0].path, "/old/missing.aiff");
+    }
+
+    #[test]
+    fn relocate_skips_a_path_another_row_already_holds() {
+        let dir = tempfile::tempdir().unwrap();
+        let new_root = dir.path().to_string_lossy().to_string();
+        std::fs::write(dir.path().join("a.aiff"), b"x").unwrap();
+        let taken = format!("{new_root}/a.aiff");
+
+        let db = Db::open_in_memory().unwrap();
+        let mut conn = db.0.lock().unwrap();
+        // The new folder was already scanned in its own right.
+        upsert_tracks(&mut conn, &new_root, &[record(&taken, None)]).unwrap();
+        upsert_tracks(&mut conn, "/old", &[record("/old/a.aiff", None)]).unwrap();
+
+        let result = relocate_tracks(&mut conn, "/old", &new_root).unwrap();
+        assert_eq!(result, RelocateResult { moved: 0, skipped: 1 });
+        assert_eq!(load_tracks(&conn, &new_root).unwrap().len(), 1);
+        assert_eq!(load_tracks(&conn, "/old").unwrap().len(), 1);
     }
 
     #[test]

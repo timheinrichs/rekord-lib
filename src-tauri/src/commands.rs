@@ -15,7 +15,7 @@ use crate::metadata::{artwork, suggest, write};
 use crate::models::{
     BandcampAccount, BandcampDownloadResult, BandcampItem, ConvertJob, ConvertOptions,
     ConvertResult, CoverInput, DeleteResult, DupCandidate, DuplicateGroup, MetadataSuggestions,
-    TrackAnalysis, UndoEntry, WriteMetadataItem,
+    RelocateResult, TrackAnalysis, UndoEntry, WriteMetadataItem,
 };
 
 /// Progress of the library scan (streamed to the frontend).
@@ -294,7 +294,7 @@ pub fn start_scan(
     state.total.store(0, Ordering::SeqCst);
     set_scan_stage(&state, STAGE_ANALYZING);
     let generation = state.generation.fetch_add(1, Ordering::SeqCst) + 1;
-    let full = paths.is_none();
+    let full = is_full_sweep(&paths, &dir);
 
     // A fresh full sweep means the library has (possibly) changed, so a cached
     // duplicate result is now invalid. A targeted run leaves it alone.
@@ -488,6 +488,29 @@ pub fn start_scan(
 
 /// Should the duplicate phase run after this scan?
 ///
+/// Whether the library root itself can be listed.
+///
+/// A root that cannot be read — renamed, moved, on an unmounted volume — is
+/// recoverable state, not an empty library, and the difference matters because
+/// the walk cannot tell them apart: it skips unreadable folders silently.
+fn library_root_available(dir: &str) -> bool {
+    std::fs::read_dir(dir).is_ok()
+}
+
+/// Whether a run counts as a full sweep, i.e. one that has seen the whole
+/// folder and may therefore prune, invalidate the duplicate cache, and tell the
+/// frontend to drop the tracks it did not report.
+///
+/// Only a run without an explicit path list qualifies, and only if the root
+/// could actually be listed. Without that second half a renamed or unmounted
+/// library folder walks to zero files, and the sweep concludes that every
+/// single track was deleted — taking the rows, their fingerprints and the
+/// identity every edit hangs off with it. A run that could not look degrades to
+/// a targeted one instead, which changes nothing and leaves the library intact.
+fn is_full_sweep(paths: &Option<Vec<String>>, dir: &str) -> bool {
+    paths.is_none() && library_root_available(dir)
+}
+
 /// A full sweep always re-checks. A targeted run only does when it actually
 /// changed the library: a BPM-only pass touches nothing the matching uses
 /// (duration, name, metadata, audio), so re-running the search would spend
@@ -691,6 +714,33 @@ pub fn library_load(app: AppHandle, dir: String) -> AppResult<Vec<TrackAnalysis>
     let database = db::require(&app)?;
     let conn = database.conn()?;
     Ok(db::load_tracks(&conn, &dir)?)
+}
+
+/// Whether the library folder can be listed right now.
+///
+/// The frontend needs this to tell "the library is empty" apart from "the
+/// folder is gone", which look identical in the track list — and only the
+/// second one is offered a relocate.
+#[tauri::command]
+pub fn library_dir_available(dir: String) -> bool {
+    library_root_available(&dir)
+}
+
+/// Re-points the library folder after it was renamed, moved or remounted, so
+/// the stored tracks keep their identity — and with it their pending edits and
+/// cached fingerprints — instead of being rediscovered as new files.
+///
+/// Never deletes: rows whose file is not under the new root stay exactly where
+/// they are and are reported as skipped.
+#[tauri::command]
+pub fn library_relocate(
+    app: AppHandle,
+    old_dir: String,
+    new_dir: String,
+) -> AppResult<RelocateResult> {
+    let database = db::require(&app)?;
+    let mut conn = database.conn()?;
+    Ok(db::relocate_tracks(&mut conn, &old_dir, &new_dir)?)
 }
 
 /// Forgets tracks by path. The scan prunes a full sweep on its own; this is for
@@ -1584,6 +1634,35 @@ mod tests {
         // Empty / non-existent folder → nothing to trash.
         assert!(!dir_holds_only(&root, &[]));
         assert!(!dir_holds_only("/no/such/dir", &[a]));
+    }
+
+    #[test]
+    fn an_unreadable_library_root_is_not_an_empty_library() {
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path().to_string_lossy().to_string();
+        assert!(library_root_available(&root));
+
+        // Gone (renamed, moved, unmounted) — and a file is not a folder either.
+        assert!(!library_root_available(&format!("{root}/nope")));
+        let file = dir.path().join("track.aiff");
+        std::fs::write(&file, b"x").unwrap();
+        assert!(!library_root_available(&file.to_string_lossy()));
+    }
+
+    #[test]
+    fn a_run_that_could_not_look_is_never_a_full_sweep() {
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path().to_string_lossy().to_string();
+        let gone = format!("{root}/moved-away");
+
+        // The normal case: no path list and a readable root.
+        assert!(is_full_sweep(&None, &root));
+        // The dangerous one. A full sweep here would walk to zero files and
+        // prune the whole library instead of reporting a missing folder.
+        assert!(!is_full_sweep(&None, &gone));
+        // An explicit path list is targeted either way.
+        assert!(!is_full_sweep(&Some(vec!["/a.aiff".to_string()]), &root));
+        assert!(!is_full_sweep(&Some(Vec::new()), &root));
     }
 
     #[test]

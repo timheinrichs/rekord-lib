@@ -7,8 +7,10 @@ vi.mock("@tauri-apps/api/core", () => ({ invoke: invokeMock }));
 import {
   clearEdits,
   forgetTracks,
+  isLibraryDirAvailable,
   loadEdits,
   loadLibraryTracks,
+  relocateLibrary,
   saveEdit,
 } from "./library";
 import { makeTrack } from "../test/factories";
@@ -34,6 +36,30 @@ describe("forgetTracks", () => {
     await expect(forgetTracks(["/lib/a.aiff", "/lib/b.aiff"])).resolves.toBe(2);
     expect(invokeMock).toHaveBeenCalledWith("library_delete", {
       paths: ["/lib/a.aiff", "/lib/b.aiff"],
+    });
+  });
+});
+
+describe("isLibraryDirAvailable", () => {
+  it("asks the backend whether the folder can be listed", async () => {
+    invokeMock.mockResolvedValue(false);
+    await expect(isLibraryDirAvailable("/gone")).resolves.toBe(false);
+    expect(invokeMock).toHaveBeenCalledWith("library_dir_available", {
+      dir: "/gone",
+    });
+  });
+});
+
+describe("relocateLibrary", () => {
+  it("passes both roots and returns what moved", async () => {
+    invokeMock.mockResolvedValue({ moved: 3, skipped: 1 });
+    await expect(relocateLibrary("/old", "/new")).resolves.toEqual({
+      moved: 3,
+      skipped: 1,
+    });
+    expect(invokeMock).toHaveBeenCalledWith("library_relocate", {
+      oldDir: "/old",
+      newDir: "/new",
     });
   });
 });

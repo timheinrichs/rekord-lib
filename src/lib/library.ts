@@ -1,5 +1,5 @@
 import { invoke } from "@tauri-apps/api/core";
-import type { TrackAnalysis, TrackEdit } from "../types";
+import type { RelocateResult, TrackAnalysis, TrackEdit } from "../types";
 
 /**
  * The track database lives in SQLite in the Rust backend, not in the JSON
@@ -21,6 +21,28 @@ export function loadLibraryTracks(dir: string): Promise<TrackAnalysis[]> {
  */
 export function forgetTracks(paths: string[]): Promise<number> {
   return invoke<number>("library_delete", { paths });
+}
+
+/**
+ * Whether the library folder can be listed right now. A folder that was
+ * renamed, moved or unmounted looks exactly like an empty library in the track
+ * list, and only one of the two is worth offering a relocate for.
+ */
+export function isLibraryDirAvailable(dir: string): Promise<boolean> {
+  return invoke<boolean>("library_dir_available", { dir });
+}
+
+/**
+ * Re-points the library at `newDir`, keeping the identity of every track that
+ * is actually there — and with it its pending edits and cached fingerprint.
+ * Rows it cannot find stay where they are; this runs when the user is
+ * recovering a moved folder, so it never deletes.
+ */
+export function relocateLibrary(
+  oldDir: string,
+  newDir: string,
+): Promise<RelocateResult> {
+  return invoke<RelocateResult>("library_relocate", { oldDir, newDir });
 }
 
 /** All pending metadata edits, keyed by track path. */

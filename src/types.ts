@@ -102,6 +102,14 @@ export interface MetadataSuggestions {
   field_suggestions: FieldSuggestions;
 }
 
+/** Outcome of re-pointing the library folder at a new location. */
+export interface RelocateResult {
+  /** Rows rewritten to the new root. */
+  moved: number;
+  /** Rows left at the old path because the file is not under the new root. */
+  skipped: number;
+}
+
 /** User-confirmed metadata + cover choice for a track. */
 export interface TrackEdit {
   metadata: TrackMetadata;

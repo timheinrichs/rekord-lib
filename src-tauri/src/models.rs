@@ -323,6 +323,16 @@ pub struct DuplicateGroup {
     pub keep_id: String,
 }
 
+/// Outcome of re-pointing a library folder at a new location.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct RelocateResult {
+    /// Rows rewritten to the new root.
+    pub moved: usize,
+    /// Rows left untouched because the file is not under the new root (or a row
+    /// for that path already exists). They keep pointing at the old location.
+    pub skipped: usize,
+}
+
 /// Result of a delete operation per file.
 #[derive(Debug, Clone, Serialize)]
 pub struct DeleteResult {

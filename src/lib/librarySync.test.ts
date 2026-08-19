@@ -21,6 +21,25 @@ function result(over: Partial<ConvertResult>): ConvertResult {
 }
 
 describe("diffAudioFiles", () => {
+  it("treats a folder it could not list as no evidence at all", () => {
+    const a = makeTrack({ id: "/lib/a.aiff", path: "/lib/a.aiff" });
+    const b = makeTrack({ id: "/lib/b.aiff", path: "/lib/b.aiff" });
+
+    // null is not an empty listing: an unreadable folder must not read as
+    // "every file was deleted", which would forget the whole library.
+    const diff = diffAudioFiles(null, [a, b]);
+    expect(diff.removedPaths).toEqual([]);
+    expect(diff.addedPaths).toEqual([]);
+    expect(diff.keptTracks).toEqual([a, b]);
+    expect(diff.changed).toBe(false);
+
+    // An empty listing, by contrast, is evidence — those files really are gone.
+    expect(diffAudioFiles([], [a, b]).removedPaths).toEqual([
+      "/lib/a.aiff",
+      "/lib/b.aiff",
+    ]);
+  });
+
   const a = makeTrack({ id: "/lib/a.aiff", path: "/lib/a.aiff" });
   const b = makeTrack({ id: "/lib/b.aiff", path: "/lib/b.aiff" });
 

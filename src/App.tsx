@@ -211,6 +211,7 @@ export default function App() {
               onFilesDeleted={bc.forgetDownloads}
               nav={nav}
               onOpenSettings={() => setSettingsOpen(true)}
+              onLibraryDirChange={(dir) => updateSettings({ library_dir: dir })}
             />
           </div>
 

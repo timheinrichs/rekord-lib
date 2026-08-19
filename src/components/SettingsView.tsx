@@ -8,6 +8,8 @@ import {
   onScanProgress,
   pickOutputDir,
 } from "../lib/api";
+import { relocateLibrary } from "../lib/library";
+import { relocateMessage, shouldRelocate } from "../lib/relocate";
 import { checkForUpdate, installUpdate, type UpdateInfo } from "../lib/updater";
 import { HeartIcon } from "./icons";
 import {
@@ -54,6 +56,8 @@ export default function SettingsView({
 }: Props) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // Outcome of the last library re-link, shown under the folder button.
+  const [relocated, setRelocated] = useState<string | null>(null);
 
   // The re-detect run reports itself here: it starts in the background and the
   // library table is a view away, so without this the button looks inert for
@@ -135,9 +139,24 @@ export default function SettingsView({
     onAccountChange(null);
   };
 
+  // Picking a different folder for an existing library means the collection
+  // moved, not that it was replaced — so the stored rows are re-pointed before
+  // the setting changes, and keep their edits and fingerprints.
   const chooseLibrary = async () => {
     const dir = await pickOutputDir();
-    if (dir) onSettingsChange({ library_dir: dir });
+    if (!dir) return;
+    const previous = settings.library_dir;
+    setRelocated(null);
+    if (shouldRelocate(previous, dir)) {
+      try {
+        setRelocated(relocateMessage(await relocateLibrary(previous!, dir)));
+      } catch (e) {
+        // The setting still changes: a failed re-link costs the cache, not the
+        // files, and refusing to move the folder would be the bigger problem.
+        setError(`Could not re-link the library: ${e}`);
+      }
+    }
+    onSettingsChange({ library_dir: dir });
   };
 
   const newerOnly = NEWER_PLAYERS_ONLY.includes(settings.format);
@@ -209,6 +228,9 @@ export default function SettingsView({
         >
           {settings.library_dir ?? "Choose folder…"}
         </button>
+        {relocated && (
+          <p className="mt-2 text-sm text-fg-muted">{relocated}</p>
+        )}
       </section>
 
       {/* Default settings */}

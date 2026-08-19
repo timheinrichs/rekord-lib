@@ -15,11 +15,26 @@ export interface LibraryDiff {
  * Diffs the audio files currently on disk against the known tracks:
  * which paths are new (to analyze), which tracks still exist (to keep) and
  * which are gone. Pure — the incremental library sync builds on this.
+ *
+ * `null` means the folder could not be listed at all — renamed, moved, or on a
+ * volume that is not mounted — and is deliberately not the same as an empty
+ * listing. An empty listing is evidence that the files are gone; a folder that
+ * cannot be read is no evidence about anything, and treating it as one would
+ * forget the entire library, taking every pending edit and cached fingerprint
+ * with it. So nothing changes and the caller offers a relocate instead.
  */
 export function diffAudioFiles(
-  diskPaths: string[],
+  diskPaths: string[] | null,
   tracks: TrackAnalysis[],
 ): LibraryDiff {
+  if (diskPaths === null) {
+    return {
+      addedPaths: [],
+      keptTracks: tracks,
+      removedPaths: [],
+      changed: false,
+    };
+  }
   const disk = new Set(diskPaths);
   const have = new Set(tracks.map((t) => t.path));
   const keptTracks = tracks.filter((t) => disk.has(t.path));

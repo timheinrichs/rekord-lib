@@ -86,6 +86,8 @@ pub fn run() {
             commands::list_audio_files,
             commands::library_load,
             commands::library_delete,
+            commands::library_dir_available,
+            commands::library_relocate,
             commands::edits_load,
             commands::edit_set,
             commands::edit_clear,

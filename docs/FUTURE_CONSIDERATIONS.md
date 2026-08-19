@@ -213,15 +213,37 @@ and session-only.
 - **C1b** — a conversion is still only reversible by hand: the original is in
   the trash and the output is on disk, but nothing ties the two together.
 
-### C2 · Relocate a moved library folder instead of pruning
+### C2 · Relocate a moved library folder instead of pruning — **done**
 
-**What** — when the library folder is renamed, moved or unmounted, offer to
-re-point it: rewrite `file_path` from `oldRoot/relative` to `newRoot/relative`
-where the target file exists, keeping track identity. Treat a missing folder as
-recoverable state, never as "every track was deleted".
+**What shipped** — a missing library folder is recoverable state now, and the
+app offers to follow it:
 
-**Why** — today a renamed folder looks to us like a mass deletion, and the edits
-and dismissed duplicate groups attached to those rows go with it.
+- **Nothing is pruned on a folder that cannot be listed.** There were *two*
+  paths that read an empty walk as "every file was deleted", and only running
+  the app found the second one. The backend sweep no longer counts as full
+  unless the root could actually be listed (`is_full_sweep`), and the
+  frontend's incremental sync passes `null` rather than an empty listing into
+  `diffAudioFiles`, which is where the rule now lives — an empty listing is
+  evidence, an unreadable folder is not.
+- **Re-pointing keeps track identity.** `library_relocate` rewrites the stored
+  paths from `oldRoot/relative` to `newRoot/relative` wherever the file is
+  really there, carrying the pending edits and cached fingerprints that hang off
+  the path (`PRAGMA defer_foreign_keys` for the duration, since
+  `fingerprints.path` references `tracks(path)`).
+- **It never deletes.** Rows whose file is not under the new root — or whose
+  path another row already holds — stay exactly where they are and are reported
+  as skipped. This runs when the user is recovering data, so a full scan is what
+  eventually prunes them, not the recovery itself.
+- **Two ways in.** The library view shows a warning banner with "Locate
+  folder…" instead of an empty list, and picking a different folder in the
+  settings re-points the existing rows rather than starting over.
+
+**What is left** (as a follow-up, not part of this item):
+
+- **C2a** — dismissed duplicate groups are keyed by the smallest path in the
+  group, so a relocate leaves those dismissals pointing at the old paths and
+  the groups come back once. The rows themselves survive; only the "waved off"
+  decision does not.
 
 *Size: M*
 

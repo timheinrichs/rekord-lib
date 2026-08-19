@@ -14,6 +14,7 @@ import {
   onScanDone,
   onScanProgress,
   onScanTracks,
+  pickOutputDir,
   pruneEmptyDirs,
   scanStatus,
   startLibraryWatch,
@@ -33,10 +34,13 @@ import {
 import {
   clearEdits,
   forgetTracks,
+  isLibraryDirAvailable,
   loadEdits,
   loadLibraryTracks,
+  relocateLibrary,
   saveEdit as persistEdit,
 } from "../lib/library";
+import { relocateMessage, shouldRelocate } from "../lib/relocate";
 import { dismissDuplicates, loadDuplicates, saveDuplicates } from "../lib/duplicates";
 import {
   editComplete,
@@ -139,6 +143,8 @@ interface Props {
   /** Shared header navigation (Library/Bandcamp tabs, downloads, gear). */
   nav?: ReactNode;
   onOpenSettings: () => void;
+  /** Re-points the library after the folder was found again (see lib/relocate). */
+  onLibraryDirChange?: (dir: string) => void;
 }
 
 /**
@@ -147,6 +153,13 @@ interface Props {
  * "converted" tick, so the two acknowledgements feel like the same app.
  */
 const SCAN_FINISHED_MS = 1200;
+
+/**
+ * How long the "re-linked" line stays after a relocate. It acknowledges what
+ * just happened rather than describing a state, so it clears itself instead of
+ * sitting above the library for the rest of the session.
+ */
+const RELINK_MESSAGE_MS = 8000;
 
 type Grouping = "flat" | "album" | "folder" | "label";
 
@@ -158,6 +171,7 @@ export default function LibraryView({
   onFilesDeleted,
   nav,
   onOpenSettings,
+  onLibraryDirChange,
 }: Props) {
   const [tracks, setTracks] = useState<TrackAnalysis[]>([]);
   const [loading, setLoading] = useState(false);
@@ -202,6 +216,12 @@ export default function LibraryView({
   // (which means a scan is running) and from an empty library: without it the
   // list would render its "no music" empty state during the store read.
   const [hydrated, setHydrated] = useState(false);
+  // The library folder is configured but cannot be listed — renamed, moved, or
+  // on a volume that is not mounted. Distinct from an empty library, which is
+  // what it would otherwise look like here.
+  const [dirMissing, setDirMissing] = useState(false);
+  // Outcome of the last re-link, shown once the folder is back.
+  const [relocated, setRelocated] = useState<string | null>(null);
 
   const libraryDir = settings.library_dir;
   // Only persist after the cache has been loaded – otherwise the initial
@@ -240,7 +260,12 @@ export default function LibraryView({
       let current = tracksRef.current;
       do {
         dirtyRef.current = false;
-        const disk = await listAudioFiles(libraryDir);
+        // A folder that cannot be listed is passed on as `null`, not as an
+        // empty listing: the diff must not read a renamed or unmounted library
+        // as "every file was deleted".
+        const available = await isLibraryDirAvailable(libraryDir);
+        setDirMissing(!available);
+        const disk = available ? await listAudioFiles(libraryDir) : null;
         const { addedPaths, keptTracks, removedPaths, changed } = diffAudioFiles(
           disk,
           current,
@@ -295,6 +320,34 @@ export default function LibraryView({
     backlogRef.current = startBpmBacklog;
   }, [startBpmBacklog]);
 
+  // Is the configured folder actually there? Checked whenever it changes and
+  // whenever a scan ends, because a sweep that walked a folder which is no
+  // longer there returns nothing — which would otherwise read as an empty
+  // library rather than as something to fix.
+  const checkLibraryDir = useCallback(() => {
+    if (!libraryDir) {
+      setDirMissing(false);
+      return;
+    }
+    void isLibraryDirAvailable(libraryDir)
+      .then((ok) => setDirMissing(!ok))
+      // A failed check is not evidence that the folder is gone.
+      .catch(() => setDirMissing(false));
+  }, [libraryDir]);
+
+  useEffect(checkLibraryDir, [checkLibraryDir]);
+
+  useEffect(() => {
+    if (!relocated) return;
+    const t = setTimeout(() => setRelocated(null), RELINK_MESSAGE_MS);
+    return () => clearTimeout(t);
+  }, [relocated]);
+
+  const checkDirRef = useRef(checkLibraryDir);
+  useEffect(() => {
+    checkDirRef.current = checkLibraryDir;
+  }, [checkLibraryDir]);
+
   // Persistent scan listeners (one-time): progress, streamed tracks, result.
   // Registered through a listenerGroup so an unsubscriber that arrives after
   // cleanup still gets called — see that module for what leaked without it.
@@ -329,6 +382,9 @@ export default function LibraryView({
           // a targeted run may have been capped by the single-flight guard. Not
           // after a cancel — that was a deliberate stop.
           if (!d.cancelled) backlogRef.current();
+          // A sweep that found nothing may have been looking at a folder that
+          // is no longer there.
+          checkDirRef.current();
         }),
       );
     })();
@@ -411,6 +467,25 @@ export default function LibraryView({
       active = false;
     };
   }, [libraryDir, incrementalSync]);
+
+  // "Locate folder…": re-point the library at where it went, keeping every
+  // track's identity, then let the app store the new folder.
+  const relocateTo = useCallback(async () => {
+    const dir = await pickOutputDir();
+    if (!dir || !libraryDir) return;
+    setRelocated(null);
+    if (shouldRelocate(libraryDir, dir)) {
+      try {
+        setRelocated(relocateMessage(await relocateLibrary(libraryDir, dir)));
+      } catch (e) {
+        // The folder still changes: a failed re-link costs the cached rows,
+        // not the files, and leaving the app pointed at a folder that is gone
+        // would be the worse outcome.
+        setError(`Could not re-link the library: ${e}`);
+      }
+    }
+    onLibraryDirChange?.(dir);
+  }, [libraryDir, onLibraryDirChange]);
 
   // Keep the library folder watcher pointed at the current dir and run an
   // incremental sync whenever it reports a change.
@@ -1407,6 +1482,33 @@ export default function LibraryView({
       {error && (
         <div className="mb-4 rounded-lg border border-danger-500/30 bg-danger-500/10 px-4 py-2 text-sm text-danger-500">
           {error}
+        </div>
+      )}
+
+      {/* The folder is configured but not there. A warning, not an error: the
+          tracks are still in the database and nothing has been lost — the app
+          just cannot see the files until the folder is pointed at again. */}
+      {dirMissing && (
+        <div className="mb-4 flex flex-wrap items-center gap-x-3 gap-y-2 rounded-lg border border-warning-500/40 bg-warning-500/10 px-4 py-3 text-sm">
+          <div className="min-w-0">
+            <p className="text-warning-500">Library folder not found</p>
+            <p className="mt-0.5 truncate text-fg-muted" title={libraryDir}>
+              {libraryDir}
+            </p>
+          </div>
+          <button
+            onClick={() => void relocateTo()}
+            className="ml-auto shrink-0 rounded-md border border-border-strong px-3 py-1.5 hover:border-accent-500"
+            title="Point the library at the folder's new location, keeping every track's edits and analysis"
+          >
+            Locate folder…
+          </button>
+        </div>
+      )}
+
+      {relocated && (
+        <div className="mb-4 rounded-lg border border-border bg-surface px-4 py-2 text-sm text-fg-muted">
+          {relocated}
         </div>
       )}
 
