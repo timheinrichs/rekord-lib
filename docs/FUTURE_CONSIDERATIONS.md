@@ -291,6 +291,40 @@ in the field the symptom today is analysis and conversion failing quietly.
 
 *Size: S*
 
+### C7 · Invalidate the cover thumbnail cache after a write
+
+**What** — give `CoverThumb`'s cache something that invalidates it. It is a
+module-wide `Map<path, dataURL>` keyed by the path alone
+(`src/components/CoverThumb.tsx`), and nothing ever evicts an entry.
+
+**Why** — a tag write that changes or removes the artwork leaves the old
+thumbnail on screen until the app restarts. The row itself is fine — a written
+file comes back re-analyzed, so `has_cover` is current — but the image is
+rendered from the cache regardless of it, so a correct write looks like one that
+did nothing. Found while clicking through the "no cover" fix. It is also the one
+cache in the app that does not say what invalidates it, which `CLAUDE.md`
+requires of every cache. The write result already names the paths it touched, so
+dropping exactly those entries is enough.
+
+*Size: S*
+
+### C8 · Undo should restore the original cover bytes
+
+**What** — let an undo put back the artwork it captured, byte for byte.
+Today the snapshot stores the previous cover as `CoverInput::Data`, and the
+restore hands it to `artwork::process_cover` like any other new cover
+(`src-tauri/src/metadata/write.rs`), which decodes it and re-encodes a JPEG at
+quality 90.
+
+**Why** — the dimensions and the file size come back the same, so nothing looks
+wrong, but the bytes differ and every undo round costs one more JPEG generation.
+Undo is the one operation whose whole promise is that the file ends up where it
+started; everything else about it already keeps that promise. Bytes that came
+out of a file this app processed are already CDJ-shaped, so the fix is a path
+that embeds them verbatim rather than a second trip through the encoder.
+
+*Size: S*
+
 ---
 
 ## D — Performance
