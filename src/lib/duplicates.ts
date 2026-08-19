@@ -16,3 +16,11 @@ export function loadDuplicates(): Promise<DuplicateGroup[]> {
 export function saveDuplicates(groups: DuplicateGroup[]): Promise<void> {
   return invoke("duplicates_save", { groups });
 }
+
+/**
+ * Records that a group is not a duplicate after all. Stored apart from the
+ * result, which every search overwrites — a dismissal has to survive that.
+ */
+export function dismissDuplicates(id: string): Promise<void> {
+  return invoke("duplicates_dismiss", { id });
+}

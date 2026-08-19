@@ -4,7 +4,6 @@ import { ask } from "@tauri-apps/plugin-dialog";
 import {
   analyzeFiles,
   convertTracks,
-  dedupeStatus,
   deleteAlbum,
   deleteFiles,
   listAudioFiles,
@@ -17,7 +16,6 @@ import {
   onScanTracks,
   pruneEmptyDirs,
   scanStatus,
-  startDedupe,
   startLibraryWatch,
   startScan,
   writeMetadata,
@@ -30,7 +28,7 @@ import {
   loadLibraryTracks,
   saveEdit as persistEdit,
 } from "../lib/library";
-import { loadDuplicates, saveDuplicates } from "../lib/duplicates";
+import { dismissDuplicates, loadDuplicates, saveDuplicates } from "../lib/duplicates";
 import {
   editComplete,
   formatDate,
@@ -61,7 +59,7 @@ import MarqueeText from "./MarqueeText";
 import DuplicatesModal from "./DuplicatesModal";
 import AppHeader from "./AppHeader";
 import {
-  ArrowUpIcon,
+  ScanIcon,
   CheckIcon,
   ChevronIcon,
   EditIcon,
@@ -71,8 +69,13 @@ import {
   XIcon,
 } from "./icons";
 import StatusIcons from "./StatusIcons";
+import { listenerGroup } from "../lib/listenerGroup";
 import { useScrolled } from "../lib/useScrolled";
-import { scanLabel as buildScanLabel, type BootPhase } from "../lib/boot";
+import {
+  scanButtonState,
+  scanLabel as buildScanLabel,
+  type BootPhase,
+} from "../lib/boot";
 import { useReplayAnimation } from "../lib/useReplayAnimation";
 import { Skeleton, TrackTableSkeleton } from "./Skeleton";
 import { resizeHeights, visibleRange, type Range } from "../lib/virtualList";
@@ -129,6 +132,13 @@ interface Props {
   onOpenSettings: () => void;
 }
 
+/**
+ * How long the scan button confirms a finished run before going back to its
+ * resting label. Matches the pause the conversion flow leaves on its per-row
+ * "converted" tick, so the two acknowledgements feel like the same app.
+ */
+const SCAN_FINISHED_MS = 1200;
+
 type Grouping = "flat" | "album" | "folder" | "label";
 
 export default function LibraryView({
@@ -143,6 +153,8 @@ export default function LibraryView({
   const [tracks, setTracks] = useState<TrackAnalysis[]>([]);
   const [loading, setLoading] = useState(false);
   const [converting, setConverting] = useState(false);
+  // Brief confirmation in the scan button after a run completes.
+  const [scanFinished, setScanFinished] = useState(false);
   const [dupOpen, setDupOpen] = useState(false);
   const [dedupeRunning, setDedupeRunning] = useState(false);
   const [dupGroups, setDupGroups] = useState<DuplicateGroup[]>([]);
@@ -275,40 +287,43 @@ export default function LibraryView({
   }, [startBpmBacklog]);
 
   // Persistent scan listeners (one-time): progress, streamed tracks, result.
+  // Registered through a listenerGroup so an unsubscriber that arrives after
+  // cleanup still gets called — see that module for what leaked without it.
   useEffect(() => {
-    let unProg: (() => void) | undefined;
-    let unTracks: (() => void) | undefined;
-    let unDone: (() => void) | undefined;
+    const group = listenerGroup();
     void (async () => {
-      unProg = await onScanProgress((p) => {
-        // Only the probing pass blocks the UI. The BPM pass runs alongside for
-        // minutes and must not disable converting or the duplicate search.
-        setLoading(p.running && p.stage === STAGE_ANALYZING);
-        setScanProgress(p.running ? p : null);
-      });
+      group.add(
+        await onScanProgress((p) => {
+          // Only the probing pass blocks the UI. The BPM pass runs alongside for
+          // minutes and must not disable converting or the duplicate search.
+          setLoading(p.running && p.stage === STAGE_ANALYZING);
+          setScanProgress(p.running ? p : null);
+        }),
+      );
       // Results stream in while the job runs; merging them here is what makes
-      // them visible and (via the library-save effect) persisted straight away,
-      // so a cancel or a quit costs at most one batch.
-      unTracks = await onScanTracks((t) => {
-        setTracks((prev) => mergeScanned(prev, t.tracks));
-      });
-      unDone = await onScanDone((d) => {
-        setLoading(false);
-        // A full sweep is the only run that may drop tracks: it saw every file,
-        // so anything it did not report is gone from disk. A targeted run only
-        // touched a subset, and a cancelled one did not even finish that.
-        if (!d.cancelled && d.full) setTracks(d.tracks);
-        // Keep working through the library: a full sweep leaves a backlog, and
-        // a targeted run may have been capped by the single-flight guard. Not
-        // after a cancel — that was a deliberate stop.
-        if (!d.cancelled) backlogRef.current();
-      });
+      // them visible straight away, so a cancel or a quit costs at most one batch.
+      group.add(
+        await onScanTracks((t) => {
+          setTracks((prev) => mergeScanned(prev, t.tracks));
+        }),
+      );
+      group.add(
+        await onScanDone((d) => {
+          setLoading(false);
+          // Only a run that got to the end has something to confirm.
+          if (!d.cancelled) setScanFinished(true);
+          // A full sweep is the only run that may drop tracks: it saw every file,
+          // so anything it did not report is gone from disk. A targeted run only
+          // touched a subset, and a cancelled one did not even finish that.
+          if (!d.cancelled && d.full) setTracks(d.tracks);
+          // Keep working through the library: a full sweep leaves a backlog, and
+          // a targeted run may have been capped by the single-flight guard. Not
+          // after a cancel — that was a deliberate stop.
+          if (!d.cancelled) backlogRef.current();
+        }),
+      );
     })();
-    return () => {
-      unProg?.();
-      unTracks?.();
-      unDone?.();
-    };
+    return () => group.dispose();
   }, []);
 
   // Duplicate groups must never reference files that are gone. This follows the
@@ -324,26 +339,29 @@ export default function LibraryView({
 
   // Persistent dedupe listeners: running state + completion.
   useEffect(() => {
-    let unProg: (() => void) | undefined;
-    let unDone: (() => void) | undefined;
+    const group = listenerGroup();
     void (async () => {
-      unProg = await onDedupeProgress((p) => {
-        setDedupeRunning(p.running);
-      });
-      unDone = await onDedupeDone((d) => {
-        setDedupeRunning(false);
-        // On success, persist and display the results.
-        if (!d.cancelled) {
-          setDupGroups(d.groups);
-          void saveDuplicates(d.groups);
-          setDupOpen(true);
-        }
-      });
+      group.add(
+        await onDedupeProgress((p) => {
+          setDedupeRunning(p.running);
+        }),
+      );
+      group.add(
+        await onDedupeDone((d) => {
+          setDedupeRunning(false);
+          // Take the result, but do not put it on screen: the search is a scan
+          // phase now, so it finishes without anyone having asked for it, and
+          // popping the panel open would interrupt whatever the user was doing.
+          // The header button is the way in — it appears as soon as there is
+          // something to show.
+          if (!d.cancelled) {
+            setDupGroups(d.groups);
+            void saveDuplicates(d.groups);
+          }
+        }),
+      );
     })();
-    return () => {
-      unProg?.();
-      unDone?.();
-    };
+    return () => group.dispose();
   }, []);
 
   // On start / folder change: immediately show the cached list, then dock onto
@@ -390,15 +408,16 @@ export default function LibraryView({
   useEffect(() => {
     if (!libraryDir) return;
     void startLibraryWatch(libraryDir);
-    let un: (() => void) | undefined;
+    // This effect re-runs on every folder change, so the leak the group guards
+    // against is not hypothetical here: switching folders quickly would leave a
+    // watcher listener behind for each switch.
+    const group = listenerGroup();
     // New files on disk get analyzed, then queued for their tempo.
     void onLibraryChanged(() => {
       void incrementalSync().then(() => backlogRef.current());
-    }).then((fn) => {
-      un = fn;
-    });
+    }).then((off) => group.add(off));
     return () => {
-      un?.();
+      group.dispose();
       void startLibraryWatch("");
     };
   }, [libraryDir, incrementalSync]);
@@ -731,6 +750,22 @@ export default function LibraryView({
   // without blocking: "Scanning…" while probing, "BPM 412/2223" afterwards.
   const bpmRunning = scanProgress?.stage === STAGE_BPM;
   const scanLabel = buildScanLabel(scanProgress);
+  // Any pass of the scan, probing included — the button reports all of them.
+  const scanBusy = !!scanProgress?.running;
+  const scanState = scanButtonState(scanBusy, scanFinished);
+
+  // Let the confirmation fade after a moment — and drop it at once when the
+  // next pass starts, so a running scan is never dressed as a finished one.
+  useEffect(() => {
+    if (!scanFinished) return;
+    if (scanBusy) {
+      setScanFinished(false);
+      return;
+    }
+    const id = setTimeout(() => setScanFinished(false), SCAN_FINISHED_MS);
+    return () => clearTimeout(id);
+  }, [scanFinished, scanBusy]);
+
 
   // Tell the splash how far along we are. It comes down as soon as the list is
   // displayable — a first scan runs for minutes, and the table's own loading
@@ -1082,54 +1117,17 @@ export default function LibraryView({
   );
 
   // Dismiss a group ("not a duplicate") – persistent.
+  // Waving a group off has to outlast the next search: it runs with every scan
+  // now, so a dismissal that only removed the group from the current result
+  // would be handed straight back.
   const dismissDuplicateGroup = useCallback((id: string) => {
+    void dismissDuplicates(id);
     setDupGroups((prev) => {
       const next = prev.filter((g) => g.id !== id);
       void saveDuplicates(next);
       return next;
     });
   }, []);
-
-  const buildDupCandidates = useCallback(
-    () =>
-      tracks.map((t) => {
-        const md = edits[t.id]?.metadata ?? t.metadata;
-        return {
-          id: t.id,
-          path: t.path,
-          name: md.title || t.file_name,
-          codec: t.audio.codec,
-          container: t.audio.container,
-          sample_rate: t.audio.sample_rate,
-          bits_per_sample: t.audio.bits_per_sample,
-          lossless: t.audio.lossless,
-          duration_secs: t.audio.duration_secs,
-          compatible: t.compat.compatible,
-          title: md.title,
-          artist: md.artist,
-          album_artist: md.album_artist,
-          album: md.album,
-          track_number: md.track_number,
-        };
-      }),
-    [tracks, edits],
-  );
-
-  // Start a new scan (from the header or the modal's "Search again").
-  const startDuplicateScan = useCallback(async () => {
-    const status = await dedupeStatus();
-    if (status.running) return;
-    void startDedupe(buildDupCandidates());
-  }, [buildDupCandidates]);
-
-  // Header button: show existing results, otherwise start a new scan.
-  const findDuplicates = useCallback(async () => {
-    if (dupGroups.length > 0) {
-      setDupOpen(true);
-      return;
-    }
-    await startDuplicateScan();
-  }, [dupGroups.length, startDuplicateScan]);
 
   // Existing values per field as selection suggestions (from tracks + edits).
   const fieldOptions = useMemo(() => {
@@ -1235,7 +1233,6 @@ export default function LibraryView({
 
   // Sticky "docking" animation + back-to-top.
   const scrolled = useScrolled(4);
-  const showTop = useScrolled(400);
   const scrollToTop = () => window.scrollTo({ top: 0, behavior: "smooth" });
 
   // Primary actions for the header.
@@ -1245,42 +1242,66 @@ export default function LibraryView({
         onClick={() => void rescan()}
         disabled={loading || converting || dedupeRunning}
         title={bpmRunning ? "Detecting BPM in the background" : undefined}
-        className="inline-flex items-center gap-1.5 rounded-lg border border-border-strong px-3 py-2 text-sm hover:border-accent-500 disabled:opacity-50"
+        className={`inline-flex items-center gap-1.5 rounded-lg border px-3 py-2 text-sm ${
+          scanState === "finished"
+            ? // "Done" is a state, so it takes the state colour — success, the
+              // same green as the converted-track tick. Deliberately no
+              // disabled: rule in this branch: a disabled: variant is a class
+              // plus a pseudo-class and so outranks a bare status colour, which
+              // left the label and icon grey inside an already-green outline
+              // until the button happened to re-enable.
+              "border-success-500 text-success-500"
+            : "border-border-strong enabled:hover:border-accent-500 disabled:border-border disabled:text-fg-disabled"
+        }`}
       >
-        {(loading || bpmRunning) && <SpinnerIcon />}
-        {loading || bpmRunning ? scanLabel : "Rescan"}
+        {scanState === "busy" ? (
+          // Spinner and stage share one muted wrapper, so they are the same grey
+          // as each other and as every other running indicator — regardless of
+          // whether the button happens to be disabled in this pass. That is what
+          // made "Analyzing" (disabled) and "Detecting BPM" (enabled) read as two
+          // different colours for the same kind of information.
+          <span className="inline-flex items-center gap-1.5 text-fg-muted">
+            <SpinnerIcon />
+            {scanLabel}
+          </span>
+        ) : scanState === "finished" ? (
+          <span className="animate-fade-in inline-flex items-center gap-1.5">
+            <CheckIcon />
+            Scan finished
+          </span>
+        ) : (
+          <>
+            <ScanIcon />
+            Scan library
+          </>
+        )}
       </button>
       {/* Auto-sync indicator (incremental), left of the Duplicates button. */}
       {syncing && !loading && (
         <span
-          className="flex h-9 w-9 items-center justify-center text-fg-subtle"
+          className="flex h-9 w-9 items-center justify-center text-fg-muted"
           title="Updating library…"
           aria-label="Updating library"
         >
           <SpinnerIcon />
         </span>
       )}
-      <button
-        onClick={() => void findDuplicates()}
-        disabled={
-          loading ||
-          converting ||
-          dedupeRunning ||
-          (dupGroups.length === 0 && tracks.length < 2)
-        }
-        className="inline-flex items-center gap-1.5 rounded-lg border border-border-strong px-3 py-2 text-sm hover:border-accent-500 disabled:opacity-50"
-        title="Find duplicate tracks across all formats"
-      >
-        {dedupeRunning && <SpinnerIcon />}
-        {dedupeRunning
-          ? "Finding duplicates…"
-          : dupGroups.length > 0
-            ? `Duplicates (${dupGroups.length})`
-            : "Find duplicates"}
-      </button>
+      {/* Purely a way into the result — the search itself is a scan phase now,
+          so there is nothing to start here and nothing to show when the library
+          is clean. */}
+      {dupGroups.length > 0 && (
+        <button
+          onClick={() => setDupOpen(true)}
+          disabled={converting}
+          className="inline-flex items-center gap-1.5 rounded-lg border border-border-strong px-3 py-2 text-sm enabled:hover:border-accent-500 disabled:border-border disabled:text-fg-disabled"
+          title="Show the duplicate tracks found across all formats"
+        >
+          {`Duplicates (${dupGroups.length})`}
+        </button>
+      )}
       {writing && (
         <span
-          className="flex h-9 w-9 items-center justify-center text-fg-subtle"
+          className="flex h-9 w-9 items-center justify-center text-fg-muted"
           title="Writing tags…"
           aria-label="Writing tags"
         >
@@ -1291,7 +1312,7 @@ export default function LibraryView({
         <button
           onClick={undoLastWrite}
           disabled={writing}
-          className="inline-flex items-center gap-1.5 rounded-lg border border-border-strong px-3 py-2 text-sm hover:border-accent-500 disabled:opacity-50"
+          className="inline-flex items-center gap-1.5 rounded-lg border border-border-strong px-3 py-2 text-sm enabled:hover:border-accent-500 disabled:border-border disabled:text-fg-disabled"
           title={`Undo the last tag write (${
             undoStack[undoStack.length - 1]?.label
           })`}
@@ -1304,11 +1325,19 @@ export default function LibraryView({
         <button
           onClick={flushPendingEdits}
           disabled={writing || converting}
-          className="inline-flex items-center gap-1.5 rounded-lg border border-warning-500/40 px-3 py-2 text-sm text-warning-500 hover:border-warning-500 disabled:opacity-50"
+          className="inline-flex items-center gap-1.5 rounded-lg border border-warning-500/40 px-3 py-2 text-sm text-warning-500 enabled:hover:border-warning-500 disabled:text-fg-disabled"
           title="Write metadata changes made earlier (not yet saved to the files) into the files"
         >
-          {writing ? <SpinnerIcon /> : null}
-          Write pending tags ({pendingEdits.length})
+          {writing ? (
+            // Same treatment as the scan button: while it runs, the content is
+            // status rather than a warning-coloured label.
+            <span className="inline-flex items-center gap-1.5 text-fg-muted">
+              <SpinnerIcon />
+              Write pending tags ({pendingEdits.length})
+            </span>
+          ) : (
+            `Write pending tags (${pendingEdits.length})`
+          )}
         </button>
       )}
       {selected.size > 0 && (
@@ -1316,14 +1345,14 @@ export default function LibraryView({
           <button
             onClick={() => setBulkOpen(true)}
             disabled={converting || writing}
-            className="rounded-lg border border-border-strong px-3 py-2 text-sm hover:border-accent-500 disabled:opacity-50"
+            className="rounded-lg border border-border-strong px-3 py-2 text-sm enabled:hover:border-accent-500 disabled:border-border disabled:text-fg-disabled"
           >
             Edit metadata ({selected.size})
           </button>
           <button
             onClick={convertSelected}
             disabled={converting}
-            className="rounded-lg bg-accent-600 px-4 py-2 text-sm font-medium hover:bg-accent-500 disabled:opacity-50"
+            className="rounded-lg bg-accent-600 px-4 py-2 text-sm font-medium enabled:hover:bg-accent-500 disabled:bg-surface-2 disabled:text-fg-disabled"
           >
             {converting ? "Converting…" : `Convert selection (${selected.size})`}
           </button>
@@ -1335,7 +1364,7 @@ export default function LibraryView({
               )
             }
             disabled={converting}
-            className="rounded-lg border border-border-strong px-3 py-2 text-sm hover:border-danger-500 hover:text-danger-500 disabled:opacity-50"
+            className="rounded-lg border border-border-strong px-3 py-2 text-sm enabled:hover:border-danger-500 enabled:hover:text-danger-500 disabled:border-border disabled:text-fg-disabled"
           >
             Delete ({selected.size})
           </button>
@@ -1675,7 +1704,7 @@ export default function LibraryView({
                           <button
                             onClick={() => convertOne(t)}
                             disabled={converting}
-                            className="rounded-md bg-accent-600 px-2 py-1 text-xs font-medium hover:bg-accent-500 disabled:opacity-40"
+                            className="rounded-md bg-accent-600 px-2 py-1 text-xs font-medium enabled:hover:bg-accent-500 disabled:bg-surface-2 disabled:text-fg-disabled"
                             title="Convert to target format"
                           >
                             Convert
@@ -1684,7 +1713,7 @@ export default function LibraryView({
                         <button
                           onClick={() => setEditingId(t.id)}
                           disabled={converting}
-                          className="flex h-8 w-8 items-center justify-center rounded-md text-fg-subtle hover:bg-surface hover:text-accent-400 disabled:opacity-40"
+                          className="flex h-8 w-8 items-center justify-center rounded-md text-fg-subtle enabled:hover:bg-surface enabled:hover:text-accent-400 disabled:text-fg-disabled"
                           title="Edit metadata"
                           aria-label="Edit metadata"
                         >
@@ -1698,7 +1727,7 @@ export default function LibraryView({
                             )
                           }
                           disabled={converting}
-                          className="flex h-8 w-8 items-center justify-center rounded-md text-fg-subtle hover:bg-surface hover:text-danger-500 disabled:opacity-40"
+                          className="flex h-8 w-8 items-center justify-center rounded-md text-fg-subtle enabled:hover:bg-surface enabled:hover:text-danger-500 disabled:text-fg-disabled"
                           title="Delete (move to trash)"
                           aria-label="Delete track"
                         >
@@ -1865,7 +1894,7 @@ export default function LibraryView({
                         <button
                           onClick={() => editFolder(node)}
                           disabled={writing}
-                          className="flex h-8 w-8 items-center justify-center rounded-md text-fg-subtle hover:bg-surface hover:text-accent-400 disabled:opacity-40"
+                          className="flex h-8 w-8 items-center justify-center rounded-md text-fg-subtle enabled:hover:bg-surface enabled:hover:text-accent-400 disabled:text-fg-disabled"
                           title="Edit metadata for all tracks in this folder"
                           aria-label="Edit folder metadata"
                         >
@@ -1874,7 +1903,7 @@ export default function LibraryView({
                         <button
                           onClick={() => void confirmAndDeleteFolder(node)}
                           disabled={converting}
-                          className="flex h-8 w-8 items-center justify-center rounded-md text-fg-subtle hover:bg-surface hover:text-danger-500 disabled:opacity-40"
+                          className="flex h-8 w-8 items-center justify-center rounded-md text-fg-subtle enabled:hover:bg-surface enabled:hover:text-danger-500 disabled:text-fg-disabled"
                           title="Delete folder (move to trash)"
                           aria-label="Delete folder"
                         >
@@ -1910,7 +1939,7 @@ export default function LibraryView({
                       <button
                         onClick={() => editTracks(node.all)}
                         disabled={writing}
-                        className="flex h-8 w-8 items-center justify-center rounded-md text-fg-subtle hover:bg-surface hover:text-accent-400 disabled:opacity-40"
+                        className="flex h-8 w-8 items-center justify-center rounded-md text-fg-subtle enabled:hover:bg-surface enabled:hover:text-accent-400 disabled:text-fg-disabled"
                         title="Edit metadata for all tracks of this label"
                         aria-label="Edit label metadata"
                       >
@@ -1942,7 +1971,7 @@ export default function LibraryView({
                             )
                           }
                           disabled={converting}
-                          className="flex h-8 w-8 items-center justify-center rounded-md text-fg-subtle hover:bg-surface hover:text-danger-500 disabled:opacity-40"
+                          className="flex h-8 w-8 items-center justify-center rounded-md text-fg-subtle enabled:hover:bg-surface enabled:hover:text-danger-500 disabled:text-fg-disabled"
                           title="Delete album (move to trash)"
                           aria-label="Delete album"
                         >
@@ -2001,7 +2030,7 @@ export default function LibraryView({
                             )
                           }
                           disabled={converting}
-                          className="flex h-8 w-8 items-center justify-center rounded-md text-fg-subtle hover:bg-surface hover:text-danger-500 disabled:opacity-40"
+                          className="flex h-8 w-8 items-center justify-center rounded-md text-fg-subtle enabled:hover:bg-surface enabled:hover:text-danger-500 disabled:text-fg-disabled"
                           title="Delete album (move to trash)"
                           aria-label="Delete album"
                         >
@@ -2082,27 +2111,13 @@ export default function LibraryView({
       {dupOpen && (
         <DuplicatesModal
           groups={dupGroups}
-          scanning={dedupeRunning}
           onClose={() => setDupOpen(false)}
           onDeleteFiles={deleteFilesAndPrune}
           onDismissGroup={dismissDuplicateGroup}
-          onRescan={() => void startDuplicateScan()}
         />
       )}
       </main>
 
-      {/* Back-to-top */}
-      <button
-        onClick={scrollToTop}
-        aria-label="Back to top"
-        className={`fixed bottom-6 right-6 z-40 flex h-11 w-11 items-center justify-center rounded-full border border-border-strong bg-surface text-fg shadow-lg shadow-black/40 backdrop-blur transition-all duration-300 hover:border-accent-500 hover:text-accent-400 ${
-          showTop
-            ? "translate-y-0 opacity-100"
-            : "pointer-events-none translate-y-4 opacity-0"
-        }`}
-      >
-        <ArrowUpIcon />
-      </button>
     </>
   );
 }

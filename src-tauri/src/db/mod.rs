@@ -10,7 +10,7 @@
 pub mod migrate;
 pub mod schema;
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::path::Path;
 use std::sync::Mutex;
 
@@ -453,6 +453,28 @@ pub fn save_duplicate_groups(conn: &mut Connection, groups: &[Value]) -> DbResul
     tx.commit()
 }
 
+// --- dismissed groups ------------------------------------------------------
+
+/// Groups the user waved off, so the search stops offering them.
+///
+/// This is what makes the automatic search usable: it runs with every scan, and
+/// without a record of dismissals every waved-off group would come straight
+/// back on the next run.
+pub fn load_dismissed(conn: &Connection) -> DbResult<HashSet<String>> {
+    let mut stmt = conn.prepare("SELECT id FROM dismissed_groups")?;
+    let rows = stmt.query_map([], |row| row.get::<_, String>(0))?;
+    rows.collect()
+}
+
+/// Records a dismissal. Dismissing the same group twice is not an error.
+pub fn dismiss_group(conn: &Connection, id: &str) -> DbResult<()> {
+    conn.execute(
+        "INSERT INTO dismissed_groups (id) VALUES (?1) ON CONFLICT(id) DO NOTHING",
+        params![id],
+    )?;
+    Ok(())
+}
+
 // --- fingerprints -----------------------------------------------------------
 
 /// Encodes a fingerprint as little-endian `u32` bytes.
@@ -477,23 +499,45 @@ pub fn decode_fingerprint(bytes: &[u8]) -> Option<Vec<u32>> {
     )
 }
 
-/// Reads a cached fingerprint, but only if it was computed for the same file
-/// contents (`mtime`/`size`) and the same fingerprint configuration.
-pub fn fingerprint_get(
+/// Reads every cached fingerprint for `paths` in one query.
+///
+/// The per-file variant took the connection mutex once per candidate, which on a
+/// library-sized run meant thousands of lock cycles for data that fits in one
+/// statement. Validation of mtime/size happens in memory against `identities`,
+/// so a stale entry is dropped here rather than by the query.
+pub fn fingerprints_load(
     conn: &Connection,
-    path: &str,
-    fs: FsIdentity,
+    identities: &HashMap<String, FsIdentity>,
     algo_version: i64,
-) -> DbResult<Option<Vec<u32>>> {
-    let blob: Option<Vec<u8>> = conn
-        .query_row(
-            "SELECT data FROM fingerprints
-             WHERE path = ?1 AND mtime_ms = ?2 AND size_bytes = ?3 AND algo_version = ?4",
-            params![path, fs.mtime_ms, fs.size_bytes, algo_version],
-            |row| row.get(0),
-        )
-        .optional()?;
-    Ok(blob.as_deref().and_then(decode_fingerprint))
+) -> DbResult<HashMap<String, Vec<u32>>> {
+    if identities.is_empty() {
+        return Ok(HashMap::new());
+    }
+    let mut stmt = conn.prepare(
+        "SELECT path, mtime_ms, size_bytes, data FROM fingerprints WHERE algo_version = ?1",
+    )?;
+    let rows = stmt.query_map(params![algo_version], |row| {
+        Ok((
+            row.get::<_, String>(0)?,
+            FsIdentity {
+                mtime_ms: row.get(1)?,
+                size_bytes: row.get(2)?,
+            },
+            row.get::<_, Vec<u8>>(3)?,
+        ))
+    })?;
+    let mut out = HashMap::new();
+    for row in rows {
+        let (path, stored, blob) = row?;
+        // Only keep entries we asked for whose file is unchanged.
+        if identities.get(&path) != Some(&stored) {
+            continue;
+        }
+        if let Some(fp) = decode_fingerprint(&blob) {
+            out.insert(path, fp);
+        }
+    }
+    Ok(out)
 }
 
 /// Stores a computed fingerprint.
@@ -572,6 +616,21 @@ mod tests {
             metadata_incomplete: true,
             download_date: Some(1_700_000_000_000),
         }
+    }
+
+    /// One fingerprint through the production read path, so the tests exercise
+    /// the same query the duplicate search uses.
+    fn fp_of(
+        conn: &Connection,
+        path: &str,
+        fs: FsIdentity,
+        algo: i64,
+    ) -> Option<Vec<u32>> {
+        let mut want = HashMap::new();
+        want.insert(path.to_string(), fs);
+        fingerprints_load(conn, &want, algo)
+            .unwrap()
+            .remove(path)
     }
 
     fn record(path: &str, fs: Option<FsIdentity>) -> TrackRecord {
@@ -683,16 +742,12 @@ mod tests {
         let fs = identity(7, 8);
         upsert_tracks(&mut conn, "/lib", &[record("/lib/a.aiff", Some(fs))]).unwrap();
         fingerprint_put(&conn, "/lib/a.aiff", fs, 1, &[1, 2, 3]).unwrap();
-        assert!(fingerprint_get(&conn, "/lib/a.aiff", fs, 1)
-            .unwrap()
-            .is_some());
+        assert!(fp_of(&conn, "/lib/a.aiff", fs, 1).is_some());
 
         assert_eq!(delete_tracks(&mut conn, &["/lib/a.aiff".to_string()]).unwrap(), 1);
         assert!(load_tracks(&conn, "/lib").unwrap().is_empty());
         // ON DELETE CASCADE — which only works because the pragma is set.
-        assert!(fingerprint_get(&conn, "/lib/a.aiff", fs, 1)
-            .unwrap()
-            .is_none());
+        assert!(fp_of(&conn, "/lib/a.aiff", fs, 1).is_none());
     }
 
     #[test]
@@ -754,22 +809,13 @@ mod tests {
         upsert_tracks(&mut conn, "/lib", &[record("/lib/a.aiff", Some(fs))]).unwrap();
         fingerprint_put(&conn, "/lib/a.aiff", fs, 1, &[7, 8, 9]).unwrap();
 
-        assert_eq!(
-            fingerprint_get(&conn, "/lib/a.aiff", fs, 1).unwrap(),
-            Some(vec![7, 8, 9])
-        );
+        assert_eq!(fp_of(&conn, "/lib/a.aiff", fs, 1), Some(vec![7, 8, 9]));
         // Re-tagged (mtime), re-encoded (size), or a new algorithm — all misses.
-        assert!(fingerprint_get(&conn, "/lib/a.aiff", identity(11, 1000), 1)
-            .unwrap()
-            .is_none());
-        assert!(fingerprint_get(&conn, "/lib/a.aiff", identity(10, 1001), 1)
-            .unwrap()
-            .is_none());
-        assert!(fingerprint_get(&conn, "/lib/a.aiff", fs, 2).unwrap().is_none());
+        assert!(fp_of(&conn, "/lib/a.aiff", identity(11, 1000), 1).is_none());
+        assert!(fp_of(&conn, "/lib/a.aiff", identity(10, 1001), 1).is_none());
+        assert!(fp_of(&conn, "/lib/a.aiff", fs, 2).is_none());
         // A path that was never fingerprinted.
-        assert!(fingerprint_get(&conn, "/lib/other.aiff", fs, 1)
-            .unwrap()
-            .is_none());
+        assert!(fp_of(&conn, "/lib/other.aiff", fs, 1).is_none());
     }
 
     #[test]
@@ -780,13 +826,8 @@ mod tests {
         fingerprint_put(&conn, "/lib/a.aiff", identity(1, 1), 1, &[1]).unwrap();
         fingerprint_put(&conn, "/lib/a.aiff", identity(2, 2), 1, &[2, 2]).unwrap();
 
-        assert!(fingerprint_get(&conn, "/lib/a.aiff", identity(1, 1), 1)
-            .unwrap()
-            .is_none());
-        assert_eq!(
-            fingerprint_get(&conn, "/lib/a.aiff", identity(2, 2), 1).unwrap(),
-            Some(vec![2, 2])
-        );
+        assert!(fp_of(&conn, "/lib/a.aiff", identity(1, 1), 1).is_none());
+        assert_eq!(fp_of(&conn, "/lib/a.aiff", identity(2, 2), 1), Some(vec![2, 2]));
     }
 
     #[test]
@@ -878,10 +919,7 @@ mod tests {
         assert_eq!(load_tracks(&conn, "/lib").unwrap().len(), 1);
         assert!(load_track_cache(&conn, "/lib").unwrap().is_empty());
         // Fingerprints depend on the audio, not on the app version.
-        assert_eq!(
-            fingerprint_get(&conn, "/lib/a.aiff", fs, 1).unwrap(),
-            Some(vec![5, 5])
-        );
+        assert_eq!(fp_of(&conn, "/lib/a.aiff", fs, 1), Some(vec![5, 5]));
 
         // A row re-analyzed under the new version stays cacheable.
         upsert_tracks(&mut conn, "/lib", &[record("/lib/a.aiff", Some(fs))]).unwrap();
@@ -902,6 +940,113 @@ mod tests {
             meta_get(&conn, schema::KEY_ANALYSIS_VERSION).unwrap(),
             Some("0.4.8".to_string())
         );
+    }
+
+    #[test]
+    fn dismissed_groups_round_trip_and_tolerate_repeats() {
+        let db = Db::open_in_memory().unwrap();
+        let conn = db.0.lock().unwrap();
+        assert!(load_dismissed(&conn).unwrap().is_empty());
+
+        dismiss_group(&conn, "/lib/a.aiff").unwrap();
+        dismiss_group(&conn, "/lib/b.aiff").unwrap();
+        // Dismissing twice must not fail — the UI cannot know what is stored.
+        dismiss_group(&conn, "/lib/a.aiff").unwrap();
+
+        let ids = load_dismissed(&conn).unwrap();
+        assert_eq!(ids.len(), 2);
+        assert!(ids.contains("/lib/a.aiff"));
+    }
+
+    #[test]
+    fn dismissals_are_independent_of_the_result_cache() {
+        let db = Db::open_in_memory().unwrap();
+        let mut conn = db.0.lock().unwrap();
+        dismiss_group(&conn, "/lib/a.aiff").unwrap();
+        // The search overwrites its result on every run; a dismissal has to
+        // outlive that, or the automatic search would resurrect it.
+        save_duplicate_groups(&mut conn, &[serde_json::json!({"id": "/lib/a.aiff"})]).unwrap();
+        save_duplicate_groups(&mut conn, &[]).unwrap();
+        assert_eq!(load_dismissed(&conn).unwrap().len(), 1);
+    }
+
+    #[test]
+    fn a_v1_database_gains_the_dismissals_table() {
+        // Every statement is CREATE … IF NOT EXISTS, so an older database picks
+        // additive tables up on the next start without a migration step.
+        let conn = Connection::open_in_memory().unwrap();
+        conn.execute_batch(
+            "CREATE TABLE schema_meta (key TEXT PRIMARY KEY, value TEXT NOT NULL);
+             INSERT INTO schema_meta VALUES ('schema_version', '1');",
+        )
+        .unwrap();
+        schema::init(&conn).unwrap();
+
+        dismiss_group(&conn, "/lib/a.aiff").unwrap();
+        assert_eq!(load_dismissed(&conn).unwrap().len(), 1);
+        assert_eq!(
+            meta_get(&conn, schema::KEY_SCHEMA_VERSION).unwrap(),
+            Some("2".to_string())
+        );
+    }
+
+    #[test]
+    fn fingerprints_load_returns_only_valid_entries() {
+        let db = Db::open_in_memory().unwrap();
+        let mut conn = db.0.lock().unwrap();
+        let good = identity(1, 100);
+        let stale = identity(2, 200);
+        upsert_tracks(
+            &mut conn,
+            "/lib",
+            &[
+                record("/lib/good.aiff", Some(good)),
+                record("/lib/stale.aiff", Some(stale)),
+                record("/lib/none.aiff", None),
+            ],
+        )
+        .unwrap();
+        fingerprint_put(&conn, "/lib/good.aiff", good, 1, &[1, 2]).unwrap();
+        fingerprint_put(&conn, "/lib/stale.aiff", stale, 1, &[3, 4]).unwrap();
+
+        let mut want = HashMap::new();
+        want.insert("/lib/good.aiff".to_string(), good);
+        // The file changed since it was fingerprinted …
+        want.insert("/lib/stale.aiff".to_string(), identity(99, 200));
+        // … and this one was never fingerprinted at all.
+        want.insert("/lib/none.aiff".to_string(), identity(5, 5));
+
+        let found = fingerprints_load(&conn, &want, 1).unwrap();
+        assert_eq!(found.len(), 1);
+        assert_eq!(found["/lib/good.aiff"], vec![1, 2]);
+
+        // A different algorithm version invalidates everything.
+        assert!(fingerprints_load(&conn, &want, 2).unwrap().is_empty());
+        // Asking for nothing costs no query and returns nothing.
+        assert!(fingerprints_load(&conn, &HashMap::new(), 1)
+            .unwrap()
+            .is_empty());
+    }
+
+    #[test]
+    fn fingerprints_load_ignores_paths_that_were_not_asked_for() {
+        let db = Db::open_in_memory().unwrap();
+        let mut conn = db.0.lock().unwrap();
+        let fs = identity(7, 7);
+        upsert_tracks(
+            &mut conn,
+            "/lib",
+            &[record("/lib/a.aiff", Some(fs)), record("/lib/b.aiff", Some(fs))],
+        )
+        .unwrap();
+        fingerprint_put(&conn, "/lib/a.aiff", fs, 1, &[1]).unwrap();
+        fingerprint_put(&conn, "/lib/b.aiff", fs, 1, &[2]).unwrap();
+
+        let mut want = HashMap::new();
+        want.insert("/lib/b.aiff".to_string(), fs);
+        let found = fingerprints_load(&conn, &want, 1).unwrap();
+        assert_eq!(found.len(), 1);
+        assert!(found.contains_key("/lib/b.aiff"));
     }
 
     #[test]

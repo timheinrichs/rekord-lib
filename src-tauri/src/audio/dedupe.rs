@@ -224,13 +224,28 @@ fn quality_key(f: &DuplicateFile) -> (bool, u32, u32, u64) {
     (f.lossless, f.sample_rate, f.bits_per_sample, f.size_bytes)
 }
 
-/// Looks up a stored fingerprint for this exact file state. Any database
-/// trouble reads as a miss - the fingerprint is a cache, so the worst case is
-/// recomputing it.
-fn cached_fingerprint(app: &AppHandle, path: &str, fs: FsIdentity) -> Option<Vec<u32>> {
-    let database = db::require(app).ok()?;
-    let conn = database.conn().ok()?;
-    db::fingerprint_get(&conn, path, fs, fingerprint::ALGO_VERSION).ok()?
+/// Reads every usable cached fingerprint for the given files in one query. Any
+/// database trouble reads as "nothing cached" - fingerprints are a cache, so the
+/// worst case is recomputing them.
+fn cached_fingerprints(
+    app: &AppHandle,
+    identities: &HashMap<String, FsIdentity>,
+) -> HashMap<String, Vec<u32>> {
+    let result = db::require(app).and_then(|database| {
+        let conn = database.conn()?;
+        Ok(db::fingerprints_load(
+            &conn,
+            identities,
+            fingerprint::ALGO_VERSION,
+        )?)
+    });
+    match result {
+        Ok(found) => found,
+        Err(e) => {
+            eprintln!("Could not read the fingerprint cache: {e}");
+            HashMap::new()
+        }
+    }
 }
 
 /// Stores a freshly computed fingerprint. Logged but not fatal on failure.
@@ -366,21 +381,30 @@ pub async fn find_duplicates(
     // Only the misses are counted in the progress, so the numbers reflect the
     // work that actually happens.
     let mut fs_ids: HashMap<usize, FsIdentity> = HashMap::new();
-    let mut to_fp: Vec<usize> = Vec::new();
+    let mut identities: HashMap<String, FsIdentity> = HashMap::new();
     for &i in &needed {
         let Some(fs) = db::fs_identity(&candidates[i].path) else {
             continue; // unreadable file - nothing to fingerprint or cache
         };
         fs_ids.insert(i, fs);
-        match cached_fingerprint(app, &candidates[i].path, fs) {
-            Some(fp) => fps[i] = Some(fp),
+        identities.insert(candidates[i].path.clone(), fs);
+    }
+    let cached = cached_fingerprints(app, &identities);
+    let mut to_fp: Vec<usize> = Vec::new();
+    for &i in &needed {
+        if !fs_ids.contains_key(&i) {
+            continue;
+        }
+        match cached.get(&candidates[i].path) {
+            Some(fp) => fps[i] = Some(fp.clone()),
             None => to_fp.push(i),
         }
     }
-    let hits = needed.len() - to_fp.len();
-    if hits > 0 {
-        println!("Fingerprint cache: {hits} hits, {} to compute", to_fp.len());
-    }
+    println!(
+        "Fingerprint cache: {} hits, {} to compute",
+        cached.len(),
+        to_fp.len()
+    );
 
     let total = to_fp.len();
     let mut done = 0usize;

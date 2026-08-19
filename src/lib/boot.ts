@@ -1,4 +1,4 @@
-import { STAGE_BPM, type ScanProgress } from "../types";
+import { STAGE_BPM, STAGE_DUPLICATES, type ScanProgress } from "../types";
 
 /**
  * How far the app is into starting up. The splash is shown for everything but
@@ -38,8 +38,34 @@ export function scanLabel(progress?: ScanProgress | null): string {
   if (progress.stage === STAGE_BPM) {
     return `BPM ${progress.done}/${progress.total}`;
   }
+  // The duplicate phase counts the files it has to fingerprint, which is a
+  // subset of the library and often zero once the cache is warm — so it only
+  // shows numbers when there is work to count.
+  if (progress.stage === STAGE_DUPLICATES) {
+    return progress.total > 0
+      ? `Duplicates ${progress.done}/${progress.total}`
+      : "Finding duplicates…";
+  }
   if (progress.total > 0) {
     return `Analyzing ${progress.done}/${progress.total}`;
   }
   return "Scanning…";
+}
+
+/**
+ * Which of its three faces the scan button shows.
+ *
+ * Derived in one place on purpose: the colour and the content used to branch on
+ * separate conditions, which let them disagree — a green outline around a
+ * spinner, because a finished run had already queued the next pass. Busy always
+ * wins over finished.
+ */
+export type ScanButtonState = "busy" | "finished" | "idle";
+
+export function scanButtonState(
+  busy: boolean,
+  finished: boolean,
+): ScanButtonState {
+  if (busy) return "busy";
+  return finished ? "finished" : "idle";
 }

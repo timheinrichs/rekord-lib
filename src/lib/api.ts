@@ -14,7 +14,6 @@ import type {
   DedupeProgress,
   DedupeStatus,
   DeleteResult,
-  DupCandidate,
   DuplicateGroup,
   MetadataSuggestions,
   ScanDone,
@@ -133,11 +132,6 @@ export function onScanProgress(
 /** Subscribes to the scan completion event (delivers the result). */
 export function onScanDone(cb: (d: ScanDone) => void): Promise<UnlistenFn> {
   return listen<ScanDone>("scan://done", (e) => cb(e.payload));
-}
-
-/** Starts duplicate detection (background singleton). false = already running. */
-export function startDedupe(candidates: DupCandidate[]): Promise<boolean> {
-  return invoke<boolean>("start_dedupe", { candidates });
 }
 
 /** Current dedupe status (running/progress/result available). */

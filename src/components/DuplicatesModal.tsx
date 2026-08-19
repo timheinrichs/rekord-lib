@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
+import Overlay from "./Overlay";
 import { formatBytes, formatDuration, formatSampleRate } from "../lib/format";
-import { Skeleton } from "./Skeleton";
 import {
   clusterAlbums,
   deleteSetForAlbum,
@@ -12,14 +12,11 @@ import { ChevronIcon, TrashIcon } from "./icons";
 
 interface Props {
   groups: DuplicateGroup[];
-  scanning: boolean;
   onClose: () => void;
   /** Move files to the trash (parent updates groups/library + prunes folders). */
   onDeleteFiles: (paths: string[]) => Promise<void>;
-  /** Dismiss a group as "not a duplicate". */
+  /** Dismiss a group as "not a duplicate" — remembered across searches. */
   onDismissGroup: (id: string) => void;
-  /** Start a new scan. */
-  onRescan: () => void;
 }
 
 function folderName(dir: string): string {
@@ -29,11 +26,9 @@ function folderName(dir: string): string {
 
 export default function DuplicatesModal({
   groups,
-  scanning,
   onClose,
   onDeleteFiles,
   onDismissGroup,
-  onRescan,
 }: Props) {
   const [keepOverride, setKeepOverride] = useState<Record<string, string>>({});
   const [albumKeep, setAlbumKeep] = useState<Record<string, string>>({});
@@ -88,7 +83,7 @@ export default function DuplicatesModal({
   const empty = albums.length === 0 && loneGroups.length === 0;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
+    <Overlay>
       <div className="flex max-h-[90vh] w-full max-w-4xl flex-col overflow-hidden rounded-2xl border border-border bg-surface shadow-2xl">
         <header className="flex items-center justify-between border-b border-border px-5 py-3">
           <h2 className="text-sm font-medium">
@@ -103,24 +98,13 @@ export default function DuplicatesModal({
               </span>
             )}
           </h2>
-          <div className="flex items-center gap-2">
-            <button
-              onClick={onRescan}
-              disabled={scanning}
-              className="rounded-md border border-border-strong px-2.5 py-1 text-xs text-fg-muted hover:border-accent-500 hover:text-accent-400 disabled:opacity-40"
-            >
-              {scanning ? "Searching…" : "Search again"}
-            </button>
-            <button onClick={onClose} className="text-fg-muted hover:text-fg" aria-label="Close">
-              ✕
-            </button>
-          </div>
+          <button onClick={onClose} className="text-fg-muted hover:text-fg" aria-label="Close">
+            ✕
+          </button>
         </header>
 
         <div className="flex-1 overflow-y-auto p-5">
-          {empty && scanning ? (
-            <DuplicatesSkeleton />
-          ) : empty ? (
+          {empty ? (
             <div className="animate-fade-in flex flex-col items-center gap-2 py-16 text-center text-fg-muted">
               <p className="text-lg text-fg">No duplicates found</p>
               <p className="text-sm">All tracks in the library are unique.</p>
@@ -230,7 +214,7 @@ export default function DuplicatesModal({
                             <button
                               onClick={() => void runDelete(del)}
                               disabled={busy || del.length === 0}
-                              className="rounded-lg bg-danger-500 px-3 py-1.5 text-xs font-medium text-white hover:bg-danger-500/90 disabled:opacity-40"
+                              className="rounded-lg bg-danger-500 px-3 py-1.5 text-xs font-medium text-white enabled:hover:bg-danger-500/90 disabled:bg-surface-2 disabled:text-fg-disabled"
                             >
                               Keep selected · delete others
                             </button>
@@ -332,7 +316,7 @@ export default function DuplicatesModal({
                                   disabled={busy}
                                   title="Move this file to the trash"
                                   aria-label="Move to trash"
-                                  className="flex h-8 w-8 items-center justify-center rounded-md text-fg-subtle hover:bg-surface-2 hover:text-danger-500 disabled:opacity-40"
+                                  className="flex h-8 w-8 items-center justify-center rounded-md text-fg-subtle enabled:hover:bg-surface-2 enabled:hover:text-danger-500 disabled:text-fg-disabled"
                                 >
                                   <TrashIcon />
                                 </button>
@@ -369,7 +353,7 @@ export default function DuplicatesModal({
             <button
               onClick={() => void runDelete(toDelete.paths)}
               disabled={busy || toDelete.paths.length === 0}
-              className="rounded-lg bg-danger-500 px-4 py-2 text-sm font-medium text-white hover:bg-danger-500/90 disabled:opacity-40"
+              className="rounded-lg bg-danger-500 px-4 py-2 text-sm font-medium text-white enabled:hover:bg-danger-500/90 disabled:bg-surface-2 disabled:text-fg-disabled"
             >
               {busy ? "Moving…" : `All tracks not kept (${toDelete.paths.length})`}
             </button>
@@ -391,7 +375,7 @@ export default function DuplicatesModal({
           </footer>
         )}
       </div>
-    </div>
+    </Overlay>
   );
 }
 
@@ -412,31 +396,3 @@ function QualityBadge({ f }: { f: DuplicateFile }) {
   );
 }
 
-/** Placeholder groups while the duplicate search runs. */
-function DuplicatesSkeleton() {
-  return (
-    <div
-      role="status"
-      aria-label="Searching for duplicates"
-      className="animate-fade-in flex flex-col gap-6"
-    >
-      {Array.from({ length: 3 }, (_, g) => (
-        <div key={g} className="flex flex-col gap-2">
-          <Skeleton className="h-4 w-48" />
-          {Array.from({ length: 2 }, (_, r) => (
-            <div
-              key={r}
-              className="flex items-center gap-4 rounded-lg border border-border p-3"
-            >
-              <Skeleton className="h-10 w-10 shrink-0 rounded" />
-              <div className="flex min-w-0 flex-1 flex-col gap-2">
-                <Skeleton className="h-3 w-1/2" />
-                <Skeleton className="h-3 w-1/3" />
-              </div>
-            </div>
-          ))}
-        </div>
-      ))}
-    </div>
-  );
-}

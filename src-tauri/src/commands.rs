@@ -32,6 +32,7 @@ struct ScanProgress {
 /// Scan stage labels (also shown verbatim in the UI).
 const STAGE_ANALYZING: &str = "Analyzing";
 const STAGE_BPM: &str = "Detecting BPM";
+const STAGE_DUPLICATES: &str = "Finding duplicates";
 
 /// Concurrent ffmpeg processes in the BPM pass — same budget as the duplicate
 /// search's fingerprint pass.
@@ -337,6 +338,9 @@ pub fn start_scan(
         let mut reused: Vec<TrackAnalysis> = Vec::with_capacity(SCAN_BATCH);
         let mut cancelled = false;
         let mut done = 0usize;
+        // How many files this run actually (re-)analyzed — the duplicate phase
+        // below only needs to run when the library really changed.
+        let mut analyzed = 0usize;
 
         for chunk in paths.chunks(PROBE_CONCURRENCY) {
             if app.state::<ScanState>().cancel.load(Ordering::SeqCst) {
@@ -374,6 +378,7 @@ pub fn start_scan(
             }
 
             done += chunk.len();
+            analyzed += fresh.len();
             if fresh.len() + reused.len() >= SCAN_BATCH {
                 flush_scan_batch(
                     &app,
@@ -401,10 +406,12 @@ pub fn start_scan(
         // A completed full sweep saw every file, so anything still in the
         // database for this folder is gone from disk. A targeted or cancelled
         // run has no such licence.
+        let mut removed = 0usize;
         if full && !cancelled {
             let seen: Vec<String> = out.iter().map(|t| t.path.clone()).collect();
-            if let Err(e) = retain_scanned_tracks(&app, &dir, &seen) {
-                eprintln!("Pruning removed tracks failed: {e}");
+            match retain_scanned_tracks(&app, &dir, &seen) {
+                Ok(n) => removed = n,
+                Err(e) => eprintln!("Pruning removed tracks failed: {e}"),
             }
         }
 
@@ -448,6 +455,18 @@ pub fn start_scan(
             .await;
         }
 
+        // Phase 3: duplicates. Part of the scan rather than a button of its
+        // own — with fingerprints cached, a repeat search costs comparison only,
+        // so there is nothing left for a manual trigger to save.
+        if dedupe_after_scan(full, cancelled, analyzed > 0 || removed > 0) {
+            let state = app.state::<ScanState>();
+            set_scan_stage(&state, STAGE_DUPLICATES);
+            state.done.store(0, Ordering::SeqCst);
+            state.total.store(0, Ordering::SeqCst);
+            emit_progress(&app, generation, 0, 0, true, STAGE_DUPLICATES);
+            cancelled = run_dedupe_phase(&app, &dir, generation).await;
+        }
+
         let state = app.state::<ScanState>();
         let stage = scan_stage(&state);
         let done = state.done.load(Ordering::SeqCst);
@@ -465,6 +484,49 @@ pub fn start_scan(
         );
     });
     true
+}
+
+/// Should the duplicate phase run after this scan?
+///
+/// A full sweep always re-checks. A targeted run only does when it actually
+/// changed the library: a BPM-only pass touches nothing the matching uses
+/// (duration, name, metadata, audio), so re-running the search would spend
+/// time to arrive at the groups already stored. A cancelled run never does —
+/// its picture of the library is incomplete.
+fn dedupe_after_scan(full: bool, cancelled: bool, changed: bool) -> bool {
+    !cancelled && (full || changed)
+}
+
+/// Projects stored tracks onto duplicate-search candidates.
+///
+/// The name is what the search compares when tags are missing, so it falls back
+/// to the file name — an untagged file still has to take part in the search.
+fn dup_candidates(tracks: &[TrackAnalysis]) -> Vec<DupCandidate> {
+    tracks
+        .iter()
+        .map(|t| DupCandidate {
+            id: t.id.clone(),
+            path: t.path.clone(),
+            name: t
+                .metadata
+                .title
+                .as_deref()
+                .filter(|s| !s.trim().is_empty())
+                .unwrap_or(&t.file_name)
+                .to_string(),
+            codec: t.audio.codec.clone(),
+            container: t.audio.container.clone(),
+            sample_rate: t.audio.sample_rate,
+            bits_per_sample: t.audio.bits_per_sample,
+            lossless: t.audio.lossless,
+            duration_secs: t.audio.duration_secs,
+            compatible: t.compat.compatible,
+            title: t.metadata.title.clone(),
+            artist: t.metadata.artist.clone(),
+            album_artist: t.metadata.album_artist.clone(),
+            album: t.metadata.album.clone(),
+        })
+        .collect()
 }
 
 /// Reads the scan cache for `dir`, or an empty one if the database is
@@ -519,6 +581,82 @@ fn flush_scan_batch(
     tracks.extend(reused);
     out.extend(tracks.iter().cloned());
     emit_tracks(app, generation, tracks);
+}
+
+/// Runs the duplicate search over the whole library and publishes the result.
+///
+/// Candidates come from the database rather than from what this run analyzed:
+/// after the batch upserts it holds the complete picture, and a targeted run
+/// that only touched a handful of files would otherwise compare them against
+/// nothing. Returns true if it was cancelled.
+async fn run_dedupe_phase(app: &AppHandle, dir: &str, generation: u64) -> bool {
+    let candidates = match db::require(app).and_then(|database| {
+        let conn = database.conn()?;
+        Ok(dup_candidates(&db::load_tracks(&conn, dir)?))
+    }) {
+        Ok(c) => c,
+        Err(e) => {
+            eprintln!("Could not read the library for the duplicate search: {e}");
+            return false;
+        }
+    };
+
+    {
+        let state = app.state::<DedupeState>();
+        if state.running.swap(true, Ordering::SeqCst) {
+            return false; // a search is already in flight; leave it alone
+        }
+        state.cancel.store(false, Ordering::SeqCst);
+        state.done.store(0, Ordering::SeqCst);
+        state.total.store(0, Ordering::SeqCst);
+    }
+
+    let (groups, cancelled) = dedupe::find_duplicates(app, candidates, generation).await;
+
+    let state = app.state::<DedupeState>();
+    state.running.store(false, Ordering::SeqCst);
+    if cancelled {
+        let _ = app.emit(
+            "dedupe://done",
+            DedupeDone {
+                generation,
+                cancelled,
+                groups: vec![],
+            },
+        );
+        return true;
+    }
+
+    // Groups the user waved off stay gone. Without this the search — which now
+    // runs with every scan — would hand every dismissal straight back.
+    let groups = drop_dismissed(app, groups);
+    *state.result.lock().unwrap() = Some(groups.clone());
+    persist_duplicate_groups(app, &groups);
+    let _ = app.emit(
+        "dedupe://done",
+        DedupeDone {
+            generation,
+            cancelled: false,
+            groups,
+        },
+    );
+    false
+}
+
+/// Removes groups the user dismissed. On a database error nothing is filtered —
+/// showing a dismissed group again is a smaller failure than hiding a real one.
+fn drop_dismissed(app: &AppHandle, groups: Vec<DuplicateGroup>) -> Vec<DuplicateGroup> {
+    let dismissed = db::require(app).and_then(|database| {
+        let conn = database.conn()?;
+        Ok(db::load_dismissed(&conn)?)
+    });
+    match dismissed {
+        Ok(ids) => groups.into_iter().filter(|g| !ids.contains(&g.id)).collect(),
+        Err(e) => {
+            eprintln!("Could not read dismissed groups: {e}");
+            groups
+        }
+    }
 }
 
 /// Drops database rows of `dir` that the sweep did not see, i.e. files that are
@@ -602,6 +740,15 @@ pub fn duplicates_load(app: AppHandle) -> AppResult<Vec<serde_json::Value>> {
     Ok(db::load_duplicate_groups(&conn)?)
 }
 
+/// Records that the user waved off a group, so later searches skip it. Their
+/// files stay untouched — this is a "not a duplicate" verdict, not a deletion.
+#[tauri::command]
+pub fn duplicates_dismiss(app: AppHandle, id: String) -> AppResult<()> {
+    let database = db::require(&app)?;
+    let conn = database.conn()?;
+    Ok(db::dismiss_group(&conn, &id)?)
+}
+
 /// Replaces the stored duplicate result. The dedupe run stores its own output;
 /// this is how the frontend writes back a pruned version.
 #[tauri::command]
@@ -683,7 +830,12 @@ fn set_scan_stage(state: &ScanState, stage: &str) {
 
 /// Cancels a running scan (the task terminates at the next step).
 #[tauri::command]
-pub fn cancel_scan(state: State<'_, ScanState>) {
+pub fn cancel_scan(app: AppHandle, state: State<'_, ScanState>) {
+    // The duplicate search is a phase of the scan now, so cancelling the scan
+    // has to reach it too.
+    app.state::<DedupeState>()
+        .cancel
+        .store(true, Ordering::SeqCst);
     if state.running.load(Ordering::SeqCst) {
         state.cancel.store(true, Ordering::SeqCst);
     }
@@ -911,50 +1063,6 @@ pub struct DedupeStatus {
     total: usize,
     stage: String,
     has_result: bool,
-}
-
-/// Starts the duplicate search as a background singleton. If one is already
-/// running, nothing happens (`false`) - the running process stays in place.
-/// The result arrives via `dedupe://done`, progress via `dedupe://progress`.
-#[tauri::command]
-pub fn start_dedupe(
-    app: AppHandle,
-    state: State<'_, DedupeState>,
-    candidates: Vec<DupCandidate>,
-) -> bool {
-    if state.running.swap(true, Ordering::SeqCst) {
-        return false;
-    }
-    state.cancel.store(false, Ordering::SeqCst);
-    state.done.store(0, Ordering::SeqCst);
-    state.total.store(0, Ordering::SeqCst);
-    if let Ok(mut s) = state.stage.lock() {
-        *s = "Analyzing".to_string();
-    }
-    *state.result.lock().unwrap() = None;
-    let generation = state.generation.fetch_add(1, Ordering::SeqCst) + 1;
-
-    let app = app.clone();
-    tauri::async_runtime::spawn(async move {
-        let (groups, cancelled) = dedupe::find_duplicates(&app, candidates, generation).await;
-        let state = app.state::<DedupeState>();
-        if !cancelled {
-            *state.result.lock().unwrap() = Some(groups.clone());
-            // The run produced the groups here, so it stores them here too -
-            // the frontend only ever writes back a pruned version.
-            persist_duplicate_groups(&app, &groups);
-        }
-        state.running.store(false, Ordering::SeqCst);
-        let _ = app.emit(
-            "dedupe://done",
-            DedupeDone {
-                generation,
-                cancelled,
-                groups,
-            },
-        );
-    });
-    true
 }
 
 /// Current dedupe status (running + progress + whether a result is available).
@@ -1321,6 +1429,70 @@ mod tests {
         // Empty / non-existent folder → nothing to trash.
         assert!(!dir_holds_only(&root, &[]));
         assert!(!dir_holds_only("/no/such/dir", &[a]));
+    }
+
+    #[test]
+    fn dedupe_runs_after_a_full_sweep_or_a_change_but_never_after_a_cancel() {
+        // A full sweep always re-checks.
+        assert!(dedupe_after_scan(true, false, false));
+        assert!(dedupe_after_scan(true, false, true));
+        // A targeted run only when it changed something — a BPM-only pass
+        // touches nothing the matching uses.
+        assert!(dedupe_after_scan(false, false, true));
+        assert!(!dedupe_after_scan(false, false, false));
+        // A cancelled run has an incomplete picture of the library.
+        assert!(!dedupe_after_scan(true, true, true));
+        assert!(!dedupe_after_scan(false, true, true));
+    }
+
+    #[test]
+    fn dup_candidates_carry_the_fields_the_search_compares() {
+        let track = TrackAnalysis {
+            id: "/lib/a.aiff".into(),
+            path: "/lib/a.aiff".into(),
+            file_name: "a.aiff".into(),
+            audio: crate::models::AudioInfo {
+                container: "aiff".into(),
+                codec: "pcm_s16be".into(),
+                sample_rate: 44100,
+                bits_per_sample: 16,
+                channels: 2,
+                duration_secs: 210.5,
+                lossless: true,
+            },
+            metadata: TrackMetadata {
+                title: Some("Running".into()),
+                artist: Some("Monika".into()),
+                album: Some("TD".into()),
+                album_artist: Some("Monika".into()),
+                ..Default::default()
+            },
+            compat: crate::models::CompatReport {
+                compatible: true,
+                issues: vec![],
+            },
+            metadata_incomplete: false,
+            download_date: None,
+        };
+
+        let out = dup_candidates(std::slice::from_ref(&track));
+        assert_eq!(out.len(), 1);
+        assert_eq!(out[0].name, "Running");
+        assert_eq!(out[0].duration_secs, 210.5);
+        assert!(out[0].lossless);
+        assert!(out[0].compatible);
+        assert_eq!(out[0].artist.as_deref(), Some("Monika"));
+
+        // No title, or a blank one: the file name has to stand in, otherwise an
+        // untagged file could not take part in the search at all.
+        let mut untitled = track.clone();
+        untitled.metadata.title = None;
+        assert_eq!(dup_candidates(&[untitled]).into_iter().next().unwrap().name, "a.aiff");
+        let mut blank = track;
+        blank.metadata.title = Some("   ".into());
+        assert_eq!(dup_candidates(&[blank]).into_iter().next().unwrap().name, "a.aiff");
+
+        assert!(dup_candidates(&[]).is_empty());
     }
 
     #[test]

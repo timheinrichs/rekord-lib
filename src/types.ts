@@ -137,6 +137,7 @@ export interface ConvertProgress {
 /** Scan stage labels, mirroring the constants in src-tauri/src/commands.rs. */
 export const STAGE_ANALYZING = "Analyzing";
 export const STAGE_BPM = "Detecting BPM";
+export const STAGE_DUPLICATES = "Finding duplicates";
 
 export interface ScanProgress {
   generation: number;

@@ -1,6 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { bootLabel, scanLabel } from "./boot";
-import { STAGE_ANALYZING, STAGE_BPM, type ScanProgress } from "../types";
+import { bootLabel, scanButtonState, scanLabel } from "./boot";
+import {
+  STAGE_ANALYZING,
+  STAGE_BPM,
+  STAGE_DUPLICATES,
+  type ScanProgress,
+} from "../types";
 
 function progress(over: Partial<ScanProgress> = {}): ScanProgress {
   return {
@@ -22,6 +27,20 @@ describe("scanLabel", () => {
   it("counts the probing pass once a total is known", () => {
     expect(scanLabel(progress({ done: 12, total: 2223 }))).toBe(
       "Analyzing 12/2223",
+    );
+  });
+
+  it("counts the duplicate phase when it has files to fingerprint", () => {
+    expect(
+      scanLabel(progress({ stage: STAGE_DUPLICATES, done: 40, total: 300 })),
+    ).toBe("Duplicates 40/300");
+  });
+
+  it("drops the numbers for the duplicate phase when the cache is warm", () => {
+    // Nothing to decode means nothing to count — the phase is then just a
+    // comparison pass, and "0/0" would read as though it were stuck.
+    expect(scanLabel(progress({ stage: STAGE_DUPLICATES, total: 0 }))).toBe(
+      "Finding duplicates…",
     );
   });
 
@@ -58,5 +77,23 @@ describe("bootLabel", () => {
   it("says nothing once ready", () => {
     expect(bootLabel("ready")).toBe("");
     expect(bootLabel("ready", progress())).toBe("");
+  });
+});
+
+describe("scanButtonState", () => {
+  it("is idle when nothing is happening", () => {
+    expect(scanButtonState(false, false)).toBe("idle");
+  });
+
+  it("confirms a finished run", () => {
+    expect(scanButtonState(false, true)).toBe("finished");
+  });
+
+  it("lets a running pass win over a pending confirmation", () => {
+    // This is the case that broke: a finished run queues the next pass, so both
+    // were true at once. Colour and content branched separately and disagreed —
+    // a green outline around a spinner.
+    expect(scanButtonState(true, true)).toBe("busy");
+    expect(scanButtonState(true, false)).toBe("busy");
   });
 });

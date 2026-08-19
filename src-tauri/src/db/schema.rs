@@ -10,7 +10,16 @@ use rusqlite::Connection;
 use super::DbResult;
 
 /// Current schema version, stored in `schema_meta`.
-pub const SCHEMA_VERSION: i64 = 1;
+///
+/// Purely additive changes — a new table or index — need nothing beyond adding
+/// them to [`SCHEMA_SQL`] and bumping this: every statement is
+/// `CREATE … IF NOT EXISTS`, so an older database picks them up on the next
+/// start. Only changes that transform or drop existing data need a step in
+/// [`super::migrate`].
+///
+/// - 2: `dismissed_groups`
+/// - 1: initial
+pub const SCHEMA_VERSION: i64 = 2;
 
 /// Key under which the schema version lives in `schema_meta`.
 pub const KEY_SCHEMA_VERSION: &str = "schema_version";
@@ -82,6 +91,13 @@ CREATE TABLE IF NOT EXISTS edits (
 CREATE TABLE IF NOT EXISTS duplicate_groups (
     id      TEXT PRIMARY KEY,
     payload TEXT NOT NULL
+);
+
+-- Groups the user has waved off. Kept apart from `duplicate_groups` because
+-- that table is a result cache the search overwrites on every run, while a
+-- dismissal is a decision that has to outlive it.
+CREATE TABLE IF NOT EXISTS dismissed_groups (
+    id TEXT PRIMARY KEY
 );
 "#;
 

@@ -4,7 +4,7 @@ const { invokeMock } = vi.hoisted(() => ({ invokeMock: vi.fn() }));
 
 vi.mock("@tauri-apps/api/core", () => ({ invoke: invokeMock }));
 
-import { loadDuplicates, saveDuplicates } from "./duplicates";
+import { dismissDuplicates, loadDuplicates, saveDuplicates } from "./duplicates";
 import type { DuplicateGroup } from "../types";
 
 afterEach(() => {
@@ -36,5 +36,15 @@ describe("duplicates store", () => {
     invokeMock.mockResolvedValue(undefined);
     await saveDuplicates([]);
     expect(invokeMock).toHaveBeenCalledWith("duplicates_save", { groups: [] });
+  });
+});
+
+describe("dismissDuplicates", () => {
+  it("records the dismissal by group id", async () => {
+    invokeMock.mockResolvedValue(undefined);
+    await dismissDuplicates("/lib/a.aiff");
+    expect(invokeMock).toHaveBeenCalledWith("duplicates_dismiss", {
+      id: "/lib/a.aiff",
+    });
   });
 });
