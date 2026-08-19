@@ -74,7 +74,7 @@ export default function BandcampView({
           <button
             onClick={onDownloadAll}
             disabled={!canAct || collection.length === 0}
-            className="rounded-lg border border-border-strong px-3 py-2 text-sm hover:border-accent-500 disabled:opacity-50"
+            className="rounded-lg border border-border-strong px-3 py-2 text-sm enabled:hover:border-accent-500 disabled:border-border disabled:text-fg-disabled"
             title="Download every album and track into the library folder"
           >
             {bulk?.kind === "all"
@@ -84,7 +84,7 @@ export default function BandcampView({
           <button
             onClick={onSyncLibrary}
             disabled={!canAct || missingCount === 0}
-            className="rounded-lg bg-accent-600 px-4 py-2 text-sm font-medium hover:bg-accent-500 disabled:opacity-50"
+            className="rounded-lg bg-accent-600 px-4 py-2 text-sm font-medium enabled:hover:bg-accent-500 disabled:bg-surface-2 disabled:text-fg-disabled"
             title="Download only purchases that are missing locally"
           >
             {bulk?.kind === "sync"
@@ -125,7 +125,7 @@ export default function BandcampView({
               <button
                 onClick={onRefresh}
                 disabled={refreshing}
-                className="ml-auto rounded-lg border border-border-strong px-3 py-1.5 text-sm text-fg-muted hover:border-accent-500 hover:text-accent-400 disabled:opacity-50"
+                className="ml-auto rounded-lg border border-border-strong px-3 py-1.5 text-sm text-fg-muted enabled:hover:border-accent-500 enabled:hover:text-accent-400 disabled:border-border disabled:text-fg-disabled"
               >
                 {refreshing ? "Refreshing…" : "Refresh"}
               </button>
@@ -233,7 +233,7 @@ function BandcampRow({
       <button
         onClick={onDownload}
         disabled={!item.download_page_url || disabled || state === "loading"}
-        className="shrink-0 rounded-lg bg-accent-600 px-3 py-1.5 text-xs font-medium hover:bg-accent-500 disabled:opacity-40"
+        className="shrink-0 rounded-lg bg-accent-600 px-3 py-1.5 text-xs font-medium enabled:hover:bg-accent-500 disabled:bg-surface-2 disabled:text-fg-disabled"
       >
         {downloadLabel(state)}
       </button>
@@ -277,7 +277,7 @@ function BandcampCard({
         <button
           onClick={onDownload}
           disabled={!item.download_page_url || disabled || state === "loading"}
-          className="mt-1 w-full rounded-lg bg-accent-600 px-3 py-1.5 text-xs font-medium hover:bg-accent-500 disabled:opacity-40"
+          className="mt-1 w-full rounded-lg bg-accent-600 px-3 py-1.5 text-xs font-medium enabled:hover:bg-accent-500 disabled:bg-surface-2 disabled:text-fg-disabled"
         >
           {downloadLabel(state)}
         </button>

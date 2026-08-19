@@ -178,7 +178,7 @@ export default function SettingsView({
             <button
               onClick={connect}
               disabled={busy}
-              className="rounded-lg bg-accent-600 px-4 py-2 text-sm font-medium hover:bg-accent-500 disabled:opacity-50"
+              className="rounded-lg bg-accent-600 px-4 py-2 text-sm font-medium enabled:hover:bg-accent-500 disabled:bg-surface-2 disabled:text-fg-disabled"
             >
               {busy ? "Connecting…" : "2 · Connect"}
             </button>
@@ -247,7 +247,7 @@ export default function SettingsView({
               onChange={(e) =>
                 onSettingsChange({ bit_depth: Number(e.target.value) })
               }
-              className="rounded-lg border border-border-strong bg-surface-2 px-3 py-2 outline-none focus:border-accent-500 disabled:opacity-40"
+              className="rounded-lg border border-border-strong bg-surface-2 px-3 py-2 outline-none focus:border-accent-500 disabled:border-border disabled:text-fg-disabled"
             >
               <option value={16}>16-bit (safe)</option>
               <option value={24}>24-bit</option>
@@ -307,7 +307,7 @@ export default function SettingsView({
                 onRedetectBpm();
               }}
               disabled={!trackCount || !!scan || starting}
-              className="mt-3 rounded-lg border border-border-strong px-3 py-2 text-sm hover:border-accent-500 disabled:opacity-50"
+              className="mt-3 rounded-lg border border-border-strong px-3 py-2 text-sm enabled:hover:border-accent-500 disabled:border-border disabled:text-fg-disabled"
             >
               {scan
                 ? scan.stage === STAGE_BPM
@@ -408,7 +408,7 @@ export default function SettingsView({
             <button
               onClick={runUpdate}
               disabled={installing}
-              className="rounded-lg bg-accent-600 px-4 py-2 text-sm font-medium hover:bg-accent-500 disabled:opacity-50"
+              className="rounded-lg bg-accent-600 px-4 py-2 text-sm font-medium enabled:hover:bg-accent-500 disabled:bg-surface-2 disabled:text-fg-disabled"
             >
               {installing
                 ? dlPct != null
@@ -422,7 +422,7 @@ export default function SettingsView({
             <button
               onClick={checkUpdates}
               disabled={checking}
-              className="rounded-lg border border-border-strong px-3 py-1.5 text-sm hover:border-accent-500 disabled:opacity-50"
+              className="rounded-lg border border-border-strong px-3 py-1.5 text-sm enabled:hover:border-accent-500 disabled:border-border disabled:text-fg-disabled"
             >
               {checking ? "Checking…" : "Check for updates"}
             </button>

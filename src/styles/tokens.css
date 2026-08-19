@@ -61,6 +61,7 @@
   --color-fg:            var(--fg);
   --color-fg-muted:      var(--fg-muted);
   --color-fg-subtle:     var(--fg-subtle);
+  --color-fg-disabled:   var(--fg-disabled);
 
   /* ---- Radius ------------------------------------------------------- */
   --radius-sm: 4px;
@@ -138,6 +139,7 @@
   --fg:            #F6F6F8;   /* graphite-50 */
   --fg-muted:      #B7B7C0;   /* graphite-300 */
   --fg-subtle:     #8C8C98;   /* graphite-400 */
+  --fg-disabled:   #5A5A66;   /* graphite-500 – inert, see below */
 
   --bg-success: #123026; --fg-success: #4FD6A0;
   --bg-warning: #3A2A0E; --fg-warning: #F7B84E;
@@ -156,6 +158,7 @@
   --fg:            #100F14;
   --fg-muted:      #4A4A55;
   --fg-subtle:     #666671;
+  --fg-disabled:   #A8A8B4;
 
   --bg-success: #E6F6EF; --fg-success: #10794F;
   --bg-warning: #FCF0D9; --fg-warning: #7A4E06;

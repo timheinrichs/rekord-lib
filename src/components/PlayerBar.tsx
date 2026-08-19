@@ -88,7 +88,7 @@ export default function PlayerBar() {
           <button
             onClick={prev}
             disabled={!hasPrev}
-            className="flex h-9 w-9 items-center justify-center rounded-full text-fg-muted hover:text-fg disabled:opacity-30"
+            className="flex h-9 w-9 items-center justify-center rounded-full text-fg-muted enabled:hover:text-fg disabled:text-fg-disabled"
             title="Previous"
             aria-label="Previous track"
           >
@@ -105,7 +105,7 @@ export default function PlayerBar() {
           <button
             onClick={next}
             disabled={!hasNext}
-            className="flex h-9 w-9 items-center justify-center rounded-full text-fg-muted hover:text-fg disabled:opacity-30"
+            className="flex h-9 w-9 items-center justify-center rounded-full text-fg-muted enabled:hover:text-fg disabled:text-fg-disabled"
             title="Next"
             aria-label="Next track"
           >

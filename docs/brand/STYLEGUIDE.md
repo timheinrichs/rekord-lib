@@ -75,8 +75,28 @@ switch automatically between dark/light:
 | `bg-surface-2` | raised surface (menu, popover, active row) |
 | `border-border` / `border-border-strong` | dividers |
 | `text-fg` | primary text |
-| `text-fg-muted` | secondary text |
+| `text-fg-muted` | secondary text, and **status text the user reads but cannot click** (scan stages, spinners) |
 | `text-fg-subtle` | hints, placeholders |
+| `text-fg-disabled` | **disabled and other non-interactive controls** |
+
+**Never express "disabled" with `opacity`.** Opacity multiplies with whatever
+color the content already has, so the same state comes out a different grey in
+every place it is used — an outlined button, a filled one and an icon button all
+land somewhere else. Say it in color instead:
+
+| Control | Disabled treatment |
+|---|---|
+| filled (`bg-accent-600`, `bg-danger-500`) | `disabled:bg-surface-2 disabled:text-fg-disabled` |
+| outlined (`border-border-strong`) | `disabled:border-border disabled:text-fg-disabled` |
+| icon-only, inputs | `disabled:text-fg-disabled` |
+
+Guard hover styles with `enabled:` (`enabled:hover:border-accent-500`) —
+`:hover` still matches a disabled button, and without the guard it would light
+up as though it were clickable.
+
+Status text is *not* a disabled control: a running scan step stays
+`text-fg-muted` so it remains readable, and its spinner inherits that same color
+rather than the button's.
 
 ### Status — tied to app states
 This is the most important part for this app. Color encodes **compatibility**:

@@ -145,7 +145,7 @@ export default function FilterMenu({ filter, onChange, genres, counts }: Props) 
             <button
               onClick={() => onChange(EMPTY_FILTER)}
               disabled={!active}
-              className="rounded-md border border-border-strong px-3 py-2 text-sm text-fg-muted transition-colors hover:border-accent-500 hover:text-fg disabled:opacity-40 disabled:hover:border-border-strong disabled:hover:text-fg-muted"
+              className="rounded-md border border-border-strong px-3 py-2 text-sm text-fg-muted transition-colors enabled:hover:border-accent-500 enabled:hover:text-fg disabled:border-border disabled:text-fg-disabled disabled:enabled:hover:border-border-strong disabled:enabled:hover:text-fg-muted"
             >
               Reset all
             </button>
