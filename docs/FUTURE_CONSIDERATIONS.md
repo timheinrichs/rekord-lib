@@ -413,11 +413,17 @@ and firmware versions were actually validated, with which app version and which
 converted format, and the result. Every `warn` or `fail` row carries a fixed
 block — symptoms, reproduction, context, artifacts, open questions.
 
-**Status** — the file exists with its scenario catalogue (`aiff-16-44`,
-`downsample-96-to-44`, `aiff-c-to-pcm`, `embedded-cover`, …), the rules for what
-a row has to cover, and an explicit note that **no row has been validated yet**.
-Filling it needs a player; until then the file is honest about the claim being
-derived from Pioneer's documented limits rather than measured.
+**Status** — the file exists with its scenario catalogue, the rules for what a
+row has to cover, and twelve `pass` rows: AIFF 16- and 24-bit through a
+Rekordbox export on a CDJ-2000nexus, a CDJ-3000 and an XDJ-700, with covers and
+tag fields reading correctly. Those came from field use, so firmware and exact
+dates are missing and the rows say so.
+
+The gaps are the interesting part now, and the file lists them: the two cases
+the app exists for — `downsample-96-to-44` (the E-8305 case) and
+`aiff-c-to-pcm` — have never been on a player, and neither has the
+CDJ-3000/NXS2-only flag we put on FLAC and ALAC. Closing those needs a session
+with deliberately chosen files rather than a normal set.
 
 **Why** — this matters more for us than it does for them. Our entire promise is
 "runs without error codes on every CDJ/XDJ", and right now that claim rests on

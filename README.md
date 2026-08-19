@@ -151,7 +151,10 @@ config-shaped state. See the *Persistence* section of
 
 CDJ compatibility is only as good as what has actually been played on a player.
 [docs/CDJ_TEST_MATRIX.md](docs/CDJ_TEST_MATRIX.md) records which scenarios were
-validated on which model and firmware — and, right now, that none have been.
+validated on which model. AIFF output has run on a CDJ-2000nexus, a CDJ-3000 and
+an XDJ-700 through a Rekordbox export, with covers and tags reading correctly;
+the resampling and AIFF-C cases the app exists for are still untested on
+hardware, and the file says which.
 
 ### Design
 

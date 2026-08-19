@@ -23,8 +23,10 @@ contain incompatible changes.
 
 ### Added
 - `docs/CDJ_TEST_MATRIX.md` — where hardware-validated CDJ compatibility results
-  go, with the scenarios to cover and what a row has to record. No scenario has
-  been validated on a player yet, and the file says so.
+  go, with the scenarios to cover and what a row has to record. AIFF 16- and
+  24-bit are recorded as playing on a CDJ-2000nexus, a CDJ-3000 and an XDJ-700
+  with covers and tags intact; the resampling and AIFF-C cases the app exists
+  for are still untested on hardware, and the file says which.
 - `docs/FUTURE_CONSIDERATIONS.md` — the roadmap, from the comparison with
   dj-usb-tkit.
 
