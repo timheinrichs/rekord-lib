@@ -101,6 +101,8 @@ pub fn run() {
             commands::dedupe_result,
             commands::cancel_dedupe,
             commands::write_metadata,
+            commands::undo_peek,
+            commands::undo_last,
             commands::delete_files,
             commands::delete_album,
             commands::prune_empty_dirs,

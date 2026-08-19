@@ -1,3 +1,4 @@
+use base64::Engine;
 use lofty::config::WriteOptions;
 use lofty::picture::{MimeType, Picture, PictureType};
 use lofty::prelude::*;
@@ -90,6 +91,12 @@ pub async fn resolve_cover(source: &str, cover: &CoverInput) -> AppResult<Option
         CoverInput::Keep => Ok(read_cover_or_sidecar(source)),
         CoverInput::File { path } => {
             let bytes = std::fs::read(path)?;
+            Ok(Some(bytes))
+        }
+        CoverInput::Data { base64 } => {
+            let bytes = base64::engine::general_purpose::STANDARD
+                .decode(base64)
+                .map_err(|e| AppError::Metadata(format!("Could not decode cover: {e}")))?;
             Ok(Some(bytes))
         }
         CoverInput::Musicbrainz { release_id } => {

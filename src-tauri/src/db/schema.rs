@@ -17,9 +17,10 @@ use super::DbResult;
 /// start. Only changes that transform or drop existing data need a step in
 /// [`super::migrate`].
 ///
+/// - 3: `undo_entries`
 /// - 2: `dismissed_groups`
 /// - 1: initial
-pub const SCHEMA_VERSION: i64 = 2;
+pub const SCHEMA_VERSION: i64 = 3;
 
 /// Key under which the schema version lives in `schema_meta`.
 pub const KEY_SCHEMA_VERSION: &str = "schema_version";
@@ -98,6 +99,18 @@ CREATE TABLE IF NOT EXISTS duplicate_groups (
 -- dismissal is a decision that has to outlive it.
 CREATE TABLE IF NOT EXISTS dismissed_groups (
     id TEXT PRIMARY KEY
+);
+
+-- Undo history for tag writes. One row per group of files written together,
+-- holding their on-disk state from immediately before the write, so a write can
+-- still be taken back after a restart. The payload is a `Vec<WriteMetadataItem>`
+-- as JSON — the same shape the write path consumes, because undoing a write is
+-- itself a write.
+CREATE TABLE IF NOT EXISTS undo_entries (
+    id         INTEGER PRIMARY KEY AUTOINCREMENT,
+    created_ms INTEGER NOT NULL,
+    label      TEXT NOT NULL,
+    payload    TEXT NOT NULL
 );
 "#;
 

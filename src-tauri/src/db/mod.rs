@@ -20,7 +20,7 @@ use tauri::{AppHandle, Manager, State};
 
 use crate::audio::compat;
 use crate::error::{AppError, AppResult};
-use crate::models::{AudioInfo, TrackAnalysis, TrackMetadata};
+use crate::models::{AudioInfo, TrackAnalysis, TrackMetadata, UndoEntry, WriteMetadataItem};
 
 pub type DbResult<T> = Result<T, rusqlite::Error>;
 
@@ -473,6 +473,83 @@ pub fn dismiss_group(conn: &Connection, id: &str) -> DbResult<()> {
         params![id],
     )?;
     Ok(())
+}
+
+// --- undo history -----------------------------------------------------------
+
+/// How many tag writes stay undoable. Deep enough to cover an evening of
+/// editing, shallow enough that the covers captured along the way cannot grow
+/// without bound.
+pub const MAX_UNDO_ENTRIES: usize = 20;
+
+/// Records the on-disk state a group of files was in before a tag write and
+/// prunes the history back to [`MAX_UNDO_ENTRIES`]. Returns the new entry's id.
+///
+/// One row per group, not per file: the user undoes the edit they made, and a
+/// bulk edit across 200 tracks was one edit.
+pub fn push_undo(
+    conn: &mut Connection,
+    label: &str,
+    items: &[WriteMetadataItem],
+) -> DbResult<i64> {
+    // Serialization of our own types cannot realistically fail, and an undo
+    // entry is not worth failing the write it belongs to over.
+    let payload = serde_json::to_string(items).unwrap_or_else(|_| "[]".to_string());
+    let tx = conn.transaction()?;
+    tx.execute(
+        "INSERT INTO undo_entries (created_ms, label, payload) VALUES (?1, ?2, ?3)",
+        params![now_ms(), label, payload],
+    )?;
+    let id = tx.last_insert_rowid();
+    tx.execute(
+        "DELETE FROM undo_entries WHERE id NOT IN
+             (SELECT id FROM undo_entries ORDER BY id DESC LIMIT ?1)",
+        params![MAX_UNDO_ENTRIES as i64],
+    )?;
+    tx.commit()?;
+    Ok(id)
+}
+
+/// The most recent undoable write, or `None` when there is nothing to undo.
+///
+/// A row whose payload no longer parses is deleted and the search continues
+/// with the one below it — a single unreadable entry must not sit at the top of
+/// the stack and block the button forever.
+pub fn latest_undo(conn: &Connection) -> DbResult<Option<UndoEntry>> {
+    let mut stmt =
+        conn.prepare("SELECT id, label, payload FROM undo_entries ORDER BY id DESC")?;
+    let rows = stmt.query_map([], |row| {
+        Ok((
+            row.get::<_, i64>(0)?,
+            row.get::<_, String>(1)?,
+            row.get::<_, String>(2)?,
+        ))
+    })?;
+    for row in rows {
+        let (id, label, raw) = row?;
+        match serde_json::from_str::<Vec<WriteMetadataItem>>(&raw) {
+            Ok(items) if !items.is_empty() => return Ok(Some(UndoEntry { id, label, items })),
+            // Empty or unreadable: nothing to restore from, so drop it.
+            _ => {
+                conn.execute("DELETE FROM undo_entries WHERE id = ?1", params![id])?;
+            }
+        }
+    }
+    Ok(None)
+}
+
+/// Removes one entry, once it has been applied.
+pub fn drop_undo(conn: &Connection, id: i64) -> DbResult<usize> {
+    conn.execute("DELETE FROM undo_entries WHERE id = ?1", params![id])
+}
+
+/// Wall-clock milliseconds. Only ever used for ordering and display, never for
+/// cache validity, so a clock that jumps costs nothing here.
+fn now_ms() -> i64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_millis() as i64)
+        .unwrap_or(0)
 }
 
 // --- fingerprints -----------------------------------------------------------
@@ -970,6 +1047,131 @@ mod tests {
         assert_eq!(load_dismissed(&conn).unwrap().len(), 1);
     }
 
+    // --- undo history ------------------------------------------------------
+
+    fn undo_item(path: &str, title: &str) -> WriteMetadataItem {
+        WriteMetadataItem {
+            path: path.to_string(),
+            metadata: TrackMetadata {
+                title: Some(title.to_string()),
+                ..Default::default()
+            },
+            cover: Some(crate::models::CoverInput::Keep),
+        }
+    }
+
+    #[test]
+    fn an_undo_entry_comes_back_exactly_as_it_went_in() {
+        let mut conn = Connection::open_in_memory().unwrap();
+        schema::init(&conn).unwrap();
+
+        let items = vec![undo_item("/lib/a.aiff", "Before"), undo_item("/lib/b.aiff", "Also before")];
+        let id = push_undo(&mut conn, "2 track(s)", &items).unwrap();
+
+        let entry = latest_undo(&conn).unwrap().expect("an entry");
+        assert_eq!(entry.id, id);
+        assert_eq!(entry.label, "2 track(s)");
+        assert_eq!(entry.items.len(), 2);
+        assert_eq!(entry.items[0].path, "/lib/a.aiff");
+        assert_eq!(entry.items[0].metadata.title.as_deref(), Some("Before"));
+    }
+
+    #[test]
+    fn the_newest_write_is_the_one_undone_next() {
+        let mut conn = Connection::open_in_memory().unwrap();
+        schema::init(&conn).unwrap();
+
+        push_undo(&mut conn, "first", &[undo_item("/lib/a.aiff", "1")]).unwrap();
+        push_undo(&mut conn, "second", &[undo_item("/lib/a.aiff", "2")]).unwrap();
+
+        assert_eq!(latest_undo(&conn).unwrap().unwrap().label, "second");
+    }
+
+    #[test]
+    fn dropping_an_entry_uncovers_the_one_below_it() {
+        let mut conn = Connection::open_in_memory().unwrap();
+        schema::init(&conn).unwrap();
+
+        push_undo(&mut conn, "first", &[undo_item("/lib/a.aiff", "1")]).unwrap();
+        push_undo(&mut conn, "second", &[undo_item("/lib/a.aiff", "2")]).unwrap();
+
+        let top = latest_undo(&conn).unwrap().unwrap();
+        assert_eq!(drop_undo(&conn, top.id).unwrap(), 1);
+        assert_eq!(latest_undo(&conn).unwrap().unwrap().label, "first");
+    }
+
+    #[test]
+    fn the_history_stops_at_the_cap() {
+        let mut conn = Connection::open_in_memory().unwrap();
+        schema::init(&conn).unwrap();
+
+        for i in 0..MAX_UNDO_ENTRIES + 5 {
+            push_undo(&mut conn, &format!("write {i}"), &[undo_item("/lib/a.aiff", "x")]).unwrap();
+        }
+
+        let count: i64 = conn
+            .query_row("SELECT COUNT(*) FROM undo_entries", [], |r| r.get(0))
+            .unwrap();
+        assert_eq!(count as usize, MAX_UNDO_ENTRIES);
+        // The oldest went, not the newest.
+        assert_eq!(
+            latest_undo(&conn).unwrap().unwrap().label,
+            format!("write {}", MAX_UNDO_ENTRIES + 4)
+        );
+    }
+
+    #[test]
+    fn an_unreadable_entry_is_dropped_instead_of_blocking_the_stack() {
+        let mut conn = Connection::open_in_memory().unwrap();
+        schema::init(&conn).unwrap();
+
+        push_undo(&mut conn, "good", &[undo_item("/lib/a.aiff", "1")]).unwrap();
+        // A payload from some future shape of the type, sitting on top.
+        conn.execute(
+            "INSERT INTO undo_entries (created_ms, label, payload) VALUES (1, 'broken', '{oops')",
+            [],
+        )
+        .unwrap();
+
+        assert_eq!(latest_undo(&conn).unwrap().unwrap().label, "good");
+        let count: i64 = conn
+            .query_row("SELECT COUNT(*) FROM undo_entries", [], |r| r.get(0))
+            .unwrap();
+        assert_eq!(count, 1, "the broken row must be gone, not skipped forever");
+    }
+
+    #[test]
+    fn an_entry_without_items_is_not_offered() {
+        let mut conn = Connection::open_in_memory().unwrap();
+        schema::init(&conn).unwrap();
+
+        push_undo(&mut conn, "nothing", &[]).unwrap();
+        assert!(latest_undo(&conn).unwrap().is_none());
+    }
+
+    #[test]
+    fn nothing_to_undo_on_a_fresh_database() {
+        let conn = Connection::open_in_memory().unwrap();
+        schema::init(&conn).unwrap();
+        assert!(latest_undo(&conn).unwrap().is_none());
+    }
+
+    #[test]
+    fn a_v2_database_gains_the_undo_table() {
+        // Additive, like the dismissals table below: an older database picks it
+        // up on the next start without a migration step.
+        let mut conn = Connection::open_in_memory().unwrap();
+        conn.execute_batch(
+            "CREATE TABLE schema_meta (key TEXT PRIMARY KEY, value TEXT NOT NULL);
+             INSERT INTO schema_meta VALUES ('schema_version', '2');",
+        )
+        .unwrap();
+        schema::init(&conn).unwrap();
+
+        push_undo(&mut conn, "after upgrade", &[undo_item("/lib/a.aiff", "1")]).unwrap();
+        assert_eq!(latest_undo(&conn).unwrap().unwrap().label, "after upgrade");
+    }
+
     #[test]
     fn a_v1_database_gains_the_dismissals_table() {
         // Every statement is CREATE … IF NOT EXISTS, so an older database picks
@@ -984,9 +1186,11 @@ mod tests {
 
         dismiss_group(&conn, "/lib/a.aiff").unwrap();
         assert_eq!(load_dismissed(&conn).unwrap().len(), 1);
+        // Read from the constant, not a literal: a later bump adds tables the
+        // same way, and this assertion is about the version being recorded.
         assert_eq!(
             meta_get(&conn, schema::KEY_SCHEMA_VERSION).unwrap(),
-            Some("2".to_string())
+            Some(schema::SCHEMA_VERSION.to_string())
         );
     }
 

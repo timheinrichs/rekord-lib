@@ -15,7 +15,7 @@ use crate::metadata::{artwork, suggest, write};
 use crate::models::{
     BandcampAccount, BandcampDownloadResult, BandcampItem, ConvertJob, ConvertOptions,
     ConvertResult, CoverInput, DeleteResult, DupCandidate, DuplicateGroup, MetadataSuggestions,
-    TrackAnalysis, TrackMetadata,
+    TrackAnalysis, UndoEntry, WriteMetadataItem,
 };
 
 /// Progress of the library scan (streamed to the frontend).
@@ -990,12 +990,15 @@ pub async fn convert_tracks(
                         };
                         match moved {
                             Ok(()) => {
-                                // Delete the original if requested and the output
-                                // is a different file (e.g. format change).
+                                // Remove the original if requested and the output
+                                // is a different file (e.g. format change). It
+                                // goes to the trash, not to `remove_file`: this
+                                // is the user's own audio, and a conversion they
+                                // did not mean has to be recoverable.
                                 if options.replace_source
                                     && converted.output_path != job.path
                                 {
-                                    let _ = std::fs::remove_file(&job.path);
+                                    let _ = trash_ctx().delete(&job.path);
                                 }
                                 ConvertResult {
                                     id: job.id,
@@ -1131,15 +1134,6 @@ fn dir_holds_only(dir: &str, paths: &[String]) -> bool {
     audio.iter().all(|p| ours.contains(p.as_str()))
 }
 
-/// One file to (re)write tags into, with its full confirmed metadata.
-#[derive(Debug, serde::Deserialize)]
-pub struct WriteMetadataItem {
-    pub path: String,
-    pub metadata: TrackMetadata,
-    #[serde(default)]
-    pub cover: Option<CoverInput>,
-}
-
 /// Outcome of writing one file's metadata (re-analyzed on success).
 #[derive(Debug, serde::Serialize)]
 pub struct WriteMetadataResult {
@@ -1152,11 +1146,35 @@ pub struct WriteMetadataResult {
 /// files via lofty, then re-analyzes each so the caller can refresh the row
 /// without a full rescan. Used by the metadata editor and bulk edit so tag
 /// changes land on disk immediately — not only when a file is converted.
+///
+/// Unless `record_undo` is false, the files' current on-disk state is captured
+/// first and stored as one undo entry, so the write can still be taken back
+/// after a restart. Reading that state here rather than accepting it from the
+/// caller is deliberate: the frontend only knows what it last displayed, while
+/// this reads the tags that are actually in the file.
 #[tauri::command]
 pub async fn write_metadata(
     app: AppHandle,
     items: Vec<WriteMetadataItem>,
+    record_undo: Option<bool>,
+    label: Option<String>,
 ) -> Vec<WriteMetadataResult> {
+    if record_undo.unwrap_or(true) {
+        let snapshot = capture_undo(&items);
+        if !snapshot.is_empty() {
+            let label = label
+                .unwrap_or_else(|| format!("{} track(s)", snapshot.len()));
+            // A failed snapshot costs the undo, not the write the user asked for.
+            if let Err(e) = store_undo(&app, &label, &snapshot) {
+                eprintln!("Could not record undo entry: {e}");
+            }
+        }
+    }
+    write_items(&app, items).await
+}
+
+/// Writes one batch of items, without touching the undo history.
+async fn write_items(app: &AppHandle, items: Vec<WriteMetadataItem>) -> Vec<WriteMetadataResult> {
     let mut out = Vec::with_capacity(items.len());
     for item in items {
         let cover = item.cover.unwrap_or(CoverInput::Keep);
@@ -1166,7 +1184,7 @@ pub async fn write_metadata(
             .await
         {
             Ok(()) => {
-                let track = analyze_path(&app, item.path.clone()).await;
+                let track = analyze_path(app, item.path.clone()).await;
                 out.push(WriteMetadataResult {
                     path: item.path,
                     track,
@@ -1181,6 +1199,87 @@ pub async fn write_metadata(
         }
     }
     out
+}
+
+/// Reads back what each file currently holds, as the write that would restore
+/// it. Files that cannot be read are left out — there is nothing to restore
+/// them to, and a batch must not lose its undo over one unreadable file.
+fn capture_undo(items: &[WriteMetadataItem]) -> Vec<WriteMetadataItem> {
+    items
+        .iter()
+        .filter_map(|item| {
+            let metadata = read_metadata(&item.path).ok()?;
+            Some(WriteMetadataItem {
+                cover: Some(undo_cover(&item.path, item.cover.as_ref())),
+                path: item.path.clone(),
+                metadata,
+            })
+        })
+        .collect()
+}
+
+/// The cover instruction that restores `path` after a write that does
+/// `incoming` to it.
+///
+/// The bytes are only worth capturing when the write replaces artwork that is
+/// already embedded — the metadata editor changing one track's cover, never a
+/// bulk text edit, which is what keeps an undo entry small. `Keep` leaves an
+/// embedded cover alone, so undoing with `Keep` restores it for free. Where
+/// nothing is embedded, `None` is the faithful undo: it also takes back a cover
+/// that `Keep` pulled in from a `cover.jpg` sitting next to the file.
+fn undo_cover(path: &str, incoming: Option<&CoverInput>) -> CoverInput {
+    undo_cover_for(incoming, write::read_cover_bytes(path))
+}
+
+/// The decision behind [`undo_cover`], separated from reading the file so it
+/// can be tested without one.
+fn undo_cover_for(incoming: Option<&CoverInput>, embedded: Option<Vec<u8>>) -> CoverInput {
+    match (incoming.unwrap_or(&CoverInput::Keep), embedded) {
+        (CoverInput::Keep, Some(_)) => CoverInput::Keep,
+        (_, Some(bytes)) => CoverInput::Data {
+            base64: base64::engine::general_purpose::STANDARD.encode(bytes),
+        },
+        (_, None) => CoverInput::None,
+    }
+}
+
+/// Persists one undo entry.
+fn store_undo(app: &AppHandle, label: &str, items: &[WriteMetadataItem]) -> AppResult<()> {
+    let database = db::require(app)?;
+    let mut conn = database.conn()?;
+    db::push_undo(&mut conn, label, items)?;
+    Ok(())
+}
+
+/// The tag write that would be taken back next, for the undo button's label and
+/// enabled state. `None` means there is nothing to undo.
+#[tauri::command]
+pub fn undo_peek(app: AppHandle) -> AppResult<Option<UndoEntry>> {
+    let database = db::require(&app)?;
+    let conn = database.conn()?;
+    Ok(db::latest_undo(&conn)?)
+}
+
+/// Takes back the most recent tag write, restoring the files to the state
+/// captured before it, and returns the re-analyzed tracks.
+///
+/// The entry is dropped only after the restoring write ran, and undoing is
+/// itself not recorded — otherwise undo and redo would alternate forever.
+#[tauri::command]
+pub async fn undo_last(app: AppHandle) -> AppResult<Vec<WriteMetadataResult>> {
+    let entry = {
+        let database = db::require(&app)?;
+        let conn = database.conn()?;
+        db::latest_undo(&conn)?
+    };
+    let Some(entry) = entry else {
+        return Ok(Vec::new());
+    };
+    let results = write_items(&app, entry.items).await;
+    let database = db::require(&app)?;
+    let conn = database.conn()?;
+    db::drop_undo(&conn, entry.id)?;
+    Ok(results)
 }
 
 /// Moves the given files to the trash (reversible, no Finder sound).
@@ -1362,7 +1461,63 @@ pub fn cancel_bandcamp_download(state: State<'_, BandcampDownloadState>, key: St
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::models::TrackMetadata;
     use std::fs;
+
+    /// What an undo has to put back for the cover, given what the write does.
+    mod undo_cover {
+        use super::*;
+
+        fn cover() -> Option<Vec<u8>> {
+            Some(vec![0xFF, 0xD8, 0xFF])
+        }
+
+        #[test]
+        fn keep_over_an_embedded_cover_needs_no_bytes() {
+            // `Keep` re-embeds what is already there, so restoring with `Keep`
+            // restores it too — and stores nothing. This is the bulk-edit case,
+            // and the reason an undo entry for 200 tracks stays small.
+            let out = undo_cover_for(Some(&CoverInput::Keep), cover());
+            assert!(matches!(out, CoverInput::Keep));
+        }
+
+        #[test]
+        fn keep_without_an_embedded_cover_undoes_to_none() {
+            // `Keep` falls back to a cover.jpg next to the file, so a write can
+            // embed artwork into a file that had none. Undo has to take it off
+            // again.
+            let out = undo_cover_for(Some(&CoverInput::Keep), None);
+            assert!(matches!(out, CoverInput::None));
+        }
+
+        #[test]
+        fn a_replaced_cover_is_captured_as_bytes() {
+            let out = undo_cover_for(
+                Some(&CoverInput::File {
+                    path: "/tmp/new.jpg".into(),
+                }),
+                cover(),
+            );
+            match out {
+                CoverInput::Data { base64 } => assert_eq!(base64, "/9j/"),
+                other => panic!("expected the previous cover, got {other:?}"),
+            }
+        }
+
+        #[test]
+        fn removing_a_cover_that_was_never_there_undoes_to_none() {
+            let out = undo_cover_for(Some(&CoverInput::None), None);
+            assert!(matches!(out, CoverInput::None));
+        }
+
+        #[test]
+        fn an_unset_cover_is_treated_as_keep() {
+            // `WriteMetadataItem::cover` defaults to None, which the write path
+            // reads as `Keep` — the capture must agree with it.
+            assert!(matches!(undo_cover_for(None, cover()), CoverInput::Keep));
+            assert!(matches!(undo_cover_for(None, None), CoverInput::None));
+        }
+    }
 
     #[test]
     fn file_name_extracts_basename() {

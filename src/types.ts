@@ -65,7 +65,9 @@ export type CoverInput =
   | { kind: "keep" }
   | { kind: "none" }
   | { kind: "musicbrainz"; release_id: string }
-  | { kind: "file"; path: string };
+  | { kind: "file"; path: string }
+  /** Raw image bytes. Only produced by the undo history, never by the editor. */
+  | { kind: "data"; base64: string };
 
 export interface ConvertJob {
   id: string;

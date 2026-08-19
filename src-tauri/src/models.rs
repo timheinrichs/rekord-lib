@@ -172,12 +172,39 @@ pub enum CoverInput {
     Musicbrainz { release_id: String },
     /// Cover from a local image file.
     File { path: String },
+    /// Raw image bytes, base64-encoded. Written by the undo path, which
+    /// captures the cover a write is about to replace and has nowhere on disk
+    /// to point at.
+    Data { base64: String },
 }
 
 impl Default for CoverInput {
     fn default() -> Self {
         CoverInput::Keep
     }
+}
+
+/// One file to (re)write tags into, with its full confirmed metadata.
+///
+/// Also the shape an undo restores, which is deliberate: undoing a tag write
+/// *is* a tag write, so the stored entry can be handed straight back to
+/// `write_metadata` without a translation step in between.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct WriteMetadataItem {
+    pub path: String,
+    pub metadata: TrackMetadata,
+    #[serde(default)]
+    pub cover: Option<CoverInput>,
+}
+
+/// One group of files written together, and therefore undone together.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct UndoEntry {
+    /// Row id, needed to pop exactly this entry again.
+    pub id: i64,
+    /// What the write was, in the user's terms ("12 tracks", a filename).
+    pub label: String,
+    pub items: Vec<WriteMetadataItem>,
 }
 
 /// A single conversion job (may contain confirmed metadata).

@@ -175,15 +175,45 @@ export interface WriteMetadataResult {
   error: string | null;
 }
 
+/** One recorded tag write, as the undo button describes it. */
+export interface UndoEntry {
+  id: number;
+  label: string;
+  items: WriteMetadataItem[];
+}
+
 /**
  * Writes confirmed metadata (and cover) directly into the files via lofty and
  * returns the re-analyzed tracks. Used by the metadata editor and bulk edit so
  * tag changes are persisted immediately, not only on conversion.
+ *
+ * The backend reads each file's current tags first and stores them as one undo
+ * entry, labelled with `label`. Pass `recordUndo: false` for a write that is
+ * itself a restore.
  */
 export function writeMetadata(
   items: WriteMetadataItem[],
+  recordUndo = true,
+  label?: string,
 ): Promise<WriteMetadataResult[]> {
-  return invoke<WriteMetadataResult[]>("write_metadata", { items });
+  return invoke<WriteMetadataResult[]>("write_metadata", {
+    items,
+    recordUndo,
+    label,
+  });
+}
+
+/** The tag write that `undoLast` would take back, or null if there is none. */
+export function undoPeek(): Promise<UndoEntry | null> {
+  return invoke<UndoEntry | null>("undo_peek");
+}
+
+/**
+ * Takes back the most recent tag write and returns the re-analyzed tracks.
+ * The entry is only dropped once the restoring write has run.
+ */
+export function undoLast(): Promise<WriteMetadataResult[]> {
+  return invoke<WriteMetadataResult[]>("undo_last");
 }
 
 /** Moves files to the trash (reversible). */
