@@ -560,21 +560,49 @@ export default function LibraryView({
     let active = true;
     hydratedRef.current = false;
     void (async () => {
+      // Every read here goes through the database, and the backend starts
+      // without one on purpose: `db::require` reports it rather than panicking,
+      // because an empty library the next scan rebuilds beats refusing to
+      // launch. So a failure must not take the boot down with it — it costs the
+      // cache, not the folder, and the sweep below can still find every file on
+      // disk. Reported rather than swallowed, because an unreadable library
+      // that looks like an empty one is the worse of the two.
+      const cached = async <T,>(read: Promise<T>, fallback: T): Promise<T> => {
+        try {
+          return await read;
+        } catch (e) {
+          if (active) setError(`Could not read the library cache: ${e}`);
+          return fallback;
+        }
+      };
+
       // Rows are stored per library folder, so this only ever returns tracks
       // that belong to the current one — no folder check needed here.
       const [stored, storedEdits] = await Promise.all([
-        libraryDir ? loadLibraryTracks(libraryDir) : Promise.resolve([]),
-        loadEdits(),
+        libraryDir
+          ? cached(loadLibraryTracks(libraryDir), [] as TrackAnalysis[])
+          : Promise.resolve([] as TrackAnalysis[]),
+        cached(loadEdits(), {} as Record<string, TrackEdit>),
       ]);
       if (active && stored.length) setTracks(stored);
       if (active) setEdits(storedEdits);
-      const dups = await loadDuplicates();
+      const dups = await cached(loadDuplicates(), [] as DuplicateGroup[]);
       if (active && dups.length) setDupGroups(dups);
       // From now on persisting is allowed (the cache has been taken into account).
       hydratedRef.current = true;
       if (active) setHydrated(true);
       if (!active || !libraryDir) return;
-      const status = await scanStatus();
+      // Not `cached`: without a status there is nothing sensible to assume, and
+      // docking onto a scan that is not running would leave a spinner forever.
+      // Treated as "no scan running", which is the recoverable branch.
+      const status = await cached(scanStatus(), {
+        running: false,
+        paused: false,
+        generation: 0,
+        done: 0,
+        total: 0,
+        stage: "",
+      });
       if (!active) return;
       if (status.running) {
         // Dock onto a running full scan instead of restarting.
