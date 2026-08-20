@@ -851,9 +851,18 @@ out of the way while settings are open, where the same update is already offered
 The condition lives in `promptedUpdate` so those four cases are tested rather than
 buried in JSX.
 
-**What is left** — the end-to-end path only becomes visible on the next real
-release; `tauri dev` has no endpoint to check against, so the UI is covered by
-component tests instead.
+**The dialog is reachable in a dev run.** `tauri dev` has no updater endpoint, so
+the real check can only ever answer "up to date" — which left the one piece of UI
+that matters here visible only on a real release.
+`REKORD_DEV_UPDATE=1 npm run tauri dev` (or `=critical`) makes the check answer
+with a mock instead. Its notes say so in their first line: a fake that looks real
+is a support question waiting to happen. Installing it ramps the progress and then
+fails on purpose, because there is no artifact and a silent success would relaunch
+into the same version.
+
+**What is left** — the *signed* path (a real `latest.json`, a real download)
+still only proves itself on the next release. What the mock covers is everything
+above it: the marker, the banner, the notes, the prompt.
 
 *Size: S*
 

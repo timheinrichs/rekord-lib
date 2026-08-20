@@ -103,6 +103,27 @@ describe("installUpdate", () => {
   });
 });
 
+describe("the dev mock", () => {
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
+  it("answers the check without asking the endpoint", async () => {
+    // A dev run has no endpoint, so the real check can only ever say "up to
+    // date" and the dialog would be unreachable.
+    vi.stubEnv("VITE_DEV_UPDATE", "critical");
+    const update = await checkForUpdate();
+    expect(update?.severity).toBe("critical");
+    expect(checkMock).not.toHaveBeenCalled();
+  });
+
+  it("installs the same mock it is showing, instead of reporting none pending", async () => {
+    vi.stubEnv("VITE_DEV_UPDATE", "1");
+    await expect(installUpdate()).rejects.toThrow(/nothing to install/);
+    expect(relaunchMock).not.toHaveBeenCalled();
+  });
+});
+
 describe("promptedUpdate", () => {
   const pending = {
     version: "0.7.0",

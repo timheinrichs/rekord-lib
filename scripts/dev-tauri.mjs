@@ -19,6 +19,7 @@
  *   npm run tauri dev                      generated library, devtest identifier
  *   REKORD_DEV_FRESH=1 npm run tauri dev   rebuild it and wipe the devtest data
  *   REKORD_DEV_REAL=1 npm run tauri dev    your real settings, no overlay
+ *   REKORD_DEV_UPDATE=1 npm run tauri dev  fake a pending update (=critical too)
  *   npm run tauri build                    untouched
  */
 import { execFileSync, spawnSync } from "node:child_process";
@@ -78,8 +79,18 @@ if (isDev && !useReal) {
   console.log("REKORD_DEV_REAL is set — running against your real app data");
 }
 
+// A dev run has no updater endpoint, so the update dialog is unreachable unless
+// the frontend is told to fake one. Renamed on the way through because only
+// `VITE_`-prefixed variables reach `import.meta.env`, and passed to every
+// subcommand rather than just `dev` so it costs nothing to ignore elsewhere.
+const env = { ...process.env };
+if (process.env.REKORD_DEV_UPDATE) {
+  env.VITE_DEV_UPDATE = process.env.REKORD_DEV_UPDATE;
+  if (isDev) console.log(`faking an update: ${env.VITE_DEV_UPDATE}`);
+}
+
 // Resolved explicitly rather than from PATH: npm only puts node_modules/.bin
 // there for its own scripts, and this has to work when run directly too.
 const cli = join(ROOT, "node_modules", ".bin", "tauri");
-const result = spawnSync(cli, args, { cwd: ROOT, stdio: "inherit" });
+const result = spawnSync(cli, args, { cwd: ROOT, stdio: "inherit", env });
 process.exit(result.status ?? 1);

@@ -37,7 +37,8 @@ commit apiece.
 
 - **Follow-up to F5 · the start-up prompt.** `UpdateModal`: title, close icon,
   release notes, a link to the release on GitHub, and Cancel / Update aligned
-  right. Dismissal is per session, not persisted.
+  right. Dismissal is per session, not persisted. `REKORD_DEV_UPDATE=1` fakes a
+  pending update so the dialog is reachable in a dev run at all.
 
 Plus two documentation passes: the skills (`/design`, `/design-system`,
 `/code-review`, `/simplify`, `/run`, `/security-review`) anchored where the rule

@@ -136,7 +136,14 @@ npm run tauri dev                      # generated library, own app data directo
 REKORD_DEV_FRESH=1 npm run tauri dev   # rebuild it and wipe the devtest database
 REKORD_DEV_REAL=1 npm run tauri dev    # deliberately, against your real data
 REKORD_JOBS=2 npm run tauri dev        # force the analysis width (see audio::workers)
+REKORD_DEV_UPDATE=1 npm run tauri dev  # fake a pending update (=critical for the banner)
 ```
+
+`REKORD_DEV_UPDATE` exists because a dev run has no updater endpoint, so the real
+check can only answer "up to date" and the update dialog is otherwise unreachable
+until a release. The wrapper passes it on as `VITE_DEV_UPDATE` — only that prefix
+reaches `import.meta.env` — and `lib/devUpdate.ts` is guarded by
+`import.meta.env.DEV`, so it is dead code in a build.
 
 **`/run` drives the app through exactly these commands** and must never fall
 back to `REKORD_DEV_REAL`. Everything below about stray `tauri dev` processes

@@ -1,6 +1,7 @@
 import { check, type Update } from "@tauri-apps/plugin-updater";
 import { relaunch } from "@tauri-apps/plugin-process";
 import { severityOf, type Severity } from "./changelog";
+import { devInstall, devUpdate } from "./devUpdate";
 
 /** A pending update, reduced to what the UI needs. */
 export interface UpdateInfo {
@@ -25,6 +26,13 @@ let pending: Update | null = null;
  * as "up to date" so the UI never breaks.
  */
 export async function checkForUpdate(): Promise<UpdateInfo | null> {
+  // A dev run has no endpoint, so without this the dialog is unreachable until a
+  // real release. Null unless REKORD_DEV_UPDATE is set, and dead code in a build.
+  const mock = devUpdate();
+  if (mock) {
+    pending = null;
+    return mock;
+  }
   try {
     const update = await check();
     if (update) {
@@ -75,6 +83,11 @@ export function promptedUpdate(
 export async function installUpdate(
   onProgress?: (downloaded: number, total: number | null) => void,
 ): Promise<void> {
+  // Same gate as the check above: what is on screen is the mock, so installing
+  // it has to be the mock too, or the dialog would report "no update available"
+  // for the update it is displaying.
+  if (devUpdate()) return devInstall(onProgress);
+
   const update = pending;
   if (!update) throw new Error("No update available");
 
