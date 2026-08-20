@@ -36,6 +36,14 @@ export interface ColumnDef {
   /** Sortable by this key, where sorting it means anything. */
   sortKey?: SortKey;
   /**
+   * Carries an icon rather than text, and gets narrow padding.
+   *
+   * Not cosmetic: `w-8` with the standard `px-4` leaves a content box of exactly
+   * zero, so the expand chevron rendered into nothing at all when it moved out
+   * of the flexible title cell into a column of its own.
+   */
+  tight?: boolean;
+  /**
    * Cannot be hidden. Selection and hierarchy are how the table is *operated* —
    * hiding them would leave a list that cannot be acted on, which is a broken
    * state rather than a preference.
@@ -53,7 +61,7 @@ export interface ColumnDef {
  */
 export const COLUMNS: ColumnDef[] = [
   { id: "select", label: "", width: "w-10", fixed: true },
-  { id: "expand", label: "", width: "w-8", fixed: true },
+  { id: "expand", label: "", width: "w-8", tight: true, fixed: true },
   { id: "cover", label: "", width: "w-14" },
   { id: "waveform", label: "", width: "w-32" },
   { id: "title", label: "Title", sortKey: "title", fixed: true },

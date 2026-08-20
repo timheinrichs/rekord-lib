@@ -143,6 +143,7 @@ import {
   type TrackFilter,
 } from "../lib/trackFilter";
 import ColumnMenu from "./ColumnMenu";
+import RowWaveform, { forgetRowWaveforms } from "./RowWaveform";
 import FilterMenu from "./FilterMenu";
 
 interface Props {
@@ -467,6 +468,9 @@ export default function LibraryView({
           // Keep working through the library: a full sweep leaves a backlog, and
           // a targeted run may have been capped by the single-flight guard. Not
           // after a cancel — that was a deliberate stop.
+          // Tracks that had no waveform when their row first asked have one
+          // now, and the batcher remembers absences.
+          forgetRowWaveforms();
           if (!d.cancelled) backlogRef.current();
           // A sweep that found nothing may have been looking at a folder that
           // is no longer there.
@@ -1834,7 +1838,9 @@ export default function LibraryView({
                     // Title is the column with no width: it absorbs the slack.
                     <th
                       key={c.id}
-                      className={`${c.width ?? ""} px-4 py-3 font-medium`}
+                      className={`${c.width ?? ""} ${
+                        c.tight ? "px-1" : "px-4"
+                      } py-3 font-medium`}
                     >
                       {c.label}
                     </th>
@@ -1888,7 +1894,7 @@ export default function LibraryView({
                     case "expand":
                       // A track has nothing to expand; the cell keeps the
                       // columns aligned with the group rows above it.
-                      return <td key={c.id} className={pad} />;
+                      return <td key={c.id} className="px-1 py-3" />;
                     case "cover":
                       return (
                         <td key={c.id} className={pad}>
@@ -1903,7 +1909,11 @@ export default function LibraryView({
                         </td>
                       );
                     case "waveform":
-                      return <td key={c.id} className={pad} />;
+                      return (
+                        <td key={c.id} className={pad}>
+                          <RowWaveform path={t.path} />
+                        </td>
+                      );
                     case "title":
                       // The indent lives here, matching the group headers, so
                       // one glance down the column shows the hierarchy and every
@@ -2135,10 +2145,11 @@ export default function LibraryView({
                     case "expand":
                       // The chevron is its own column now, which is what lets
                       // the title carry the indent without pushing anything out
-                      // of line.
+                      // of line. Narrow padding: `w-8` with `px-4` leaves no
+                      // content box at all, and the icon disappeared.
                       return (
-                        <td key={c.id} className={pad}>
-                          <span className="flex text-fg-subtle">
+                        <td key={c.id} className="px-1 py-2.5">
+                          <span className="flex justify-center text-fg-subtle">
                             <ChevronIcon open={opts.expanded} />
                           </span>
                         </td>

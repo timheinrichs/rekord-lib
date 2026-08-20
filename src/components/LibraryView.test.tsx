@@ -71,6 +71,8 @@ vi.mock("../lib/api", () => ({
   startLibraryWatch: mocks.startLibraryWatch,
   undoPeek: mocks.undoPeek,
   coverThumbnail: mocks.coverThumbnail,
+  // Used by the row waveform, which every rendered row mounts.
+  storedWaveforms: vi.fn(async () => ({})),
   convertTracks: vi.fn(),
   deleteAlbum: vi.fn(),
   deleteFiles: vi.fn(),

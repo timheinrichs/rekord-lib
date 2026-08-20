@@ -325,6 +325,19 @@ export function waveform(path: string): Promise<Waveform> {
   return invoke<Waveform>("waveform", { path });
 }
 
+/**
+ * Waveforms already stored for these paths, keyed by path.
+ *
+ * A batch call because the library asks for what is on screen: one round trip
+ * for twenty rows. Paths whose stored waveform is missing or stale are simply
+ * absent — the scan computes them, this only reads.
+ */
+export function storedWaveforms(
+  paths: string[],
+): Promise<Record<string, Waveform>> {
+  return invoke<Record<string, Waveform>>("stored_waveforms", { paths });
+}
+
 export function coverThumbnail(path: string): Promise<string | null> {
   return invoke<string | null>("cover_thumbnail", { path });
 }

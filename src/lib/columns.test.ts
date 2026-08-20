@@ -43,6 +43,18 @@ describe("COLUMNS", () => {
   });
 });
 
+describe("icon columns", () => {
+  it("marks the narrow ones as tight", () => {
+    // `w-8` with the table's usual `px-4` is 32 px of padding in a 32 px cell:
+    // a content box of zero, which is where the expand chevron went when it
+    // moved out of the flexible title cell.
+    const expand = COLUMNS.find((c) => c.id === "expand");
+    expect(expand?.tight).toBe(true);
+    // A column with text must not be tight, or the label loses its gutter.
+    expect(COLUMNS.filter((c) => c.tight).every((c) => c.label === "")).toBe(true);
+  });
+});
+
 describe("visibleColumns", () => {
   it("shows everything by default", () => {
     expect(visibleColumns([])).toEqual(COLUMNS);

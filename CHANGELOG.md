@@ -10,6 +10,8 @@ contain incompatible changes.
 ## [Unreleased]
 
 ### Fixed
+- **The expand chevron is back.** Moving it into a column of its own left it in a
+  cell whose padding used up the entire width, so it rendered into nothing.
 - **The checkboxes line up in every view.** In the folder and label views a
   nested track's checkbox was pushed right along with its title, out of line with
   the group rows above it — and two levels deep it left its column altogether and
@@ -58,6 +60,10 @@ contain incompatible changes.
   tempo in it.
 
 ### Added
+- **The library list shows each track's waveform.** Drawn from the baseline up
+  rather than mirrored around a centre line, which doubles the detail in a row
+  that tall — enough to see where the intro ends. It comes from what the scan
+  stored, so scrolling does not compute anything.
 - **Choose which columns the library shows.** A new button left of the filter
   lists them; everything is on by default, and the choice is remembered. The
   columns that carry selection and hierarchy are not offered — a list you cannot
