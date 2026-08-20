@@ -54,7 +54,9 @@ track of, without uploading anything anywhere.
 - **The list** — filter and search, grouping by album, label or folder,
   multi-select with shift ranges, virtualized for large collections.
 
-Per-version detail: [CHANGELOG.md](CHANGELOG.md). Where it might go next:
+Per-version detail: [CHANGELOG.md](CHANGELOG.md). How it compares to Rekordbox,
+and what it deliberately does not do:
+[docs/COMPARISON.md](docs/COMPARISON.md). Where it might go next:
 [docs/FUTURE_CONSIDERATIONS.md](docs/FUTURE_CONSIDERATIONS.md).
 
 ## Install
@@ -146,6 +148,14 @@ Persistence is split deliberately: anything that grows with the collection lives
 in SQLite and is written from Rust, while `tauri-plugin-store` keeps only small
 config-shaped state. See the *Persistence* section of
 [CLAUDE.md](CLAUDE.md).
+
+### Documentation
+
+How the app actually works is documented per feature area — the scan and its
+caches, duplicate detection, the compatibility rules, tags and undo, and the
+command surface. Index: [docs/README.md](docs/README.md). Contribution rules and
+how to run the app without damaging a real collection:
+[CONTRIBUTING.md](CONTRIBUTING.md).
 
 ### Hardware validation
 
