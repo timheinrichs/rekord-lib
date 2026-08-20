@@ -34,6 +34,15 @@ export function bootLabel(
  * Also used by the rescan button, which is why it lives here.
  */
 export function scanLabel(progress?: ScanProgress | null): string {
+  const label = stageLabel(progress);
+  if (!progress?.paused) return label;
+  // Paused is a state, not a stage, so it keeps the counters in view — they say
+  // where the run will pick up. Where there are none yet, it stands alone
+  // rather than reading as "Paused · Scanning…".
+  return label.endsWith("…") ? "Scan paused" : `Paused · ${label}`;
+}
+
+function stageLabel(progress?: ScanProgress | null): string {
   if (!progress) return "Scanning…";
   if (progress.stage === STAGE_BPM) {
     return `BPM ${progress.done}/${progress.total}`;
@@ -53,19 +62,23 @@ export function scanLabel(progress?: ScanProgress | null): string {
 }
 
 /**
- * Which of its three faces the scan button shows.
+ * Which of its four faces the scan button shows.
  *
  * Derived in one place on purpose: the colour and the content used to branch on
  * separate conditions, which let them disagree — a green outline around a
- * spinner, because a finished run had already queued the next pass. Busy always
- * wins over finished.
+ * spinner, because a finished run had already queued the next pass. A run in
+ * progress always wins over a pending confirmation, and a paused run is a
+ * distinct face because the button's *action* changes with it: it holds the run
+ * while one is going, and lets it continue while one is held.
  */
-export type ScanButtonState = "busy" | "finished" | "idle";
+export type ScanButtonState = "busy" | "paused" | "finished" | "idle";
 
 export function scanButtonState(
   busy: boolean,
   finished: boolean,
+  paused = false,
 ): ScanButtonState {
-  if (busy) return "busy";
+  if (busy) return paused ? "paused" : "busy";
+  // Paused only means anything while a run exists to hold.
   return finished ? "finished" : "idle";
 }

@@ -420,7 +420,11 @@ pub async fn find_duplicates(
     let mut done = 0usize;
     emit(app, generation, 0, total, "Analyzing", true);
     for chunk in to_fp.chunks(FP_CONCURRENCY) {
-        if app.state::<DedupeState>().cancel.load(Ordering::SeqCst) {
+        // Fingerprinting is the expensive half of the search, so it is held by
+        // a pause like the other phases — between chunks, never inside one.
+        if app.state::<DedupeState>().cancel.load(Ordering::SeqCst)
+            || crate::commands::await_resume(app).await
+        {
             return (vec![], true);
         }
         // Decode/fingerprint the whole chunk at once.

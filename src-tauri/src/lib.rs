@@ -89,6 +89,7 @@ pub fn run() {
             commands::library_delete,
             commands::library_dir_available,
             commands::library_relocate,
+            commands::set_scan_paused,
             commands::events_load,
             commands::events_mark_seen,
             commands::events_clear,

@@ -18,6 +18,7 @@ import {
   pickOutputDir,
   pruneEmptyDirs,
   scanStatus,
+  setScanPaused,
   startLibraryWatch,
   startScan,
   undoLast,
@@ -66,7 +67,7 @@ import type {
   TrackAnalysis,
   TrackEdit,
 } from "../types";
-import { STAGE_ANALYZING, STAGE_BPM } from "../types";
+import { STAGE_ANALYZING } from "../types";
 import MetadataEditor from "./MetadataEditor";
 import BulkMetadataEditor, { type BulkPatch } from "./BulkMetadataEditor";
 import CoverThumb from "./CoverThumb";
@@ -80,6 +81,8 @@ import {
   CheckIcon,
   ChevronIcon,
   EditIcon,
+  PauseIcon,
+  PlayIcon,
   SpinnerIcon,
   TrashIcon,
   UndoIcon,
@@ -348,6 +351,7 @@ export default function LibraryView({
   }, [libraryDir]);
 
   useEffect(checkLibraryDir, [checkLibraryDir]);
+
 
   useEffect(() => {
     if (!relocated) return;
@@ -848,23 +852,34 @@ export default function LibraryView({
 
   // The BPM pass runs in the background for minutes, so the button reports it
   // without blocking: "Scanning…" while probing, "BPM 412/2223" afterwards.
-  const bpmRunning = scanProgress?.stage === STAGE_BPM;
   const scanLabel = buildScanLabel(scanProgress);
   // Any pass of the scan, probing included — the button reports all of them.
-  const scanBusy = !!scanProgress?.running;
-  const scanState = scanButtonState(scanBusy, scanFinished);
+  const scanRunning = !!scanProgress?.running;
+  const scanPaused = !!scanProgress?.paused;
+  const scanState = scanButtonState(scanRunning, scanFinished, scanPaused);
+
+  // Whether the scan button shows what a click would do instead of what the
+  // run is doing. Armed by pointer *movement* rather than by `:hover`: a click
+  // leaves the pointer exactly where it was, so CSS would call that a hover and
+  // flip the button to "Pause scan" the instant the run starts — swallowing the
+  // one piece of feedback that says the click worked. Every change of run state
+  // disarms it again, so the new status is always read first.
+  const [showScanAction, setShowScanAction] = useState(false);
+  useEffect(() => {
+    setShowScanAction(false);
+  }, [scanRunning, scanPaused]);
 
   // Let the confirmation fade after a moment — and drop it at once when the
   // next pass starts, so a running scan is never dressed as a finished one.
   useEffect(() => {
     if (!scanFinished) return;
-    if (scanBusy) {
+    if (scanRunning) {
       setScanFinished(false);
       return;
     }
     const id = setTimeout(() => setScanFinished(false), SCAN_FINISHED_MS);
     return () => clearTimeout(id);
-  }, [scanFinished, scanBusy]);
+  }, [scanFinished, scanRunning]);
 
 
   // Tell the splash how far along we are. It comes down as soon as the list is
@@ -1334,10 +1349,32 @@ export default function LibraryView({
   // Primary actions for the header.
   const headerActions = (
     <>
+      {/* One button, two jobs. While nothing runs it starts a scan; while one
+          runs it *is* the pause control, so the running state and the action it
+          offers share the same place instead of competing for header space.
+          The status shows at rest and the action once the pointer moves over it
+          (or on keyboard focus) — both stacked in one grid cell, so the button
+          is as wide as the wider of the two and does not resize under the
+          pointer. */}
       <button
-        onClick={() => void rescan()}
-        disabled={loading || converting || dedupeRunning}
-        title={bpmRunning ? "Detecting BPM in the background" : undefined}
+        onClick={() => (scanRunning ? void setScanPaused(!scanPaused) : void rescan())}
+        onMouseMove={() => setShowScanAction(true)}
+        onMouseLeave={() => setShowScanAction(false)}
+        onFocus={(e) => {
+          // Keyboard focus shows the action too, but only when it *is* keyboard
+          // focus: a click focuses the button as well, and that is the case
+          // this whole dance exists to keep quiet.
+          if (e.currentTarget.matches(":focus-visible")) setShowScanAction(true);
+        }}
+        onBlur={() => setShowScanAction(false)}
+        disabled={scanRunning ? false : converting || dedupeRunning}
+        title={
+          scanState === "paused"
+            ? "Continue where the scan left off"
+            : scanRunning
+              ? "Hold the scan — whatever is being analyzed right now still finishes"
+              : undefined
+        }
         className={`inline-flex items-center gap-1.5 rounded-lg border px-3 py-2 text-sm ${
           scanState === "finished"
             ? // "Done" is a state, so it takes the state colour — success, the
@@ -1350,15 +1387,40 @@ export default function LibraryView({
             : "border-border-strong enabled:hover:border-accent-500 disabled:border-border disabled:text-fg-disabled"
         }`}
       >
-        {scanState === "busy" ? (
-          // Spinner and stage share one muted wrapper, so they are the same grey
-          // as each other and as every other running indicator — regardless of
-          // whether the button happens to be disabled in this pass. That is what
-          // made "Analyzing" (disabled) and "Detecting BPM" (enabled) read as two
-          // different colours for the same kind of information.
-          <span className="inline-flex items-center gap-1.5 text-fg-muted">
-            <SpinnerIcon />
-            {scanLabel}
+        {scanRunning ? (
+          <span className="grid">
+            {/* Status. Spinner and stage share one muted wrapper, so they are
+                the same grey as each other and as every other running
+                indicator — regardless of whether the button happens to be
+                disabled in this pass. That is what made "Analyzing" (disabled)
+                and "Detecting BPM" (enabled) read as two different colours for
+                the same kind of information. */}
+            <span
+              className={`col-start-1 row-start-1 inline-flex items-center gap-1.5 text-fg-muted transition-opacity ${
+                showScanAction ? "opacity-0" : "opacity-100"
+              }`}
+            >
+              {scanState === "paused" ? <PauseIcon size={14} /> : <SpinnerIcon />}
+              {scanLabel}
+            </span>
+            {/* Action. */}
+            <span
+              className={`col-start-1 row-start-1 inline-flex items-center justify-center gap-1.5 transition-opacity ${
+                showScanAction ? "opacity-100" : "opacity-0"
+              }`}
+            >
+              {scanState === "paused" ? (
+                <>
+                  <PlayIcon size={14} />
+                  Resume scan
+                </>
+              ) : (
+                <>
+                  <PauseIcon size={14} />
+                  Pause scan
+                </>
+              )}
+            </span>
           </span>
         ) : scanState === "finished" ? (
           <span className="animate-fade-in inline-flex items-center gap-1.5">

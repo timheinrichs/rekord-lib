@@ -13,10 +13,36 @@ function progress(over: Partial<ScanProgress> = {}): ScanProgress {
     done: 0,
     total: 0,
     running: true,
+    paused: false,
     stage: STAGE_ANALYZING,
     ...over,
   };
 }
+
+describe("scanLabel while paused", () => {
+  it("keeps the counters, because they say where it will continue", () => {
+    expect(scanLabel(progress({ paused: true, done: 12, total: 2223 }))).toBe(
+      "Paused · Analyzing 12/2223",
+    );
+    expect(
+      scanLabel(
+        progress({ paused: true, stage: STAGE_BPM, done: 40, total: 300 }),
+      ),
+    ).toBe("Paused · BPM 40/300");
+  });
+
+  it("stands alone where there is nothing to count", () => {
+    // "Paused · Scanning…" would read as two states at once.
+    expect(scanLabel(progress({ paused: true }))).toBe("Scan paused");
+    expect(
+      scanLabel(progress({ paused: true, stage: STAGE_DUPLICATES, total: 0 })),
+    ).toBe("Scan paused");
+  });
+
+  it("says nothing about a pause that is not on", () => {
+    expect(scanLabel(progress({ done: 5, total: 10 }))).toBe("Analyzing 5/10");
+  });
+});
 
 describe("scanLabel", () => {
   it("falls back to a generic label without progress", () => {
@@ -87,6 +113,17 @@ describe("scanButtonState", () => {
 
   it("confirms a finished run", () => {
     expect(scanButtonState(false, true)).toBe("finished");
+  });
+
+  it("has its own face while the run is held", () => {
+    // The button *is* the pause control, so its action changes with this.
+    expect(scanButtonState(true, false, true)).toBe("paused");
+    expect(scanButtonState(true, true, true)).toBe("paused");
+  });
+
+  it("ignores a stale pause once no run is left to hold", () => {
+    expect(scanButtonState(false, false, true)).toBe("idle");
+    expect(scanButtonState(false, true, true)).toBe("finished");
   });
 
   it("lets a running pass win over a pending confirmation", () => {

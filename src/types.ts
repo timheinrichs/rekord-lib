@@ -154,12 +154,15 @@ export interface ScanProgress {
   done: number;
   total: number;
   running: boolean;
+  /** Held between units of work; the counters say where it will continue. */
+  paused: boolean;
   /** Which pass the counters refer to ("Analyzing" / "Detecting BPM"). */
   stage: string;
 }
 
 export interface ScanStatus {
   running: boolean;
+  paused: boolean;
   generation: number;
   done: number;
   total: number;

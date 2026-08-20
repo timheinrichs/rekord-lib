@@ -8,6 +8,7 @@ const scanning: ScanProgress = {
   done: 412,
   total: 2223,
   running: true,
+  paused: false,
   stage: STAGE_BPM,
 };
 

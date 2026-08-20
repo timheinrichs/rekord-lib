@@ -317,14 +317,39 @@ until then. That is C3's job, and this is its first real source.
 
 *Size: S*
 
-### C5 · Pause and resume long scans
+### C5 · Pause and resume long scans — **done**
 
-**What** — pause in addition to cancel. Their implementation is an
-`Arc<AtomicBool>` checked by each worker immediately before it pops the next
-item, so whatever is in flight always finishes cleanly.
+**What shipped** — a `paused` flag on `ScanState` and one gate, `await_resume`,
+called immediately before the next unit of work is taken in all three phases:
+the analysis chunk loop, the BPM pass and the fingerprinting inside the
+duplicate search. Whatever is already in flight always finishes and is
+persisted, so a pause never costs a file its analysis. Cancelling while paused
+ends the run rather than leaving it parked — both `cancel_scan` and
+`cancel_dedupe` clear the flag, and the gate checks cancellation in the same
+loop.
 
-**Why** — cheap to build and genuinely useful when a full-library scan is
-competing with everything else on a laptop.
+There is no separate pause button: the scan button *is* the control. While a run
+is on it shows the run — "BPM 5144/10000" — and on hover or keyboard focus it
+shows what a click would do, "Pause scan"; while the run is held it reads
+"Paused · BPM 5144/10000" and offers "Resume scan". Both faces sit in one grid
+cell, so the button is as wide as the wider of the two and does not resize under
+the pointer. The pause travels with the progress event, so button and label
+survive a reattach after a reload. Where there is nothing to count yet, "Scan
+paused" stands alone rather than reading as two states at once.
+
+Verified over libraries of 10,000 and 6,000 generated files: the counter held at
+5144/10000 across ten seconds and continued from there on resume, and the button
+swapped between status and action on hover in both directions.
+
+**What is left**:
+
+- **C5a** — the *first* population of a library is not pausable. It does not go
+  through the scan job at all: the incremental sync diffs the folder and hands
+  every new file to `analyze_files`, one blocking command with no progress
+  events and no gate. On 10,000 files that is six and a half minutes of a
+  spinner that cannot be stopped — and it is exactly the run a user would most
+  want to hold. Routing it through the scan job would fix the pause and the
+  missing progress at once.
 
 *Size: S*
 

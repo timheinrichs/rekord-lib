@@ -17,6 +17,9 @@ use crate::models::DuplicateGroup;
 pub struct ScanState {
     pub running: AtomicBool,
     pub cancel: AtomicBool,
+    /// Set while the run is held between units of work. Distinct from `cancel`:
+    /// a paused scan keeps its place and its counters, a cancelled one is over.
+    pub paused: AtomicBool,
     pub generation: AtomicU64,
     pub done: AtomicUsize,
     pub total: AtomicUsize,

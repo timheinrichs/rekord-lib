@@ -101,6 +101,15 @@ export function cancelScan(): Promise<void> {
   return invoke("cancel_scan");
 }
 
+/**
+ * Holds a running scan between units of work, or lets it continue. Whatever is
+ * already in flight finishes either way, so pausing never costs a file its
+ * analysis — and the counters keep their meaning while it waits.
+ */
+export function setScanPaused(paused: boolean): Promise<void> {
+  return invoke("set_scan_paused", { paused });
+}
+
 /** Lists audio files under a folder (recursive), without probing them. */
 export function listAudioFiles(dir: string): Promise<string[]> {
   return invoke<string[]>("list_audio_files", { dir });

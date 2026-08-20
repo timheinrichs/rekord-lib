@@ -27,6 +27,9 @@ struct ScanProgress {
     done: usize,
     total: usize,
     running: bool,
+    /// Held between units of work. The counters keep their meaning — they say
+    /// where the run will continue from.
+    paused: bool,
     /// Which pass the counters refer to, e.g. "Analyzing" or "Detecting BPM".
     stage: String,
 }
@@ -72,6 +75,7 @@ const SCAN_BATCH: usize = 25;
 #[derive(Debug, Clone, serde::Serialize)]
 pub struct ScanStatus {
     running: bool,
+    paused: bool,
     generation: u64,
     done: usize,
     total: usize,
@@ -232,7 +236,9 @@ async fn detect_bpm_pass(
 
     let mut done = 0;
     for chunk in todo.chunks(BPM_CONCURRENCY) {
-        if cancelled() {
+        // await_resume returns at once unless a scan is paused, so the
+        // synchronous path through analyze_files is unaffected.
+        if cancelled() || await_resume(app).await {
             return true;
         }
         let handles: Vec<(usize, _)> = chunk
@@ -322,6 +328,8 @@ pub fn start_scan(
         return false;
     }
     state.cancel.store(false, Ordering::SeqCst);
+    // A previous run may have been cancelled while paused.
+    state.paused.store(false, Ordering::SeqCst);
     state.done.store(0, Ordering::SeqCst);
     state.total.store(0, Ordering::SeqCst);
     set_scan_stage(&state, STAGE_ANALYZING);
@@ -375,7 +383,9 @@ pub fn start_scan(
         let mut analyzed = 0usize;
 
         for chunk in paths.chunks(PROBE_CONCURRENCY) {
-            if app.state::<ScanState>().cancel.load(Ordering::SeqCst) {
+            // Pause and cancel are both decided here, between chunks, so the
+            // probes already running always finish and get persisted.
+            if await_resume(&app).await {
                 cancelled = true;
                 break;
             }
@@ -942,6 +952,9 @@ fn emit_progress(
             done,
             total,
             running,
+            // Read here rather than passed in: every caller would have to
+            // thread it through, and all of them mean the same thing by it.
+            paused: app.state::<ScanState>().paused.load(Ordering::SeqCst),
             stage: stage.to_string(),
         },
     );
@@ -959,6 +972,7 @@ fn emit_tracks(app: &AppHandle, generation: u64, tracks: Vec<TrackAnalysis>) {
 pub fn scan_status(state: State<'_, ScanState>) -> ScanStatus {
     ScanStatus {
         running: state.running.load(Ordering::SeqCst),
+        paused: state.paused.load(Ordering::SeqCst),
         generation: state.generation.load(Ordering::SeqCst),
         done: state.done.load(Ordering::SeqCst),
         total: state.total.load(Ordering::SeqCst),
@@ -982,6 +996,59 @@ fn set_scan_stage(state: &ScanState, stage: &str) {
     }
 }
 
+/// How long a paused run sleeps between checks. Long enough that holding a scan
+/// for an hour costs nothing, short enough that resuming feels immediate.
+const PAUSE_POLL_MS: u64 = 150;
+
+/// Holds the run while it is paused, and reports whether it was cancelled.
+///
+/// Called immediately *before* the next unit of work is taken, never in the
+/// middle of one: whatever is already in flight finishes and is persisted, so a
+/// pause never costs a file its analysis. Cancelling while paused ends the run
+/// rather than leaving it stuck — the flag is checked in the same loop.
+pub(crate) async fn await_resume(app: &AppHandle) -> bool {
+    loop {
+        // Scoped so the state guard is gone before the await.
+        let (paused, cancelled) = {
+            let state = app.state::<ScanState>();
+            (
+                state.paused.load(Ordering::SeqCst),
+                state.cancel.load(Ordering::SeqCst),
+            )
+        };
+        if cancelled {
+            return true;
+        }
+        if !paused {
+            return false;
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(PAUSE_POLL_MS)).await;
+    }
+}
+
+/// Pauses or resumes the running scan.
+///
+/// Pausing a scan that is not running is a no-op rather than an error: the UI
+/// can only offer it while one runs, and a stale click must not leave a flag
+/// set that would hold the *next* run before it starts.
+#[tauri::command]
+pub fn set_scan_paused(app: AppHandle, state: State<'_, ScanState>, paused: bool) {
+    if !state.running.load(Ordering::SeqCst) {
+        state.paused.store(false, Ordering::SeqCst);
+        return;
+    }
+    state.paused.store(paused, Ordering::SeqCst);
+    // The counters have not moved, so nothing else would tell the UI.
+    emit_progress(
+        &app,
+        state.generation.load(Ordering::SeqCst),
+        state.done.load(Ordering::SeqCst),
+        state.total.load(Ordering::SeqCst),
+        true,
+        &scan_stage(&state),
+    );
+}
+
 /// Cancels a running scan (the task terminates at the next step).
 #[tauri::command]
 pub fn cancel_scan(app: AppHandle, state: State<'_, ScanState>) {
@@ -992,6 +1059,8 @@ pub fn cancel_scan(app: AppHandle, state: State<'_, ScanState>) {
         .store(true, Ordering::SeqCst);
     if state.running.load(Ordering::SeqCst) {
         state.cancel.store(true, Ordering::SeqCst);
+        // Otherwise the run would sit in await_resume instead of ending.
+        state.paused.store(false, Ordering::SeqCst);
     }
 }
 
@@ -1243,9 +1312,14 @@ pub fn dedupe_result(state: State<'_, DedupeState>) -> Option<Vec<DuplicateGroup
 
 /// Cancels a running duplicate search.
 #[tauri::command]
-pub fn cancel_dedupe(state: State<'_, DedupeState>) {
+pub fn cancel_dedupe(app: AppHandle, state: State<'_, DedupeState>) {
     if state.running.load(Ordering::SeqCst) {
         state.cancel.store(true, Ordering::SeqCst);
+        // The search is a phase of the scan, so it can be paused with it — and
+        // a cancel has to be able to end a run that is currently held.
+        app.state::<ScanState>()
+            .paused
+            .store(false, Ordering::SeqCst);
     }
 }
 
