@@ -467,12 +467,15 @@ export default function LibraryView({
           // so anything it did not report is gone from disk. A targeted run only
           // touched a subset, and a cancelled one did not even finish that.
           if (!d.cancelled && d.full) setTracks(d.tracks);
+          // Rows that were on screen while this ran asked before their waveform
+          // existed and were told there is none; they have to be asked again or
+          // they stay blank until they remount. Also after a cancel: the
+          // analysis stores per track, so a run stopped halfway still stored
+          // some.
+          forgetRowWaveforms();
           // Keep working through the library: a full sweep leaves a backlog, and
           // a targeted run may have been capped by the single-flight guard. Not
           // after a cancel — that was a deliberate stop.
-          // Tracks that had no waveform when their row first asked have one
-          // now, and the batcher remembers absences.
-          forgetRowWaveforms();
           if (!d.cancelled) backlogRef.current();
           // A sweep that found nothing may have been looking at a folder that
           // is no longer there.

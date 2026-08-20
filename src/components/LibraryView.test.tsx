@@ -2,7 +2,7 @@ import { render, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { makeMetadata, makeTrack } from "../test/factories";
 import { DEFAULT_SETTINGS, type Settings } from "../lib/settings";
-import type { TrackAnalysis } from "../types";
+import type { TrackAnalysis, Waveform } from "../types";
 
 
 /**
@@ -50,6 +50,9 @@ const mocks = vi.hoisted(() => {
     startLibraryWatch: vi.fn(async () => {}),
     undoPeek: vi.fn(async () => null),
     coverThumbnail: vi.fn(async () => null),
+    storedWaveforms: vi.fn(
+      async (..._args: unknown[]) => ({}) as Record<string, Waveform>,
+    ),
 
     // --- lib/library -------------------------------------------------------
     loadLibraryTracks: vi.fn(async () => [] as TrackAnalysis[]),
@@ -72,7 +75,7 @@ vi.mock("../lib/api", () => ({
   undoPeek: mocks.undoPeek,
   coverThumbnail: mocks.coverThumbnail,
   // Used by the row waveform, which every rendered row mounts.
-  storedWaveforms: vi.fn(async () => ({})),
+  storedWaveforms: mocks.storedWaveforms,
   convertTracks: vi.fn(),
   deleteAlbum: vi.fn(),
   deleteFiles: vi.fn(),
@@ -134,6 +137,7 @@ vi.mock("../lib/player", () => ({
 
 // Imported after the mocks are declared, which is what vi.mock's hoisting is for.
 const { default: LibraryView } = await import("./LibraryView");
+const { forgetRowWaveforms } = await import("./RowWaveform");
 
 function renderLibrary(over: Partial<Settings> = {}) {
   const settings: Settings = { ...DEFAULT_SETTINGS, library_dir: "/lib", ...over };
@@ -168,6 +172,10 @@ beforeEach(() => {
   mocks.loadDuplicates.mockResolvedValue([]);
   mocks.listAudioFiles.mockResolvedValue([]);
   mocks.analyzeFiles.mockResolvedValue([]);
+  mocks.storedWaveforms.mockResolvedValue({});
+  // The row waveform batcher is module state, shared by every test in this
+  // file; without this, one test's answers are another test's cache.
+  forgetRowWaveforms();
 });
 
 describe("tempo backlog on start-up", () => {
@@ -302,5 +310,65 @@ describe("the incremental sync", () => {
     // Without a BPM: the backlog does that afterwards, so a folder of new files
     // appears in the list immediately instead of after every decode.
     expect(mocks.analyzeFiles.mock.calls[0][1]).toBe(false);
+  });
+});
+
+describe("row waveforms", () => {
+  const stored = (path: string): Record<string, Waveform> => ({
+    [path]: { peak: [0.1, 0.9, 0.4], rms: [0.05, 0.5, 0.2] },
+  });
+
+  /**
+   * A track with no album, which is the shape the bug was reported on: single
+   * tracks had no waveform while tracks inside an album did, because those rows
+   * mount only when their group is expanded — after the scan. Written without an
+   * album so the row stands on its own under any grouping, not just the flat
+   * list the view now opens with.
+   */
+  function single(name: string): TrackAnalysis {
+    return makeTrack({
+      id: `/lib/${name}`,
+      path: `/lib/${name}`,
+      metadata: makeMetadata({ bpm: null, album: null, album_artist: null }),
+    });
+  }
+
+  it("fills in the rows that were on screen while the scan ran", async () => {
+    // The bug: a row that mounted during the scan asked before its waveform
+    // existed, was told there is none, and never asked again. Waveforms then
+    // appeared *only* under a group expanded after the scan, because those rows
+    // were mounting for the first time. Unit tests of the batcher were green —
+    // this is the wiring the scan-done handler is responsible for.
+    mocks.loadLibraryTracks.mockResolvedValue([single("a.aiff")]);
+    mocks.listAudioFiles.mockResolvedValue(["/lib/a.aiff"]);
+
+    const { container } = renderLibrary();
+    await waitFor(() => expect(mocks.storedWaveforms).toHaveBeenCalled());
+    expect(container.querySelectorAll("canvas")).toHaveLength(0);
+
+    // The scan has stored one by now.
+    mocks.storedWaveforms.mockResolvedValue(stored("/lib/a.aiff"));
+    mocks.scanDone.cb?.({ generation: 1, cancelled: false, full: false, tracks: [] });
+
+    await waitFor(() =>
+      expect(container.querySelectorAll("canvas")).toHaveLength(1),
+    );
+  });
+
+  it("also fills them in after a cancelled scan", async () => {
+    // A cancel is not "nothing happened": the analysis stores each track as it
+    // finishes, so a run stopped halfway still left waveforms behind.
+    mocks.loadLibraryTracks.mockResolvedValue([single("a.aiff")]);
+    mocks.listAudioFiles.mockResolvedValue(["/lib/a.aiff"]);
+
+    const { container } = renderLibrary();
+    await waitFor(() => expect(mocks.storedWaveforms).toHaveBeenCalled());
+
+    mocks.storedWaveforms.mockResolvedValue(stored("/lib/a.aiff"));
+    mocks.scanDone.cb?.({ generation: 1, cancelled: true, full: false, tracks: [] });
+
+    await waitFor(() =>
+      expect(container.querySelectorAll("canvas")).toHaveLength(1),
+    );
   });
 });

@@ -298,6 +298,24 @@ the paths on screen. The frontend's in-memory cache
 (`lib/waveformCache.ts`, promise-keyed so skipping between two tracks cannot
 start the same work twice) stays useful for the player bar.
 
+The row waveforms in the table batch their requests: the rows that ask are the
+rows on screen, so one call per scroll position rather than twenty
+(`lib/waveformBatch.ts`). A path with nothing stored is remembered as **absent**,
+which is what stops a track the scan has not reached from being re-requested on
+every scroll past it.
+
+**That memory needs two things to be dropped, not one.** Clearing the cache when
+a scan finishes is not enough: a row asks once, on mount, so a row that was
+visible while the scan ran keeps the "there is none" it was given and stays blank
+until it happens to remount. The symptom was oddly specific — waveforms appeared
+for tracks inside an album and nowhere else, because those rows mount when the
+group is expanded, which is after the scan. `forget()` therefore clears the cache
+*and* re-asks for every path still being listened to. Also after a cancelled run:
+the analysis stores per track, so a scan stopped halfway still left waveforms
+behind. The unit tests were green throughout — they asserted that a *new* request
+re-fetches, which is not the thing that was broken; the test that catches it
+drives `LibraryView` and its scan-done handler.
+
 The remaining case for a separate stored artifact is the ANLZ waveform (H1),
 which is denser and has its own format.
 

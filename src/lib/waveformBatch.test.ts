@@ -108,19 +108,44 @@ describe("createWaveformBatcher", () => {
     expect(gone).not.toHaveBeenCalled();
   });
 
-  it("forgets on request, so a finished scan is picked up", async () => {
+  it("re-asks for the rows on screen when a scan finishes", async () => {
+    // The bug this exists for: a row visible during the scan was told there is
+    // no waveform, and clearing the cache alone never reached it — it asks once,
+    // on mount. Waveforms then showed up only under a group expanded *after*
+    // the scan, because those rows were mounting for the first time.
+    const fetch = vi
+      .fn<(paths: string[]) => Promise<Record<string, Waveform>>>()
+      .mockResolvedValueOnce({})
+      .mockResolvedValueOnce({ "/a": wf(5) });
+    const q = manual();
+    const b = createWaveformBatcher(fetch, q.schedule);
+    const loaded = vi.fn();
+
+    b.request("/a", loaded);
+    q.run();
+    await vi.waitFor(() => expect(b.get("/a")).toBeNull());
+    loaded.mockClear();
+
+    b.forget();
+    q.run();
+    await vi.waitFor(() => expect(b.get("/a")).toEqual(wf(5)));
+    // And the row was told, so it redraws without remounting.
+    expect(loaded).toHaveBeenCalled();
+  });
+
+  it("has nothing to re-ask when no row is listening", async () => {
     const fetch = vi.fn(async () => ({}));
     const q = manual();
     const b = createWaveformBatcher(fetch, q.schedule);
 
-    b.request("/a", () => {});
+    const stop = b.request("/a", () => {});
     q.run();
     await vi.waitFor(() => expect(b.get("/a")).toBeNull());
+    stop();
 
+    fetch.mockClear();
     b.forget();
-    expect(b.get("/a")).toBeUndefined();
-    b.request("/a", () => {});
     q.run();
-    expect(fetch).toHaveBeenCalledTimes(2);
+    expect(fetch).not.toHaveBeenCalled();
   });
 });

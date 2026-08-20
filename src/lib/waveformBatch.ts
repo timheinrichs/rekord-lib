@@ -21,7 +21,15 @@ export interface WaveformBatcher {
    * calling back into an unmounted row is how React warnings start.
    */
   request(path: string, onLoaded: () => void): () => void;
-  /** Drops what is known, so the next request asks again. */
+  /**
+   * Drops what is known and asks again for everything currently on screen.
+   *
+   * Both halves matter. A row that was visible while the scan ran was told
+   * there is no waveform, and clearing the cache alone does not reach it: it
+   * asked once, on mount, and will not ask again until it remounts. Rows only
+   * remounted by scrolling or expanding a group, which is why waveforms
+   * appeared for tracks under a group opened *after* a scan and nowhere else.
+   */
   forget(): void;
 }
 
@@ -88,6 +96,13 @@ export function createWaveformBatcher(
 
     forget() {
       known.clear();
+      const onScreen = [...listeners.keys()];
+      if (!onScreen.length) return;
+      onScreen.forEach((path) => pending.add(path));
+      if (!scheduled) {
+        scheduled = true;
+        schedule(flush);
+      }
     },
   };
 }
