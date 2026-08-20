@@ -399,6 +399,17 @@ tool for a CDJ/XDJ- and Rekordbox-compatible library.
 - Project scaffold: Tauri 2 + React 19 + Tailwind v4, bundled
   ffmpeg/ffprobe sidecar, first analysis/conversion pipeline.
 
-[Unreleased]: https://example.com/rekord-lib/compare/v0.2.0...HEAD
-[0.2.0]: https://example.com/rekord-lib/releases/tag/v0.2.0
-[0.1.0]: https://example.com/rekord-lib/releases/tag/v0.1.0
+[Unreleased]: https://github.com/timheinrichs/rekord-lib/compare/v0.5.0...HEAD
+[0.5.0]: https://github.com/timheinrichs/rekord-lib/compare/v0.4.9...v0.5.0
+[0.4.9]: https://github.com/timheinrichs/rekord-lib/compare/v0.4.8...v0.4.9
+[0.4.8]: https://github.com/timheinrichs/rekord-lib/compare/v0.4.7...v0.4.8
+[0.4.7]: https://github.com/timheinrichs/rekord-lib/compare/v0.4.6...v0.4.7
+[0.4.6]: https://github.com/timheinrichs/rekord-lib/compare/v0.4.5...v0.4.6
+[0.4.5]: https://github.com/timheinrichs/rekord-lib/compare/v0.4.4...v0.4.5
+[0.4.4]: https://github.com/timheinrichs/rekord-lib/compare/v0.4.3...v0.4.4
+[0.4.3]: https://github.com/timheinrichs/rekord-lib/compare/v0.4.2...v0.4.3
+[0.4.2]: https://github.com/timheinrichs/rekord-lib/compare/v0.4.1...v0.4.2
+[0.4.1]: https://github.com/timheinrichs/rekord-lib/compare/v0.4.0...v0.4.1
+[0.4.0]: https://github.com/timheinrichs/rekord-lib/compare/v0.3.3...v0.4.0
+[0.3.3]: https://github.com/timheinrichs/rekord-lib/compare/v0.3.2...v0.3.3
+[0.3.2]: https://github.com/timheinrichs/rekord-lib/releases/tag/v0.3.2
