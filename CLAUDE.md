@@ -94,6 +94,33 @@ its data. It can be dropped one release after 0.4.8.
   **`npm test`** and **`cd src-tauri && cargo test`** must be green. CI
   (`.github/workflows/ci.yml`) enforces this on every push/PR.
 
+### Driving the real app — mandatory setup
+
+Unit tests do not catch a broken wiring between a command and a view, so
+non-trivial changes get clicked through in a running `npm run tauri dev`. That
+run is **not** a read-only observer: the scan writes BPM tags into files, the
+metadata editor rewrites them, conversion and delete move files to the trash.
+Set it up so it cannot reach anything real:
+
+- **Isolate the data.** Temporarily change `identifier` in
+  `src-tauri/tauri.conf.json` (e.g. to `com.timheinrichs.rekord-lib-devtest`).
+  The dev build then gets its own app data directory, so the maintainer's
+  library database, settings and undo history are untouched — and their
+  installed app can keep running alongside. **Restore the identifier
+  afterwards**, before committing.
+- **Copy the audio files, never link them.** Put real **copies** in a scratch
+  folder and point `library_dir` there. A symlink is not isolation: the app
+  follows it and writes into the original. This has already gone wrong once — a
+  "Re-detect BPM" over a folder of symlinks rewrote the tempo tag in 42 files
+  of the real library. Nothing was lost, because the detector produced the same
+  values, but that was luck.
+- **Prefer generated files** where the test only needs *some* audio: a handful
+  of `ffmpeg`-generated tones costs nothing to lose and can be shaped to the
+  case under test (short, long, broken, high sample rate). Copies of real
+  tracks are for the cases that need real tags or real covers.
+- **Clean up**: remove the scratch library and the `-devtest` app data
+  directory, and check `git status` is clean before committing.
+
 ## Distribution, robustness & security — mandatory
 
 The app ships as a **standalone `.app`** that must run on **any** supported Mac
