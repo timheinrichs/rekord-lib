@@ -14,6 +14,7 @@ import {
   onScanDone,
   onScanProgress,
   onScanSkipped,
+  onScanPatch,
   onScanTracks,
   pickOutputDir,
   pruneEmptyDirs,
@@ -128,12 +129,14 @@ import {
 } from "../lib/labelTree";
 import { albumsLabel, summarizeGroup, type GroupSummary } from "../lib/groupSummary";
 import {
+  applyPatch,
   convertedOutputs,
   diffAudioFiles,
   mergeConverted,
   mergeScanned,
   pathsMissingBpm,
 } from "../lib/librarySync";
+import { createPatchCollector, waveformPaths } from "../lib/scanPatchBatch";
 import {
   activeFilterChips,
   clearFacet,
@@ -146,7 +149,10 @@ import {
   type TrackFilter,
 } from "../lib/trackFilter";
 import ColumnMenu from "./ColumnMenu";
-import RowWaveform, { forgetRowWaveforms } from "./RowWaveform";
+import RowWaveform, {
+  forgetRowWaveforms,
+  refreshRowWaveforms,
+} from "./RowWaveform";
 import FilterMenu from "./FilterMenu";
 
 interface Props {
@@ -433,6 +439,22 @@ export default function LibraryView({
     checkDirRef.current = checkLibraryDir;
   }, [checkLibraryDir]);
 
+  // Where the scan's per-file results are gathered before they reach the list.
+  // Created once: the setter is stable and the waveform batcher is module-level,
+  // so nothing here needs to be rebuilt when this component re-renders.
+  const patches = useMemo(
+    () =>
+      createPatchCollector((batch) => {
+        setTracks((prev) => applyPatch(prev, batch));
+        // The waveform is not a field of the row — it lives in its own table and
+        // is fetched by the row that draws it, so a stored waveform is announced
+        // to the batcher rather than merged into the track.
+        const drawn = waveformPaths(batch);
+        if (drawn.length) refreshRowWaveforms(drawn);
+      }),
+    [],
+  );
+
   // Persistent scan listeners (one-time): progress, streamed tracks, result.
   // Registered through a listenerGroup so an unsubscriber that arrives after
   // cleanup still gets called — see that module for what leaked without it.
@@ -454,6 +476,10 @@ export default function LibraryView({
           setTracks((prev) => mergeScanned(prev, t.tracks));
         }),
       );
+      // The tempo/key/waveform pass reports every file on its own, so a row
+      // fills in while the run is still going. Gathered on a window first — see
+      // `scanPatchBatch` for why one update per file would cost too much.
+      group.add(await onScanPatch((p) => patches.add(p.patch)));
       // Files the analysis could not use, reported one by one as they happen.
       group.add(
         await onScanSkipped((f) => setSkipped((prev) => addSkipped(prev, f))),
@@ -483,8 +509,11 @@ export default function LibraryView({
         }),
       );
     })();
-    return () => group.dispose();
-  }, []);
+    return () => {
+      group.dispose();
+      patches.stop();
+    };
+  }, [patches]);
 
   // Duplicate groups must never reference files that are gone. This follows the
   // track list rather than a single event, because the scan streams its updates.

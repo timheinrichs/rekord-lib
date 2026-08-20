@@ -149,3 +149,65 @@ describe("createWaveformBatcher", () => {
     expect(fetch).not.toHaveBeenCalled();
   });
 });
+
+describe("refresh", () => {
+  it("re-asks for a named path that a row is watching", async () => {
+    // What the scan does as it stores each waveform: the row on screen was told
+    // there is none, and has no reason of its own to ask again.
+    let stored = false;
+    const fetch = vi.fn(async (paths: string[]) =>
+      stored ? Object.fromEntries(paths.map((p) => [p, wf(1)])) : {},
+    );
+    const q = manual();
+    const b = createWaveformBatcher(fetch, q.schedule);
+
+    const drawn = vi.fn();
+    b.request("/a", drawn);
+    q.run();
+    await Promise.resolve();
+    expect(b.get("/a")).toBeNull();
+
+    stored = true;
+    b.refresh(["/a"]);
+    q.run();
+    await Promise.resolve();
+
+    expect(b.get("/a")).toEqual(wf(1));
+    expect(drawn).toHaveBeenCalled();
+  });
+
+  it("leaves the paths it was not asked about alone", async () => {
+    const fetch = vi.fn(async (paths: string[]) =>
+      Object.fromEntries(paths.map((p) => [p, wf(1)])),
+    );
+    const q = manual();
+    const b = createWaveformBatcher(fetch, q.schedule);
+
+    b.request("/a", () => {});
+    b.request("/b", () => {});
+    q.run();
+    await Promise.resolve();
+    fetch.mockClear();
+
+    b.refresh(["/a"]);
+    q.run();
+
+    expect(fetch).toHaveBeenCalledTimes(1);
+    expect(fetch.mock.calls[0][0]).toEqual(["/a"]);
+  });
+
+  it("costs no round trip for a path nobody is on screen for", () => {
+    // Forgotten so the next row that scrolls past fetches it, but not fetched
+    // now — during a scan that would be one call per analysed file.
+    const fetch = vi.fn(async () => ({}));
+    const q = manual();
+    const b = createWaveformBatcher(fetch, q.schedule);
+
+    b.refresh(["/offscreen"]);
+    q.run();
+
+    expect(fetch).not.toHaveBeenCalled();
+    expect(b.get("/offscreen")).toBeUndefined();
+  });
+});
+

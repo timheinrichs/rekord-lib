@@ -1,4 +1,4 @@
-import type { ConvertResult, TrackAnalysis } from "../types";
+import type { ConvertResult, TrackAnalysis, TrackPatch } from "../types";
 
 export interface LibraryDiff {
   /** Files on disk that aren't in the library yet (need analyzing). */
@@ -69,6 +69,44 @@ export function mergeScanned(
     return next;
   });
   if (byPath.size) return [...merged, ...byPath.values()];
+  return changed ? merged : tracks;
+}
+
+/**
+ * Writes single analysis results into the rows they belong to.
+ *
+ * The scan reports each file the moment it is finished, and each report carries
+ * only what that analysis produced — a `null` field means *unchanged*, not "not
+ * detected", because the analysis never clears a value it failed to find. A
+ * patch for a path we do not know is dropped: the tempo pass runs after every
+ * row exists, so an unknown path is a stale generation, not a missing row.
+ *
+ * Reference-stable when nothing changes, like `mergeScanned` — this runs several
+ * times per second during a scan, and the whole list re-derives from its
+ * identity.
+ */
+export function applyPatch(
+  tracks: TrackAnalysis[],
+  patches: TrackPatch[],
+): TrackAnalysis[] {
+  if (!patches.length) return tracks;
+  const byPath = new Map(patches.map((p) => [p.path, p]));
+  let changed = false;
+  const merged = tracks.map((t) => {
+    const p = byPath.get(t.path);
+    // A waveform-only patch touches no column of the row, so the row keeps its
+    // identity and the list is not re-derived for it.
+    if (!p || (p.bpm == null && p.key == null)) return t;
+    changed = true;
+    return {
+      ...t,
+      metadata: p.bpm == null ? t.metadata : { ...t.metadata, bpm: p.bpm },
+      bpm_confidence: p.bpm == null ? t.bpm_confidence : p.bpm_confidence,
+      key: p.key ?? t.key,
+      key_camelot: p.key == null ? t.key_camelot : p.key_camelot,
+      key_confidence: p.key == null ? t.key_confidence : p.key_confidence,
+    };
+  });
   return changed ? merged : tracks;
 }
 

@@ -640,14 +640,34 @@ against a different query.
 
 *Size: M · only worth doing against a real complaint, not preemptively*
 
-### D3 · Progressive per-field row updates during the scan
+### D3 · Progressive per-field row updates during the scan — **done, per file**
 
-**What** — patch individual fields into a row as each piece of analysis
-finishes, rather than refreshing on batch completion.
+**What shipped** — a `scan://patch` event per finished file, carrying only what
+that analysis produced (`TrackPatch`), instead of a batch of whole tracks at the
+end of every chunk of eight. `applyPatch` writes the named fields into the row
+and leaves the rest alone; a `null` field means *unchanged*, not "not detected",
+because the pass never clears a value it failed to find.
 
-**Why** — the library feels responsive much earlier. Their ordering detail is
-worth copying too: fill the fields in the same left-to-right order the columns
-appear in, so progress reads naturally.
+**Per field was not available, and it is worth writing down why.** One decode
+answers all three questions (`audio::analysis`), so tempo, key and waveform of a
+given track finish in the same instant — there is no order to fill them in, and
+the reference project's left-to-right detail has nothing to attach to here. The
+granularity that exists is per *file*.
+
+**The win turned out to be elsewhere.** A result that produced only a waveform
+changes no column of the row, so it was never part of `changed` and was reported
+to nobody: waveforms appeared when the whole run finished and
+`forgetRowWaveforms` re-asked. A patch carries a `waveform` flag, and
+`refreshRowWaveforms` re-asks for just those paths, so a row on screen draws its
+waveform while the scan is still going.
+
+**Two things had to stay batched.** Persistence is still one transaction per
+chunk — one per file would trade a visible improvement for an invisible cost. And
+the patches are collected in a 250 ms window before they reach the list
+(`lib/scanPatchBatch.ts`), because the table has no memoised rows: one
+`setTracks` rebuilds every row's markup, re-derives filter, sort and grouping,
+and re-measures every row height. Four updates a second read as "filling in" and
+cost the same whether the analysis produces two files a second or twenty.
 
 *Size: S*
 

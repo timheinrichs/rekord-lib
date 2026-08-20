@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  applyPatch,
   convertedOutputs,
   diffAudioFiles,
   mergeConverted,
@@ -7,7 +8,21 @@ import {
   pathsMissingBpm,
 } from "./librarySync";
 import { makeMetadata, makeTrack } from "../test/factories";
-import type { ConvertResult } from "../types";
+import type { ConvertResult, TrackPatch } from "../types";
+
+/** A patch that reports nothing, so a test only sets what it is about. */
+function patch(over: Partial<TrackPatch>): TrackPatch {
+  return {
+    path: "/lib/a.aiff",
+    bpm: null,
+    bpm_confidence: null,
+    key: null,
+    key_camelot: null,
+    key_confidence: null,
+    waveform: false,
+    ...over,
+  };
+}
 
 function result(over: Partial<ConvertResult>): ConvertResult {
   return {
@@ -186,5 +201,82 @@ describe("pathsMissingBpm", () => {
 
   it("returns an empty list when everything is tagged", () => {
     expect(pathsMissingBpm([])).toEqual([]);
+  });
+});
+
+describe("applyPatch", () => {
+  it("fills in one field without disturbing the rest of the row", () => {
+    const before = [
+      makeTrack({
+        path: "/lib/a.aiff",
+        metadata: makeMetadata({ title: "Running", bpm: null }),
+      }),
+    ];
+
+    const after = applyPatch(before, [
+      patch({ path: "/lib/a.aiff", bpm: 127.6, bpm_confidence: 0.8 }),
+    ]);
+
+    expect(after[0].metadata.bpm).toBe(127.6);
+    expect(after[0].bpm_confidence).toBe(0.8);
+    // Everything the patch said nothing about is still there.
+    expect(after[0].metadata.title).toBe("Running");
+    expect(after[0].key).toBeNull();
+  });
+
+  it("treats a null field as unchanged, not as cleared", () => {
+    // The pass never clears a value it failed to find: a key-only result must
+    // not wipe a tempo the file already carried.
+    const before = [
+      makeTrack({
+        path: "/lib/a.aiff",
+        metadata: makeMetadata({ bpm: 120 }),
+      }),
+    ];
+
+    const after = applyPatch(before, [
+      patch({
+        path: "/lib/a.aiff",
+        key: "Am",
+        key_camelot: "8A",
+        key_confidence: 0.6,
+      }),
+    ]);
+
+    expect(after[0].metadata.bpm).toBe(120);
+    expect(after[0].key).toBe("Am");
+    expect(after[0].key_camelot).toBe("8A");
+  });
+
+  it("ignores a patch for a path it does not know", () => {
+    // A stale generation, not a missing row: the tempo pass runs after every
+    // row exists.
+    const before = [makeTrack({ path: "/lib/a.aiff" })];
+    expect(applyPatch(before, [patch({ path: "/lib/gone.aiff", bpm: 130 })])).toBe(
+      before,
+    );
+  });
+
+  it("is reference-stable for a patch that changes no column", () => {
+    // A waveform lives in its own table, so it must not re-derive the list.
+    const before = [makeTrack({ path: "/lib/a.aiff" })];
+    expect(applyPatch(before, [])).toBe(before);
+    expect(applyPatch(before, [patch({ waveform: true })])).toBe(before);
+  });
+
+  it("patches several rows in one pass and leaves the others identical", () => {
+    const a = makeTrack({ path: "/lib/a.aiff" });
+    const b = makeTrack({ path: "/lib/b.aiff" });
+    const c = makeTrack({ path: "/lib/c.aiff" });
+
+    const after = applyPatch([a, b, c], [
+      patch({ path: "/lib/a.aiff", bpm: 128 }),
+      patch({ path: "/lib/c.aiff", key: "Am", key_camelot: "8A" }),
+    ]);
+
+    expect(after[0].metadata.bpm).toBe(128);
+    expect(after[2].key).toBe("Am");
+    // Untouched rows keep their identity, so their cells do not re-render.
+    expect(after[1]).toBe(b);
   });
 });

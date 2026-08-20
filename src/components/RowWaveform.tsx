@@ -22,6 +22,14 @@ export function forgetRowWaveforms() {
 }
 
 /**
+ * Called while a scan runs, for the paths it just stored a waveform for, so a
+ * row on screen draws it now instead of when the whole run is over.
+ */
+export function refreshRowWaveforms(paths: string[]) {
+  batcher.refresh(paths);
+}
+
+/**
  * A track's waveform, drawn as the **top half** only.
  *
  * A mirrored waveform in a 26 px row gives each side 13 px; drawn from a

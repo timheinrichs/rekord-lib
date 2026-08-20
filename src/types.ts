@@ -245,6 +245,31 @@ export interface ScanTracks {
   tracks: TrackAnalysis[];
 }
 
+/**
+ * What one finished analysis has to say about one track. Only the fields it
+ * produced are set: absent means *unchanged*, not "not detected" — the analysis
+ * never clears a value it failed to find.
+ */
+export interface TrackPatch {
+  path: string;
+  bpm: number | null;
+  bpm_confidence: number | null;
+  key: string | null;
+  key_camelot: string | null;
+  key_confidence: number | null;
+  /**
+   * A waveform was stored for this path. A signal rather than a payload: the
+   * waveform lives in its own table and is fetched by the row that draws it.
+   */
+  waveform: boolean;
+}
+
+/** One track's analysis result, the moment it is finished. */
+export interface ScanPatch {
+  generation: number;
+  patch: TrackPatch;
+}
+
 export interface DedupeProgress {
   generation: number;
   done: number;

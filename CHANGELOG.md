@@ -10,6 +10,11 @@ contain incompatible changes.
 ## [Unreleased]
 
 ### Changed
+- **The library fills in while the scan runs.** Tempo, key and waveform used to
+  appear in blocks of eight, when a whole chunk of files had finished. Each file
+  is now reported on its own, so the rows fill in as the analysis works through
+  them. Waveforms in particular arrive during the run instead of only when it
+  ends — they change no column of a row, so nothing used to announce them.
 - **The scan takes the machine it runs on into account.** How many files are
   analysed at once was three hard-wired eights. It is now the smaller of "cores
   minus two, so the interface stays responsive" and "how many whole-file decodes

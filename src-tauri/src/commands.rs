@@ -153,6 +153,83 @@ struct ScanTracks {
 /// How many tracks to collect before emitting a batch.
 const SCAN_BATCH: usize = 25;
 
+/// What a finished analysis has to say about one track. Only the fields it
+/// actually produced are set: absent means "unchanged", not "not detected" — the
+/// pass never clears a value it failed to find, so the frontend can patch a row
+/// field by field without having to know what the rest of it looks like.
+#[derive(Debug, Clone, Default, serde::Serialize)]
+struct TrackPatch {
+    path: String,
+    bpm: Option<f64>,
+    bpm_confidence: Option<f32>,
+    key: Option<String>,
+    key_camelot: Option<String>,
+    key_confidence: Option<f32>,
+    /// A waveform was stored for this path. A signal rather than a payload: the
+    /// waveform lives in its own table and is fetched by the row that draws it.
+    waveform: bool,
+}
+
+impl TrackPatch {
+    /// Nothing came out of the analysis, so there is nothing to tell anyone.
+    fn is_empty(&self) -> bool {
+        self.bpm.is_none() && self.key.is_none() && !self.waveform
+    }
+
+    /// Whether the **track row** changed, which is what decides whether it has
+    /// to be written back. A waveform alone does not: it lives in its own table,
+    /// so the row has nothing new to persist for it.
+    fn changes_row(&self) -> bool {
+        self.bpm.is_some() || self.key.is_some()
+    }
+}
+
+/// One track's analysis result, streamed the moment it is finished instead of at
+/// the end of its chunk.
+#[derive(Debug, Clone, serde::Serialize)]
+struct ScanPatch {
+    generation: u64,
+    patch: TrackPatch,
+}
+
+/// The fields an analysis result carries over into a track row. Pure — the tag
+/// write, the waveform store and the emit all happen around it, so the mapping
+/// itself can be tested without a running app.
+fn patch_of(path: &str, analysis: &analysis::Analysis) -> TrackPatch {
+    let mut patch = TrackPatch {
+        path: path.to_string(),
+        ..Default::default()
+    };
+    if let Some(tempo) = analysis.tempo.as_ref() {
+        // Rounded to the precision a tag can hold before it is stored anywhere.
+        // Without this the f32 -> f64 widening leaks artefacts like
+        // 127.5999984741211 into the database and the UI, while the file would
+        // say "127.60" — three places, one value, no reason to disagree.
+        patch.bpm = Some((tempo.bpm as f64 * 100.0).round() / 100.0);
+        patch.bpm_confidence = Some(tempo.confidence);
+    }
+    if let Some(detected) = analysis.key.as_ref() {
+        patch.key = Some(detected.key.name());
+        patch.key_camelot = Some(detected.key.camelot_name());
+        patch.key_confidence = Some(detected.confidence);
+    }
+    patch
+}
+
+/// Writes a patch into the row it belongs to. Only the fields the patch carries
+/// are touched.
+fn apply_patch(track: &mut TrackAnalysis, patch: &TrackPatch) {
+    if let Some(bpm) = patch.bpm {
+        track.metadata.bpm = Some(bpm);
+        track.bpm_confidence = patch.bpm_confidence;
+    }
+    if patch.key.is_some() {
+        track.key = patch.key.clone();
+        track.key_camelot = patch.key_camelot.clone();
+        track.key_confidence = patch.key_confidence;
+    }
+}
+
 /// Current scan status (for reattaching after a reload).
 #[derive(Debug, Clone, serde::Serialize)]
 pub struct ScanStatus {
@@ -269,6 +346,7 @@ pub async fn analyze_files(
             |_| {},
             |_, _| {},
             |_| {},
+            |_| {},
             || false,
         )
         .await;
@@ -310,10 +388,13 @@ fn is_inside(dir: &str, path: &str) -> bool {
 /// `force` re-analyzes regardless, which is what makes an improved detector
 /// reachable for a library that is already tagged.
 ///
-/// Runs [`BPM_CONCURRENCY`] decodes at a time; `progress(done, total)` is called
-/// per finished file, `emit(updated)` after every chunk so results are saved as
-/// they appear, and `cancelled()` is polled between chunks. Returns whether it
+/// Runs at most [`BPM_CONCURRENCY`] decodes at a time (see
+/// [`workers::budget`]). `progress(done, total)` is called per finished file, so
+/// is `patch(..)` for whatever that file produced; `persist(updated)` runs
+/// after every chunk, because one transaction per chunk is worth far more than
+/// one per file; `cancelled()` is polled between chunks. Returns whether it
 /// stopped early.
+#[allow(clippy::too_many_arguments)]
 async fn detect_bpm_pass(
     app: &AppHandle,
     tracks: &mut [TrackAnalysis],
@@ -321,7 +402,8 @@ async fn detect_bpm_pass(
     config: bpm::TempoConfig,
     mut stage: impl FnMut(&'static str),
     mut progress: impl FnMut(usize, usize),
-    mut emit: impl FnMut(Vec<TrackAnalysis>),
+    mut patch: impl FnMut(TrackPatch),
+    mut persist: impl FnMut(Vec<TrackAnalysis>),
     cancelled: impl Fn() -> bool,
 ) -> bool {
     // Which files already have a usable waveform. Asked once for the whole
@@ -401,18 +483,12 @@ async fn detect_bpm_pass(
         let mut updated = Vec::new();
         for (index, handle) in handles {
             if let Ok(analysis) = handle.await {
-                let mut changed = false;
-                if let Some(tempo) = analysis.tempo {
+                let mut result = patch_of(&tracks[index].path, &analysis);
+                if let (Some(bpm), Some(confidence)) = (result.bpm, result.bpm_confidence) {
                     // Persist first: the tag is what keeps the next scan from
                     // re-analyzing this file. A failed write is not fatal — the
                     // value still shows up in the library for this session.
-                    // Rounded to the precision a tag can hold before it is
-                    // stored anywhere. Without this the f32 -> f64 widening
-                    // leaks artefacts like 127.5999984741211 into the database
-                    // and the UI, while the file would say "127.60" — three
-                    // places, one value, no reason for them to disagree.
-                    let bpm = (tempo.bpm as f64 * 100.0).round() / 100.0;
-                    if tempo.confidence >= MIN_WRITE_CONFIDENCE {
+                    if confidence >= MIN_WRITE_CONFIDENCE {
                         if let Err(e) = write::write_bpm(&tracks[index].path, bpm) {
                             events::warn(
                                 app,
@@ -422,9 +498,6 @@ async fn detect_bpm_pass(
                             );
                         }
                     }
-                    tracks[index].metadata.bpm = Some(bpm);
-                    tracks[index].bpm_confidence = Some(tempo.confidence);
-                    changed = true;
                 }
                 if let Some(w) = analysis.waveform.as_ref() {
                     // Saved with an identity taken *after* any tag write above:
@@ -432,27 +505,29 @@ async fn detect_bpm_pass(
                     // the old mtime would be discarded on the next read.
                     if let Some(fs) = db::fs_identity(&tracks[index].path) {
                         save_waveform(app, &tracks[index].path, fs, w);
+                        result.waveform = true;
                     }
-                    // Not part of `changed`: the waveform lives in its own table,
-                    // so the track row has nothing new to persist for it.
                 }
-                if let Some(detected) = analysis.key {
-                    // Database only, never the file — see `TrackAnalysis::key`.
-                    tracks[index].key = Some(detected.key.name());
-                    tracks[index].key_camelot = Some(detected.key.camelot_name());
-                    tracks[index].key_confidence = Some(detected.confidence);
-                    changed = true;
-                }
-                if changed {
+                // The key is database-only, never written into the file — see
+                // `TrackAnalysis::key`.
+                apply_patch(&mut tracks[index], &result);
+                if result.changes_row() {
                     updated.push(tracks[index].clone());
+                }
+                // Handed over the moment it exists, rather than at the end of
+                // the chunk: the row on screen fills in while the scan runs, and
+                // a waveform-only result — which changes no column of the row —
+                // reaches the list at all.
+                if !result.is_empty() {
+                    patch(result);
                 }
             }
             done += 1;
             progress(done, total);
         }
-        // Hand the chunk over before starting the next one, so a cancel or a
-        // quit costs at most one chunk of work.
-        emit(updated);
+        // Persist the chunk before starting the next one, so a cancel or a quit
+        // costs at most one chunk of work.
+        persist(updated);
     }
     false
 }
@@ -741,6 +816,7 @@ pub fn start_scan(
             let stage_app = app.clone();
             let progress_app = app.clone();
             let emit_app = app.clone();
+            let patch_app = app.clone();
             let bpm_dir = dir.clone();
             cancelled = detect_bpm_pass(
                 &app,
@@ -759,6 +835,7 @@ pub fn start_scan(
                     let stage = scan_stage(&state);
                     emit_progress(&progress_app, generation, done, total, true, &stage);
                 },
+                move |patch| emit_patch(&patch_app, generation, patch),
                 |updated| {
                     // Writing the tempo tag rewrote the file, so its identity
                     // changed. Re-stat before storing, otherwise every file the
@@ -772,7 +849,6 @@ pub fn start_scan(
                         })
                         .collect();
                     persist_tracks(&emit_app, &bpm_dir, &records);
-                    emit_tracks(&emit_app, generation, updated);
                 },
                 || app.state::<ScanState>().cancel.load(Ordering::SeqCst),
             )
@@ -1235,6 +1311,11 @@ fn emit_tracks(app: &AppHandle, generation: u64, tracks: Vec<TrackAnalysis>) {
         return;
     }
     let _ = app.emit("scan://tracks", ScanTracks { generation, tracks });
+}
+
+/// One finished analysis, on its way to the row it belongs to.
+fn emit_patch(app: &AppHandle, generation: u64, patch: TrackPatch) {
+    let _ = app.emit("scan://patch", ScanPatch { generation, patch });
 }
 
 /// Current scan status (for attaching to a running scan after a reload).
@@ -2143,6 +2224,122 @@ mod tests {
         // A cancelled run has an incomplete picture of the library.
         assert!(!dedupe_after_scan(true, true, true));
         assert!(!dedupe_after_scan(false, true, true));
+    }
+
+    /// A bare row, for the patch tests: the fields a patch touches all start
+    /// empty, everything else is beside the point here.
+    fn blank_track(path: &str) -> TrackAnalysis {
+        TrackAnalysis {
+            id: path.into(),
+            path: path.into(),
+            file_name: "a.aiff".into(),
+            audio: crate::models::AudioInfo {
+                container: "aiff".into(),
+                codec: "pcm_s16be".into(),
+                sample_rate: 44100,
+                bits_per_sample: 16,
+                channels: 2,
+                duration_secs: 210.5,
+                lossless: true,
+            },
+            metadata: TrackMetadata::default(),
+            compat: crate::models::CompatReport {
+                compatible: true,
+                issues: vec![],
+            },
+            metadata_incomplete: false,
+            download_date: None,
+            bpm_confidence: None,
+            key: None,
+            key_camelot: None,
+            key_confidence: None,
+        }
+    }
+
+    #[test]
+    fn a_patch_rounds_the_tempo_to_what_a_tag_can_hold() {
+        // The f32 -> f64 widening is what leaks 127.5999984741211 into the
+        // database while the file says "127.60".
+        let analysis = analysis::Analysis {
+            tempo: Some(bpm::Tempo {
+                bpm: 127.6,
+                confidence: 0.8,
+            }),
+            ..Default::default()
+        };
+        let patch = patch_of("/lib/a.aiff", &analysis);
+        assert_eq!(patch.bpm, Some(127.6));
+        assert_eq!(patch.bpm_confidence, Some(0.8));
+    }
+
+    #[test]
+    fn a_patch_carries_only_what_the_analysis_found() {
+        // Key but no tempo is the normal state of a file another program tagged.
+        let analysis = analysis::Analysis {
+            key: Some(crate::audio::key::DetectedKey {
+                key: crate::audio::key::MusicalKey::new(9, true),
+                confidence: 0.6,
+            }),
+            ..Default::default()
+        };
+        let patch = patch_of("/lib/a.aiff", &analysis);
+        assert_eq!(patch.key.as_deref(), Some("Am"));
+        assert_eq!(patch.key_camelot.as_deref(), Some("8A"));
+        assert!(patch.bpm.is_none());
+        assert!(patch.bpm_confidence.is_none());
+    }
+
+    #[test]
+    fn an_empty_analysis_has_nothing_to_report() {
+        let patch = patch_of("/lib/a.aiff", &analysis::Analysis::default());
+        assert!(patch.is_empty());
+        assert!(!patch.changes_row());
+    }
+
+    #[test]
+    fn a_waveform_alone_is_worth_emitting_but_not_worth_persisting() {
+        // This is the case that reached the list not at all before: the waveform
+        // lives in its own table, so the row has nothing new to write back — but
+        // the row on screen still has something new to draw.
+        let mut patch = patch_of("/lib/a.aiff", &analysis::Analysis::default());
+        patch.waveform = true;
+        assert!(!patch.is_empty());
+        assert!(!patch.changes_row());
+    }
+
+    #[test]
+    fn applying_a_patch_leaves_the_fields_it_does_not_carry_alone() {
+        let mut track = blank_track("/lib/a.aiff");
+        track.metadata.title = Some("Running".into());
+        track.metadata.bpm = Some(120.0);
+
+        // A key-only patch must not touch the tempo that is already there.
+        let patch = TrackPatch {
+            path: track.path.clone(),
+            key: Some("Am".into()),
+            key_camelot: Some("8A".into()),
+            key_confidence: Some(0.6),
+            ..Default::default()
+        };
+        apply_patch(&mut track, &patch);
+
+        assert_eq!(track.key.as_deref(), Some("Am"));
+        assert_eq!(track.metadata.bpm, Some(120.0));
+        assert_eq!(track.metadata.title.as_deref(), Some("Running"));
+    }
+
+    #[test]
+    fn a_waveform_only_patch_changes_no_field_of_the_row() {
+        let mut track = blank_track("/lib/a.aiff");
+        let before = track.clone();
+        let patch = TrackPatch {
+            path: track.path.clone(),
+            waveform: true,
+            ..Default::default()
+        };
+        apply_patch(&mut track, &patch);
+        assert_eq!(track.metadata.bpm, before.metadata.bpm);
+        assert_eq!(track.key, before.key);
     }
 
     #[test]

@@ -17,6 +17,7 @@ import type {
   DuplicateGroup,
   MetadataSuggestions,
   ScanDone,
+  ScanPatch,
   ScanProgress,
   ScanStatus,
   ScanTracks,
@@ -152,6 +153,15 @@ export function onScanTracks(
   cb: (t: ScanTracks) => void,
 ): Promise<UnlistenFn> {
   return listen<ScanTracks>("scan://tracks", (e) => cb(e.payload));
+}
+
+/**
+ * Single analysis results, streamed the moment they are finished — the tempo,
+ * key and waveform pass emits one per file rather than one per chunk, so a row
+ * fills in while the scan is still running.
+ */
+export function onScanPatch(cb: (p: ScanPatch) => void): Promise<UnlistenFn> {
+  return listen<ScanPatch>("scan://patch", (e) => cb(e.payload));
 }
 
 export function onScanProgress(

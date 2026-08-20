@@ -1,4 +1,4 @@
-import { render, waitFor } from "@testing-library/react";
+import { render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { makeMetadata, makeTrack } from "../test/factories";
 import { DEFAULT_SETTINGS, type Settings } from "../lib/settings";
@@ -29,6 +29,8 @@ const mocks = vi.hoisted(() => {
     // Captured event callbacks, so a test can drive the component the way the
     // backend would.
     scanDone: {} as { cb?: (d: unknown) => void },
+    scanTracks: {} as { cb?: (t: unknown) => void },
+    scanPatch: {} as { cb?: (p: unknown) => void },
     libraryChanged: {} as { cb?: () => void },
     listener,
 
@@ -91,7 +93,8 @@ vi.mock("../lib/api", () => ({
   onScanDone: mocks.listener(mocks.scanDone),
   onScanProgress: mocks.listener({}),
   onScanSkipped: mocks.listener({}),
-  onScanTracks: mocks.listener({}),
+  onScanTracks: mocks.listener(mocks.scanTracks),
+  onScanPatch: mocks.listener(mocks.scanPatch),
 }));
 
 vi.mock("../lib/library", () => ({
@@ -310,6 +313,71 @@ describe("the incremental sync", () => {
     // Without a BPM: the backlog does that afterwards, so a folder of new files
     // appears in the list immediately instead of after every decode.
     expect(mocks.analyzeFiles.mock.calls[0][1]).toBe(false);
+  });
+});
+
+describe("progressive row updates during a scan", () => {
+  /** A row with nothing analysed yet, the state a fresh scan starts from. */
+  function untouched(name: string): TrackAnalysis {
+    return makeTrack({
+      id: `/lib/${name}`,
+      path: `/lib/${name}`,
+      metadata: makeMetadata({ bpm: null, album: null, album_artist: null }),
+    });
+  }
+
+  function patch(over: Record<string, unknown>) {
+    return {
+      path: "/lib/a.aiff",
+      bpm: null,
+      bpm_confidence: null,
+      key: null,
+      key_camelot: null,
+      key_confidence: null,
+      waveform: false,
+      ...over,
+    };
+  }
+
+  it("shows a tempo as soon as its file is analysed, not at the end of the chunk", async () => {
+    // The wiring `scan://patch` exists for. Unit tests of applyPatch and the
+    // collector are green either way — what they cannot see is whether the
+    // listener reaches the list at all.
+    mocks.loadLibraryTracks.mockResolvedValue([untouched("a.aiff")]);
+    mocks.listAudioFiles.mockResolvedValue(["/lib/a.aiff"]);
+
+    renderLibrary();
+    await waitFor(() => expect(mocks.storedWaveforms).toHaveBeenCalled());
+
+    mocks.scanPatch.cb?.({
+      generation: 1,
+      patch: patch({ bpm: 127.6, bpm_confidence: 0.9 }),
+    });
+
+    // Up to a collection window away, so this waits rather than asserting now.
+    // The cell rounds — the decimals are what goes into the tag and the tooltip.
+    await waitFor(() => expect(screen.getByText("128")).toBeInTheDocument());
+  });
+
+  it("draws a waveform mid-scan, which no track field would have carried", async () => {
+    // A waveform lives in its own table, so it changes no column of the row —
+    // before this it was announced to nobody and only appeared once the whole
+    // run had finished.
+    mocks.loadLibraryTracks.mockResolvedValue([untouched("a.aiff")]);
+    mocks.listAudioFiles.mockResolvedValue(["/lib/a.aiff"]);
+
+    const { container } = renderLibrary();
+    await waitFor(() => expect(mocks.storedWaveforms).toHaveBeenCalled());
+    expect(container.querySelectorAll("canvas")).toHaveLength(0);
+
+    mocks.storedWaveforms.mockResolvedValue({
+      "/lib/a.aiff": { peak: [0.1, 0.9], rms: [0.05, 0.5] },
+    });
+    mocks.scanPatch.cb?.({ generation: 1, patch: patch({ waveform: true }) });
+
+    await waitFor(() =>
+      expect(container.querySelectorAll("canvas")).toHaveLength(1),
+    );
   });
 });
 

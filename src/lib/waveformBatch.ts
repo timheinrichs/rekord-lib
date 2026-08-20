@@ -31,6 +31,13 @@ export interface WaveformBatcher {
    * appeared for tracks under a group opened *after* a scan and nowhere else.
    */
   forget(): void;
+  /**
+   * The same, for named paths only: what the scan reports as it stores each
+   * waveform, so a row on screen draws it while the run is still going instead
+   * of at the end. Paths nobody is listening to are simply dropped from the
+   * cache — the next row that asks will fetch them.
+   */
+  refresh(paths: string[]): void;
 }
 
 export function createWaveformBatcher(
@@ -43,6 +50,17 @@ export function createWaveformBatcher(
   const listeners = new Map<string, Set<() => void>>();
   let pending = new Set<string>();
   let scheduled = false;
+
+  // Ask again for paths whose answer may have changed. Shared by `forget` and
+  // `refresh`, which differ only in how much they forget first.
+  const requeue = (paths: string[]) => {
+    if (!paths.length) return;
+    paths.forEach((path) => pending.add(path));
+    if (!scheduled) {
+      scheduled = true;
+      schedule(flush);
+    }
+  };
 
   const flush = () => {
     scheduled = false;
@@ -96,13 +114,18 @@ export function createWaveformBatcher(
 
     forget() {
       known.clear();
-      const onScreen = [...listeners.keys()];
-      if (!onScreen.length) return;
-      onScreen.forEach((path) => pending.add(path));
-      if (!scheduled) {
-        scheduled = true;
-        schedule(flush);
+      requeue([...listeners.keys()]);
+    },
+
+    refresh(paths) {
+      let listened = false;
+      for (const path of paths) {
+        known.delete(path);
+        if (listeners.has(path)) listened = true;
       }
+      // Only the rows on screen are worth a round trip; the rest have already
+      // been forgotten above, which is all they need.
+      if (listened) requeue(paths.filter((p) => listeners.has(p)));
     },
   };
 }
