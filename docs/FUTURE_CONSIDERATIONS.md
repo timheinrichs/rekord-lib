@@ -627,6 +627,18 @@ already recorded next to the constant says the pass is bound by process startup
 rather than by cores. Lowering it with the others would cost scan time to solve a
 problem it does not have.
 
+Verified in a running app on a 12-core machine with 7.8 GB free: width 8 (the cap
+holds — cores alone would allow 10, memory 81), and 3 with `REKORD_JOBS=3`. The
+pass prints the number it chose, alongside the cores and the free memory it chose
+it from, because "the scan is slow" is a real report and this is the first thing
+worth knowing about it.
+
+**Counting ffmpeg processes does not work as a check, which cost an hour.** The
+generated dev library decodes at roughly 1900× real time, so each child lives a
+handful of milliseconds and a 200 ms sampling loop reports zero concurrency for a
+pass that is fully busy. Measure this from inside the pass, or against real
+tracks — not with `pgrep`.
+
 *Size: S*
 
 ### D2 · Cursor pagination for very large libraries

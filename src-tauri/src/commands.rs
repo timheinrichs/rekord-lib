@@ -449,11 +449,19 @@ async fn detect_bpm_pass(
     // Asked once per pass rather than once per process: the free memory of a
     // machine changes over a session, so a scan started while another app held
     // 8 GB should not keep that width for the rest of the run.
+    let host = workers::Host::detect();
     let width = workers::budget(
-        workers::Host::detect(),
+        host,
         BPM_WORKER_BYTES,
         BPM_CONCURRENCY,
         workers::override_jobs(),
+    );
+    // Said out loud, like the fingerprint cache line: "the scan is slow" is a
+    // real report, and the width is the first thing worth knowing about it.
+    println!(
+        "Analysis width: {width} ({} cores, {} MB free)",
+        host.cores,
+        host.available_bytes / (1024 * 1024)
     );
 
     let mut done = 0;
