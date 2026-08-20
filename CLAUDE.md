@@ -41,6 +41,14 @@ In short: build new UI so that it does not stand out next to the existing UI —
 tokens, status color = state, mono for technical data. When in doubt, check
 `docs/brand/STYLEGUIDE.md`.
 
+Two skills belong here. **`/design`** is for trying layout variants on a canvas
+before building one — allowed, but the result gets re-expressed in tokens, never
+adopted as ad-hoc design. **`/design-system`** audits the system for
+inconsistencies, documents a component, or works out a new pattern; reach for it
+when the question is "does this already exist and what is it called" rather than
+"what should this screen look like". Either way `tokens.css` plus the styleguide
+stay the binding source.
+
 ## Workflow
 
 - After non-trivial changes: `npx tsc --noEmit` (frontend) and
@@ -49,6 +57,9 @@ tokens, status color = state, mono for technical data. When in doubt, check
   warnings, and a build that already prints some is a build where the next one
   goes unnoticed. `cargo check --tests 2>&1 | grep -cE '^(warning|error)'`
   should print `0`.
+- Then, before committing: **`/code-review`** for correctness, or **`/simplify`**
+  when the diff is only about reuse and clarity and there is no bug to hunt.
+  Both read the working tree, so they run after the checks above are green.
 - Commit/PR conventions as in the existing history (Conventional Commits).
 
 ## Persistence
@@ -110,8 +121,12 @@ against a real collection:
 npm run tauri dev                      # generated library, own app data directory
 REKORD_DEV_FRESH=1 npm run tauri dev   # rebuild it and wipe the devtest database
 REKORD_DEV_REAL=1 npm run tauri dev    # deliberately, against your real data
-REKORD_JOBS=2 npm run tauri dev         # force the analysis width (see audio::workers)
+REKORD_JOBS=2 npm run tauri dev        # force the analysis width (see audio::workers)
 ```
+
+**`/run` drives the app through exactly these commands** and must never fall
+back to `REKORD_DEV_REAL`. Everything below about stray `tauri dev` processes
+applies to it unchanged.
 
 There is nothing to remember: the `tauri` npm script is
 `scripts/dev-tauri.mjs`, which intercepts **`dev` only**. It generates
@@ -186,6 +201,10 @@ should never have to install a dependency to make a feature work.
   Keep the Tauri capability, `assetProtocol`, and CSP scopes as **narrow** as
   the feature allows; widen only with a concrete reason. The updater's minisign
   signature is what protects auto-updates — never disable or bypass it.
+- **`/security-review` is mandatory** for a diff that touches any of the above:
+  untrusted input (Bandcamp downloads, dragged-in files, update artifacts), a
+  bundled binary, or a capability / `assetProtocol` / CSP scope. Run it before
+  the release, not after.
 
 ## Releasing & auto-update
 
