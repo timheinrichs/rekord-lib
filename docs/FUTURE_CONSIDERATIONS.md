@@ -187,14 +187,27 @@ silence gets no tempo at all.
 
 *Size: S — the DSP change was small; the persistence and display around it were not*
 
-### B3 · Beat grid and first downbeat
+### B3 · Beat grid — **done, without the downbeat**
 
-**What** — the beat positions, not just the tempo.
+**What shipped** — `audio/beats.rs` finds the beat *phase* for a known tempo by
+comb filtering the onset curve. Measured against Rekordbox' own grid markers, the
+median error is **0.035 of a beat** (16 ms at 128 BPM) on the 1398 tracks where
+the comparison is fair — enough to draw beats over a waveform, where the error is
+smaller than one bin. See [`DSP_BENCHMARK.md`](DSP_BENCHMARK.md).
 
-**Why** — required by anything that later writes ANLZ files (H1), and useful in
-the player bar on its own.
+**Two numbers, not a list.** The plan called for a `beat_grids` table holding
+beat positions as a BLOB. Our detector produces one tempo per track by
+construction, so a grid *is* a period and a phase; a few hundred stored positions
+would be the same information with room to disagree with itself. A variable-tempo
+grid would need more, and that is a different feature.
 
-*Size: M · prerequisite for H1*
+**The first downbeat is not done.** Finding which of four beats starts the bar is
+a harder problem than the phase, and this benchmark cannot even score it fairly:
+Rekordbox' first marker is only on a downbeat for 1231 of 2197 tracks. Shipping a
+downbeat guess into a grid that later writes ANLZ files would be the wrong order
+of operations — H1 is blocked on hardware anyway.
+
+*Size: M · done, minus the downbeat*
 
 ### B4 · Analyse more than one window — **measured and rejected**
 

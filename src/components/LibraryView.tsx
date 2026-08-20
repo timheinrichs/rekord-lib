@@ -1873,9 +1873,13 @@ export default function LibraryView({
                     onClick={() => setEditingId(t.id)}
                     className="group cursor-pointer border-b border-border last:border-0 hover:bg-surface-2"
                   >
+                    {/* Never indented. Nesting is shown in the title column,
+                        the way the group headers do it — indenting this cell
+                        instead pushed the checkbox out of its 40 px column at
+                        depth 2, where it vanished behind the next one, and left
+                        the ones that survived out of line with the groups'. */}
                     <td
                       className="px-4 py-3"
-                      style={depth ? { paddingLeft: 16 + depth * 20 } : undefined}
                       onClick={(e) => e.stopPropagation()}
                     >
                       <input
@@ -1901,7 +1905,14 @@ export default function LibraryView({
                         onToggle={player.toggle}
                       />
                     </td>
-                    <td className="px-4 py-3 text-fg" title={t.path}>
+                    {/* The indent lives here, matching the group headers, so
+                        one glance down the title column shows the hierarchy and
+                        every checkbox above it stays in line. */}
+                    <td
+                      className="px-4 py-3 text-fg"
+                      title={t.path}
+                      style={depth ? { paddingLeft: 16 + depth * 20 } : undefined}
+                    >
                       <MarqueeText text={md.title || t.file_name} />
                     </td>
                     <td className="max-w-[10rem] truncate px-4 py-3 text-fg-muted">

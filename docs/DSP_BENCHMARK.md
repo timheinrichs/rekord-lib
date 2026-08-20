@@ -271,6 +271,40 @@ we use, which can write — and never calls its write path (`save_to`,
 of a percent of accuracy is acceptable *in a layer you can throw away*, and the
 feature's existence elsewhere says nothing about writing it into source audio.
 
+## Beat grid phase — B3
+
+The tempo detector says how fast; `audio/beats.rs` says *when*, by comb
+filtering the same onset curve: for every candidate phase, sum the curve at that
+phase and every beat period after it, and take the phase that collects the most.
+Scored against the position of Rekordbox' first `<TEMPO>` marker, reduced modulo
+the beat period — comparing raw seconds would be meaningless, since two grids can
+name different beats and still describe the same grid.
+
+| population | n | median error | ≤ 5 % of a beat | ≤ 10 % |
+|---|---|---|---|---|
+| **steady grid, tempo correct** | 1398 | **0.035** | 62.4 % | 75.1 % |
+| steady grid | 1591 | 0.039 | 56.6 % | 69.3 % |
+| drifting grid | 538 | 0.243 | 13.0 % | 22.5 % |
+| all | 2129 | 0.064 | 45.6 % | 57.5 % |
+
+The first row is the only fair one: where the reference grid wanders, its first
+marker and our measurement window are at different phases by definition, so the
+0.243 median says nothing about the detector. Where the comparison holds, the
+median error is **0.035 of a beat — 16 ms at 128 BPM**.
+
+That is enough for drawing beats over a waveform, where one bin of a five-minute
+overview covers 125 ms and the error is invisible. It is **not** demonstrated to
+be enough for ANLZ files (H1): 3.5 % of a beat is audible to someone beatmatching,
+and half the tracks are worse than that.
+
+One bug worth recording, because it is invisible in a tempo measurement. The
+first version was 0.07 of a beat late on every click track — the onset curve lags
+the audio, since a frame's flux peaks when the transient sits at the window's
+centre and `onset_envelope` discards its first frame. The tempo detector never
+noticed: it measures distances between peaks, where a constant lag cancels. An
+absolute phase is the first thing that feels it. The initial correction had the
+sign backwards and doubled the error to 0.13, which is how the sign was settled.
+
 ## Reproducing it
 
 The reference set is committed; the audio is not. With the collection on disk:

@@ -10,6 +10,12 @@ contain incompatible changes.
 ## [Unreleased]
 
 ### Fixed
+- **The checkboxes line up in every view.** In the folder and label views a
+  nested track's checkbox was pushed right along with its title, out of line with
+  the group rows above it — and two levels deep it left its column altogether and
+  disappeared. Nesting is now shown where it belongs, in the title column, so one
+  glance down the list shows the hierarchy and the checkboxes form a straight
+  line.
 - **A steady tone no longer gets a confident wrong tempo.** A file with no
   transients at all — a drone, a test tone — has no tempo, but the detector used
   to normalise a flat onset curve by its own numerical noise and report a
@@ -49,6 +55,9 @@ contain incompatible changes.
   tempo in it.
 
 ### Added
+- **Beat positions, not just tempo.** The analysis works out where the beats sit,
+  which is what a waveform needs before it can show them. Measured against
+  Rekordbox' own grids, the median error is 0.035 of a beat — 16 ms at 128 BPM.
 - **Filter by key.** The filter menu lists the keys present in the library in
   Camelot order — 1A, 1B, 2A … — so neighbours on the wheel are neighbours in
   the menu and picking two mixable keys means picking two adjacent entries.

@@ -64,6 +64,7 @@ use sha2::{Digest, Sha256};
 use unicode_normalization::UnicodeNormalization;
 
 use rekord_lib_lib::audio::{bpm, decode};
+use rekord_lib_lib::audio::beats;
 use rekord_lib_lib::audio::bpm::TempoConfig;
 use rekord_lib_lib::audio::key::{self, MusicalKey, Profiles};
 
@@ -137,6 +138,8 @@ struct Reference {
     secs: u32,
     /// Rekordbox' key, where the collection was analysed for one.
     key: Option<MusicalKey>,
+    /// Position of Rekordbox' first beat marker, for scoring grid phase.
+    beat_secs: Option<f32>,
 }
 
 impl Reference {
@@ -177,6 +180,7 @@ fn parse_reference(csv: &str) -> HashMap<String, Reference> {
         // The key column arrived later than the rest, so a file without it is
         // still a valid tempo reference rather than a parse failure.
         let key = cols.next().and_then(MusicalKey::parse);
+        let beat_secs = cols.next().and_then(|v| v.trim().parse::<f32>().ok());
         let (Ok(bpm), Ok(drift), Ok(secs)) =
             (bpm.parse::<f32>(), drift.parse::<f32>(), secs.parse::<u32>())
         else {
@@ -185,7 +189,7 @@ fn parse_reference(csv: &str) -> HashMap<String, Reference> {
         if bpm > 0.0 {
             out.insert(
                 hash.to_string(),
-                Reference { bpm, drift, secs, key },
+                Reference { bpm, drift, secs, key, beat_secs },
             );
         }
     }
@@ -518,6 +522,8 @@ struct Row {
     /// question "is there a subset reliable enough to write into a file" can be
     /// answered from data rather than from hope.
     our_key_confidence: Option<f32>,
+    /// Phase error of our beat grid against Rekordbox', as a fraction of a beat.
+    beat_error: Option<f32>,
     /// How much our detector trusted its own answer. Dumped per track so the
     /// write threshold in `commands.rs` can be picked from measured data rather
     /// than guessed: a confidence that does not track correctness would be worse
@@ -677,6 +683,21 @@ fn benchmark() {
                     .and_then(|s| key::detect_key_with(s, OUR_RATE, profiles));
                 let our_key = detected_key.map(|k| k.key);
                 let our_key_confidence = detected_key.map(|k| k.confidence);
+                // Grid phase, scored against Rekordbox' first beat marker. Our
+                // offset is relative to the excerpt, so the excerpt's own start
+                // has to be added back before the two are comparable.
+                let beat_error = match (detected, reference.beat_secs, excerpt.as_ref()) {
+                    (Some(t), Some(want), Some(samples)) => {
+                        beats::detect_beats(samples, OUR_RATE, t.bpm).map(|grid| {
+                            beats::phase_error(
+                                OUR_OFFSET_SECS as f32 + grid.offset_secs,
+                                want,
+                                t.bpm,
+                            )
+                        })
+                    }
+                    _ => None,
+                };
                 let our_analyze = t0.elapsed();
                 let ours = detected.map(|t| t.bpm);
                 let our_confidence = detected.map(|t| t.confidence);
@@ -740,6 +761,7 @@ fn benchmark() {
                     stratum_key,
                     our_key,
                     our_key_confidence,
+                    beat_error,
                     our_confidence,
                 });
 
@@ -797,13 +819,13 @@ fn benchmark() {
 /// exists to keep out of the repository.
 fn per_track_csv(rows: &[Row]) -> String {
     let mut out = String::from(
-        "file,ref_bpm,drift,ref_key,ours,our_confidence,our_verdict,our_key,our_key_confidence,our_key_verdict,stratum,stratum_verdict,stratum_key,stratum_key_verdict\n",
+        "file,ref_bpm,drift,ref_key,ours,our_confidence,our_verdict,our_key,our_key_confidence,our_key_verdict,beat_error,stratum,stratum_verdict,stratum_key,stratum_key_verdict\n",
     );
     for r in rows {
         let num = |v: Option<f32>| v.map(|x| format!("{x:.2}")).unwrap_or_default();
         let key = |v: Option<MusicalKey>| v.map(spelled).unwrap_or_default();
         out.push_str(&format!(
-            "\"{}\",{:.2},{:.2},{},{},{},{:?},{},{},{},{},{:?},{},{}\n",
+            "\"{}\",{:.2},{:.2},{},{},{},{:?},{},{},{},{},{},{:?},{},{}\n",
             r.name.replace('"', "'"),
             r.reference.bpm,
             r.reference.drift,
@@ -822,6 +844,7 @@ fn per_track_csv(rows: &[Row]) -> String {
             // carried our key and our confidence — an analysis correlating the
             // two read our confidence against the crate's correctness.
             verdict_of(r.reference.key, r.our_key),
+            r.beat_error.map(|e| format!("{e:.4}")).unwrap_or_default(),
             num(r.stratum),
             classify(r.stratum, r.reference.bpm),
             key(r.stratum_key),
@@ -979,6 +1002,34 @@ fn report(
             }
             out.push('\n');
         }
+    }
+
+    // Grid phase. Only ours appears: the crate's beat grid was never wired into
+    // this benchmark, and Rekordbox is the reference rather than a contestant.
+    let graded: Vec<f32> = rows.iter().filter_map(|r| r.beat_error).collect();
+    if !graded.is_empty() {
+        out.push_str(&format!(
+            "### Beat grid phase — {} tracks\n\nHow far our grid sits from \
+             Rekordbox', as a fraction of a beat. 0 is identical; 0.5 is our beats \
+             on their off-beats, the worst it can be.\n\n",
+            graded.len()
+        ));
+        out.push_str("| within | tracks | share |\n|---|---|---|\n");
+        for limit in [0.02f32, 0.05, 0.10, 0.25] {
+            let n = graded.iter().filter(|e| **e <= limit).count();
+            out.push_str(&format!(
+                "| {:.0} % of a beat | {} | {:.1} % |\n",
+                limit * 100.0,
+                n,
+                n as f32 * 100.0 / graded.len() as f32,
+            ));
+        }
+        let mut sorted = graded.clone();
+        sorted.sort_by(|a, b| a.total_cmp(b));
+        out.push_str(&format!(
+            "\nMedian {:.3} of a beat.\n\n",
+            sorted[sorted.len() / 2]
+        ));
     }
 
     // The tracks where the two engines disagree are where the interesting
@@ -1173,8 +1224,8 @@ mod tests {
 
     #[test]
     fn tier_splits_at_the_steady_threshold() {
-        let steady = Reference { bpm: 128.0, drift: 0.49, secs: 300, key: None };
-        let drifting = Reference { bpm: 128.0, drift: 0.5, secs: 300, key: None };
+        let steady = Reference { bpm: 128.0, drift: 0.49, secs: 300, key: None, beat_secs: None };
+        let drifting = Reference { bpm: 128.0, drift: 0.5, secs: 300, key: None, beat_secs: None };
         assert_eq!(steady.tier(), Tier::Steady);
         assert_eq!(drifting.tier(), Tier::Drifting);
     }

@@ -1,3 +1,4 @@
+pub mod beats;
 pub mod bpm;
 pub mod compat;
 pub mod decode;

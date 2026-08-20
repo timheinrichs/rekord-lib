@@ -29,8 +29,8 @@ const EXCERPT_OFFSET_SECS: u32 = 30;
 /// FFT frame (46 ms at 11025 Hz) and hop (5.8 ms → ~172 Hz envelope).
 /// The small hop is what makes the tempo grid fine enough: at a coarser hop,
 /// neighbouring autocorrelation lags around 130 BPM are several BPM apart.
-const FRAME: usize = 512;
-const HOP: usize = 64;
+pub(crate) const FRAME: usize = 512;
+pub(crate) const HOP: usize = 64;
 
 /// Default tempo search range before octave correction. Overridable per run —
 /// see [`TempoConfig`] — because a range that spans exactly one octave removes
@@ -78,7 +78,7 @@ const OCTAVE_FACTORS: [f32; 11] = [
 ];
 
 /// Window of the moving-mean subtraction on the onset envelope (seconds).
-const ENVELOPE_SMOOTH_SECS: f32 = 0.5;
+pub(crate) const ENVELOPE_SMOOTH_SECS: f32 = 0.5;
 
 /// Confidence gates. A wrong number written into thousands of files is worse
 /// than no number, so an unconvincing peak yields `None`.
@@ -269,7 +269,11 @@ fn confidence(peak: f32, range_mean: f32) -> f32 {
 }
 
 /// Half-wave rectified spectral flux per frame, plus the envelope's rate in Hz.
-fn onset_envelope(samples: &[i16], sample_rate: u32) -> Option<(Vec<f32>, f32)> {
+///
+/// Shared with [`super::beats`], which needs the same curve to find where the
+/// beats sit: computing it twice would double the FFT work and risk the two
+/// drifting apart.
+pub(crate) fn onset_envelope(samples: &[i16], sample_rate: u32) -> Option<(Vec<f32>, f32)> {
     if samples.len() < FRAME * 2 || sample_rate == 0 {
         return None;
     }
@@ -327,7 +331,7 @@ fn onset_envelope(samples: &[i16], sample_rate: u32) -> Option<(Vec<f32>, f32)> 
 
 /// Subtracts a centred moving mean and half-wave rectifies — this is what turns
 /// a loudness curve into a peaky onset signal.
-fn subtract_moving_mean(env: &[f32], window: usize) -> Vec<f32> {
+pub(crate) fn subtract_moving_mean(env: &[f32], window: usize) -> Vec<f32> {
     let w = window.max(1);
     // Prefix sums keep this O(n) regardless of the window size.
     let mut prefix = Vec::with_capacity(env.len() + 1);

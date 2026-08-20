@@ -20,6 +20,11 @@ so a one-number detector cannot be scored against it the same way as a steady
 one — the benchmark buckets by this column instead of pretending the reference
 is equally solid everywhere.
 
+`beat_secs` is the position of the grid's first `<TEMPO>` marker — a beat, so a
+detector can be scored on *phase* against it. Comparing raw seconds would be
+meaningless (two grids can name different beats and still agree), which is why
+the benchmark reduces both modulo the beat period.
+
 `key` is Rekordbox' `Tonality`, verbatim ("Am", "F#m", "C"). It is deliberately
 not converted to Camelot here: the benchmark parses both notations into a pitch
 class plus a mode and compares those, so the reference keeps the spelling it was
@@ -106,6 +111,8 @@ def rows_from(xml_path: str):
             "bpm": f"{bpm:.2f}",
             "drift": f"{max(tempos) - min(tempos):.2f}",
             "secs": track.get("TotalTime") or "0",
+            # Position of the first beat marker, for scoring grid phase.
+            "beat_secs": f"{float(track.findall('TEMPO')[0].get('Inizio') or 0):.4f}",
             # Empty where the collection was never analysed for key. Kept as a
             # row anyway: the tempo reference is useful on its own.
             "key": (track.get("Tonality") or "").strip(),
@@ -151,9 +158,18 @@ def main() -> int:
             "# secs:        track length, used to confirm a hash matched the\n"
             "#              file it was meant to.\n"
             "# key:         Rekordbox Tonality, verbatim. Empty = not analysed.\n"
+            "# beat_secs:   position of the first beat marker, for grid phase.\n"
         )
         writer = csv.DictWriter(
-            fh, fieldnames=["name_sha256", "bpm", "drift", "secs", "key"]
+            fh,
+            fieldnames=[
+                "name_sha256",
+                "bpm",
+                "drift",
+                "secs",
+                "key",
+                "beat_secs",
+            ],
         )
         writer.writeheader()
         writer.writerows(rows)
