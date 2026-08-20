@@ -1,7 +1,7 @@
 # Future considerations
 
-A roadmap of ideas for rekord-lib, most of them collected by reading
-[haivala/dj-usb-tkit](https://github.com/haivala/dj-usb-tkit) — a project that
+A roadmap of ideas for rekord-lib, most of them collected by reading a
+comparable open-source project — called *the reference project* below — that
 solves the adjacent half of the same problem with the same stack (Tauri 2 +
 Rust + SQLite, local-first, MIT). It stops where we start (it does not repair
 files) and continues where we stop (it writes the Rekordbox export database
@@ -43,7 +43,7 @@ throws away everything the app knows beyond the tags.
 **What** — a playlist concept: container metadata (name, identity, timestamps)
 separate from ordered membership rows (`playlist_id`, `track_id`, position), so
 ordering is explicit and stable across add/remove instead of implied by a query.
-That is the model dj-usb-tkit uses and it is the right one.
+That is the model the reference project uses and it is the right one.
 
 **Why** — we have no playlist concept at all. It is also the prerequisite for
 A2, which is the item that actually pays off.
@@ -87,9 +87,9 @@ excerpt at 11.025 kHz starting 30 s in, builds a spectral-flux onset envelope
 octaves across 11 ratios weighted by a log-normal tempo prior centred at
 140 BPM. Output: one integer BPM, or `None` when the peak is unconvincing.
 
-dj-usb-tkit uses the `stratum-dsp` crate (with essentia.js via Node as an
-opt-in alternative) over the **full** track, and gets BPM **plus key plus a
-full beat grid plus the first downbeat**.
+The reference project uses the `stratum-dsp` crate (with essentia.js via Node
+as an opt-in alternative) over the **full** track, and gets BPM **plus key plus
+a full beat grid plus the first downbeat**.
 
 Our DSP is the better-tested of the two — theirs covers engine selection, empty
 input and a sine wave; ours covers click tracks, half/double-time traps,
@@ -135,9 +135,9 @@ the player bar on its own.
 with agreement between them feeding the confidence value from B2.
 
 **Why** — one window is fast but blind to tempo changes and can be dominated by
-an atypical section (a long breakdown, a half-time intro). dj-usb-tkit decodes
-the whole track; several windows get most of that robustness at a fraction of
-the cost.
+an atypical section (a long breakdown, a half-time intro). The reference
+project decodes the whole track; several windows get most of that robustness at
+a fraction of the cost.
 
 *Size: S · pairs with B2*
 
@@ -156,9 +156,9 @@ whose library sits in one genre.
 **What** — render a downsampled waveform for the currently playing track.
 
 **Why** — makes the built-in player actually useful for checking a file, and it
-is the precondition for generating ANLZ waveform data later (H1). dj-usb-tkit
-splits this into a UI preview (2400 bins) and a much denser detail resolution
-for the player files; the same split would apply here.
+is the precondition for generating ANLZ waveform data later (H1). The
+reference project splits this into a UI preview (2400 bins) and a much denser
+detail resolution for the player files; the same split would apply here.
 
 *Size: M · prerequisite for H1*
 
@@ -427,9 +427,9 @@ that embeds them verbatim rather than a second trip through the encoder.
 available RAM, keeping roughly two cores free for the OS and the UI thread, with
 an env-var override for debugging.
 
-**Why** — that is exactly what dj-usb-tkit does, and their stated reason is
-sound: a high-core, low-RAM machine otherwise either pegs every core and makes
-the app unresponsive, or runs out of memory mid-batch.
+**Why** — that is exactly what the reference project does, and their stated
+reason is sound: a high-core, low-RAM machine otherwise either pegs every core
+and makes the app unresponsive, or runs out of memory mid-batch.
 
 *Size: S*
 
@@ -439,8 +439,8 @@ the app unresponsive, or runs out of memory mid-batch.
 the whole table to the frontend.
 
 **Why** — the list is virtualized, so rendering is fine, but we still load every
-row. dj-usb-tkit pages, and signs the cursor so it cannot be replayed against a
-different query.
+row. The reference project pages, and signs the cursor so it cannot be replayed
+against a different query.
 
 *Size: M · only worth doing against a real complaint, not preemptively*
 
@@ -465,8 +465,9 @@ appear in, so progress reads naturally.
 the bundle.
 
 **Why** — still the biggest first-run friction; every user has to be told about
-the Gatekeeper workaround. Already flagged in `CLAUDE.md`. (dj-usb-tkit does not
-do this either — there is no shortcut being missed here, just a cost.)
+the Gatekeeper workaround. Already flagged in `CLAUDE.md`. (The reference
+project does not do this either — there is no shortcut being missed here, just a
+cost.)
 
 *Size: M · needs a paid Apple Developer account*
 
@@ -517,9 +518,9 @@ plaintext in the app data directory.
 
 ## F — Documentation and process
 
-The area where dj-usb-tkit is clearly ahead, and where the return per hour is
-the best of anything on this list. They maintain fourteen documents under
-`docs/`; we have a README, a styleguide and `CLAUDE.md`.
+The area where the reference project is clearly ahead, and where the return per
+hour is the best of anything on this list. They maintain fourteen documents
+under `docs/`; we have a README, a styleguide and `CLAUDE.md`.
 
 ### F1 · Functional docs per feature area
 
@@ -537,7 +538,7 @@ conversion/compat rules.
 
 ### F2 · `docs/COMPARISON.md`
 
-**What** — how rekord-lib differs from Rekordbox, and from dj-usb-tkit,
+**What** — how rekord-lib differs from Rekordbox, and from the adjacent tools,
 including an honest statement of what we do *not* do (we do not build the USB
 drive).
 
@@ -605,9 +606,9 @@ promptly.
 **What** — a place for ideas that were considered and consciously *not* done,
 with the reasoning and the condition that would make them worth revisiting.
 
-**Why** — dj-usb-tkit's `TODO.md` has exactly one entry, and most of it explains
-why the work was deferred and what evidence would change that. That is far more
-useful than a list of undone tasks, and it stops the same idea being
+**Why** — the reference project's `TODO.md` has exactly one entry, and most of
+it explains why the work was deferred and what evidence would change that. That
+is far more useful than a list of undone tasks, and it stops the same idea being
 re-litigated every few months.
 
 *Size: S*
@@ -622,16 +623,17 @@ re-litigated every few months.
 resolve duplicates, edit metadata) with WebdriverIO plus `tauri-driver`.
 
 **Why** — we have 119 Rust tests and 32 frontend test files, all at unit level.
-dj-usb-tkit runs Playwright specs against a mock API client for scan/analysis
-batching, exports and empty states, and reports e2e coverage separately. Unit
-tests do not catch a broken wiring between a command and a view.
+The reference project runs Playwright specs against a mock API client for
+scan/analysis batching, exports and empty states, and reports e2e coverage
+separately. Unit tests do not catch a broken wiring between a command and a
+view.
 
 *Size: L*
 
 ### G2 · Windows and Linux
 
-**What** — build for the other desktop platforms. dj-usb-tkit ships deb, rpm,
-AppImage, macOS and Windows.
+**What** — build for the other desktop platforms. The reference project ships
+deb, rpm, AppImage, macOS and Windows.
 
 **Why** — reach. But it needs static ffmpeg sidecars per target, CI runners per
 target, and a second and third platform to keep working. Recorded, not
@@ -648,14 +650,14 @@ scheduled — revisit if anyone actually asks.
 **What** — write the Rekordbox export database (`export.pdb`,
 `exportLibrary.db`) and the analysis files (`DAT`/`EXT`/`2EX`) straight onto the
 drive, so playlists, waveforms and beat grids appear on the player without
-Rekordbox in the loop at all. This is what dj-usb-tkit does, and it is what
-would make rekord-lib end to end.
+Rekordbox in the loop at all. This is what the reference project does, and it is
+what would make rekord-lib end to end.
 
 **Why not yet** — two reasons, and the first is the hard one.
 
 **Blocked on hardware.** There is no CDJ/XDJ available to validate against, and
-this is not a feature that can ship on unit tests. dj-usb-tkit found real
-firmware hang conditions — unaligned UTF-16 string slots in the track rows,
+this is not a feature that can ship on unit tests. The reference project found
+real firmware hang conditions — unaligned UTF-16 string slots in the track rows,
 stacked Unicode combining marks, strings mixing too many scripts — only by
 putting sticks into actual players. Shipping a database writer that has never
 touched hardware would be a good way to brick someone's set.
@@ -686,8 +688,8 @@ zero.
 
 ## Deliberately not adopted
 
-Things dj-usb-tkit does that we should keep *not* doing. Written down so the
-question does not come back.
+Things the reference project does that we should keep *not* doing. Written down
+so the question does not come back.
 
 - **Downloading an analysis engine at runtime.** Their optional essentia.js
   engine fetches npm tarballs from `registry.npmjs.org` at runtime with no

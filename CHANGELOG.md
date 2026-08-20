@@ -35,8 +35,8 @@ contain incompatible changes.
   24-bit are recorded as playing on a CDJ-2000nexus, a CDJ-3000 and an XDJ-700
   with covers and tags intact; the resampling and AIFF-C cases the app exists
   for are still untested on hardware, and the file says which.
-- `docs/FUTURE_CONSIDERATIONS.md` — the roadmap, from the comparison with
-  dj-usb-tkit.
+- `docs/FUTURE_CONSIDERATIONS.md` — the roadmap, from the comparison with a
+  comparable open-source project.
 
 ### Changed
 - **Undo survives a restart.** The undo history for tag writes moved into the
