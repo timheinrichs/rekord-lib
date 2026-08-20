@@ -9,6 +9,26 @@ contain incompatible changes.
 
 ## [Unreleased]
 
+### Added
+- **How the app works is documented, per feature area.** Four documents under
+  `docs/` — the scan and what invalidates each of its three caches, duplicate
+  detection, the compatibility rules and conversion, and tags, covers and undo.
+  Each one names the files and symbols it describes and the tests that prove
+  each claim, so a stale document is visible rather than merely wrong. Index:
+  `docs/README.md`.
+- **A reference for the command surface.** `docs/COMMANDS.md` lists every Tauri
+  command with its arguments, return and events, and every event with its
+  payload — including the two rules that are easy to get wrong: arguments are
+  camelCase while payloads stay snake_case, and several commands report failure
+  inside their return value rather than by rejecting.
+- **A comparison, and contribution guidelines.** `docs/COMPARISON.md` says what
+  the app is and — first — what it deliberately does not do, so nobody has to
+  install it to find out. `CONTRIBUTING.md` states inbound = outbound MIT and
+  collects the rules that protect a real collection from a dev run.
+- **A record of what was consciously not done.** `TODO.md` holds the measured
+  rejections, the follow-ups split off when a feature shipped, and the test gaps
+  found while writing the above — each with the condition that would revive it.
+
 ## [0.7.0] - 2026-08-21
 
 ### Added

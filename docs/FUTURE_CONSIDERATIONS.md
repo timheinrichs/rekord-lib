@@ -746,42 +746,72 @@ plaintext in the app data directory.
 
 ## F — Documentation and process
 
-The area where the reference project is clearly ahead, and where the return per
-hour is the best of anything on this list. They maintain fourteen documents
-under `docs/`; we have a README, a styleguide and `CLAUDE.md`.
+The area where the reference project was clearly ahead, and where the return per
+hour was the best of anything on this list. They maintain fourteen documents
+under `docs/`; we had a README, a styleguide and `CLAUDE.md`. F1, F2, F3, F6 and
+F7 closed that gap — the index is [`docs/README.md`](README.md).
 
-### F1 · Functional docs per feature area
+### F1 · Functional docs per feature area — **done**
 
 **What** — one document per area under `docs/`, each following the same shape:
 *How it works* → *Deep technical details* → *Implementation anchors* (concrete
 file and symbol references) → *Verification links* (which tests prove it).
 
-**Why** — the *Implementation anchors* and *Verification links* sections are the
-part worth copying: they keep the document honest, because a stale anchor is
-immediately visible. Start with the three behaviours least obvious from reading
-the code: scanning and cache invalidation, duplicate detection, and the
-conversion/compat rules.
+**What shipped** — four documents rather than the three this item asked for:
+[`SCANNING.md`](SCANNING.md), [`DUPLICATES.md`](DUPLICATES.md),
+[`CONVERSION.md`](CONVERSION.md) and [`METADATA.md`](METADATA.md) — tags, covers
+and undo were added because that is the other place the app writes into the
+user's files, and the reasoning around `clear_empty` and the undo snapshot lived
+nowhere.
 
-*Size: M*
+**Anchors name a file and a symbol, never a line number.** A line number is
+wrong after the next commit and its wrongness is invisible; a missing symbol is
+found by a `grep`. Every anchor and every test named in the four documents was
+confirmed against the tree when they were written.
 
-### F2 · `docs/COMPARISON.md`
+**The *Verification links* sections did the work this item hoped for.** Assembling
+them turned up five paths whose tests are thinner than they look —
+`convert_tracks`, `write::finalize`, `artwork.rs`, `find_duplicates` and
+`DuplicatesModal.tsx` — plus two mirrors that can drift silently
+(`norm_text`/`norm_album` in Rust and TypeScript, and the `meta_matches` mirror
+of the metadata tier). All of them are in [`TODO.md`](../TODO.md) with the
+condition that would close them; none of them were visible from the code.
 
-**What** — how rekord-lib differs from Rekordbox, and from the adjacent tools,
-including an honest statement of what we do *not* do (we do not build the USB
-drive).
+*Size: M · done*
 
-**Why** — it is the document that tells a stranger in thirty seconds whether
-this app solves their problem. Theirs is a good template.
+### F2 · `docs/COMPARISON.md` — **done**
 
-*Size: S*
+**What shipped** — [`COMPARISON.md`](COMPARISON.md), with *What we do not do*
+placed **first**: no USB drive (H1), no playlists yet (A1/A2), no key written
+into files, no downbeat, macOS only, nothing uploaded. Then the division of
+labour against Rekordbox — we fix the files, it performs with them — against the
+tools that write the drive themselves, and against doing it by hand, where the
+app's contribution is the verdict rather than the speed.
 
-### F3 · `CONTRIBUTING.md`
+**Numbers are linked, never re-tabulated.** [`DSP_BENCHMARK.md`](DSP_BENCHMARK.md)
+stays the only place a percentage is written down and
+[`CDJ_TEST_MATRIX.md`](CDJ_TEST_MATRIX.md) the only place a hardware claim is, so
+there is one place to update rather than two that can disagree.
 
-**What** — contribution guidelines, including the inbound = outbound MIT
-statement and the hard rules that already exist in `CLAUDE.md` (never copy
-Homebrew binaries into the bundle; every change ships with tests).
+*Size: S · done*
 
-*Size: S*
+### F3 · `CONTRIBUTING.md` — **done**
+
+**What shipped** — [`CONTRIBUTING.md`](../CONTRIBUTING.md) at the repo root,
+because that is the only place GitHub surfaces it in the pull-request UI. It
+links the README and `CLAUDE.md` for everything they already say rather than
+becoming a third copy of it.
+
+**Two things had no public home before this.** Inbound = outbound MIT, stated
+plainly; and how to run the app without damaging a real collection — the dev-run
+commands, that a symlink is not isolation, and that a stray `tauri dev` outliving
+a config change moves onto the real app data directory. Both incidents are named,
+because a rule without its reason does not survive contact with a deadline.
+
+The commit convention was written out too. It existed as one line in `CLAUDE.md`
+and as practice in `git log`, which a contributor cannot be expected to infer.
+
+*Size: S · done*
 
 ### F4 · CDJ hardware test matrix — **started**
 
@@ -880,24 +910,50 @@ above it: the marker, the banner, the notes, the prompt.
 
 *Size: S*
 
-### F6 · `docs/COMMANDS.md`
+### F6 · `docs/COMMANDS.md` — **done**
 
-**What** — a reference for the Tauri command surface in
-`src-tauri/src/commands.rs`: name, arguments, what it returns, what it emits.
+**What shipped** — [`COMMANDS.md`](COMMANDS.md): every command grouped by feature
+area with its arguments, return, events and frontend wrapper, plus a table of all
+eleven events and their payloads. The definitions and the `generate_handler!`
+list agreed exactly when it was written, and the file gives the `grep` that
+re-checks that instead of asserting a count that goes stale.
 
-*Size: S*
+**Two rules stated once instead of forty times.** Arguments are camelCase in
+`invoke` because Tauri renames them, while returns and event payloads stay
+snake_case because no model carries `rename_all`. And `AppResult<T>` rejects with
+a string where a plain return type cannot fail at all — `write_metadata`, the
+three deletes and `bandcamp_download` report failure *inside* the value, which is
+the thing a caller gets wrong.
 
-### F7 · `TODO.md` with recorded deferred decisions
+**Writing it down found four things.** `cancel_scan`, `cancel_dedupe`,
+`dedupe_status` and `dedupe_result` are registered and wrapped with no UI caller,
+and `start_scan(force = true)` is in the same position; `STAGE_WAVEFORM` has no
+counterpart in `src/types.ts`; `AUDIO_EXTENSIONS` exists twice, loudly on the Rust
+side and silently on the TypeScript one; and four commands are `serde_json::Value`
+in Rust while TypeScript asserts a shape. All four are in [`TODO.md`](../TODO.md);
+none of them is a bug today, and all four are the shape drift takes.
 
-**What** — a place for ideas that were considered and consciously *not* done,
-with the reasoning and the condition that would make them worth revisiting.
+*Size: S · done*
 
-**Why** — the reference project's `TODO.md` has exactly one entry, and most of
-it explains why the work was deferred and what evidence would change that. That
-is far more useful than a list of undone tasks, and it stops the same idea being
-re-litigated every few months.
+### F7 · `TODO.md` with recorded deferred decisions — **done**
 
-*Size: S*
+**What shipped** — [`TODO.md`](../TODO.md) at the repo root, one entry per
+decision in the form *What* → *Why not* → *What would change that*.
+
+**Where the boundary runs.** This file stays the roadmap — things we could do,
+with a size. `TODO.md` holds the other half: measured rejections (B4, the chroma
+log-compression, a narrower default tempo range), the follow-ups split off when a
+parent item shipped (C1a, C1b, C2a, C5a, C7, C8), the legacy JSON key, and the
+findings from writing F1 and F6. The reasoning is moved or linked, never argued
+twice — the *Deliberately not adopted* section below stays here and `TODO.md`
+points at it.
+
+**The condition is the load-bearing field.** "Not now" without a trigger is a
+note rather than a decision, and it is what makes a list like this rot. C7 is the
+one entry whose condition is "nothing, this should just be done", and saying so is
+more useful than pretending it is waiting on evidence.
+
+*Size: S · done*
 
 ---
 
