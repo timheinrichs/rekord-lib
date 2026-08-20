@@ -2,6 +2,7 @@ import { useState } from "react";
 import { formatBytes } from "../lib/format";
 import { useDismiss } from "../lib/useDismiss";
 import type { DownloadEntry } from "../lib/useBandcamp";
+import type { Severity } from "../lib/changelog";
 import { DownloadIcon, GearIcon, LogIcon } from "./icons";
 
 export type MainView = "library" | "bandcamp";
@@ -14,6 +15,11 @@ interface Props {
   onCancelDownload: (key: string) => void;
   onOpenSettings: () => void;
   updateAvailable?: boolean;
+  /**
+   * How urgent it is. `critical` colours the dot like the event log's error
+   * badge — a security or data-loss fix should not look like a nice-to-have.
+   */
+  updateSeverity?: Severity | null;
   /** Loudest unread level in the event log, or null for nothing to flag. */
   eventBadge?: "warn" | "error" | null;
   onOpenEventLog: () => void;
@@ -31,6 +37,7 @@ export default function HeaderNav({
   onCancelDownload,
   onOpenSettings,
   updateAvailable,
+  updateSeverity,
   eventBadge,
   onOpenEventLog,
 }: Props) {
@@ -177,16 +184,31 @@ export default function HeaderNav({
       <button
         onClick={onOpenSettings}
         className="relative shrink-0 rounded-lg border border-border-strong p-2 text-fg-muted hover:border-accent-500 hover:text-accent-400"
-        title={updateAvailable ? "Settings · update available" : "Settings"}
-        aria-label={updateAvailable ? "Settings, update available" : "Settings"}
+        title={updateAvailable ? settingsHint(updateSeverity, " · ") : "Settings"}
+        aria-label={
+          updateAvailable ? settingsHint(updateSeverity, ", ") : "Settings"
+        }
       >
         <GearIcon />
         {updateAvailable && (
-          <span className="absolute -right-1 -top-1 h-2.5 w-2.5 rounded-full bg-accent-500 ring-2 ring-bg" />
+          <span
+            className={`absolute -right-1 -top-1 h-2.5 w-2.5 rounded-full ring-2 ring-bg ${
+              updateSeverity === "critical" ? "bg-danger-500" : "bg-accent-500"
+            }`}
+          />
         )}
       </button>
     </>
   );
+}
+
+/**
+ * What the gear says when an update is waiting. Separated by `·` for the
+ * tooltip and by `,` for the accessible name, which is read aloud.
+ */
+function settingsHint(severity: Severity | null | undefined, sep: string) {
+  const what = severity === "critical" ? "critical update" : "update";
+  return `Settings${sep}${what} available`;
 }
 
 function TabButton({

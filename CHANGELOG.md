@@ -9,6 +9,15 @@ contain incompatible changes.
 
 ## [Unreleased]
 
+### Added
+- **A release can say that it is critical, and the app says so too.** A
+  `**Severity:** critical` line in this file turns the gear's dot red and states
+  the update as a banner rather than a quiet pill, so a security or data-loss fix
+  does not look like a nice-to-have.
+- **The update dialog shows what changed.** Release notes now come from this
+  changelog: the release workflow cuts out the section for the tag it is
+  building, so the GitHub release, the updater and this file cannot drift apart.
+
 ### Changed
 - **The library fills in while the scan runs.** Tempo, key and waveform used to
   appear in blocks of eight, when a whole chunk of files had finished. Each file

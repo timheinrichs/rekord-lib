@@ -1,11 +1,17 @@
 import { check, type Update } from "@tauri-apps/plugin-updater";
 import { relaunch } from "@tauri-apps/plugin-process";
+import { severityOf, type Severity } from "./changelog";
 
 /** A pending update, reduced to what the UI needs. */
 export interface UpdateInfo {
   version: string;
   currentVersion: string;
   notes?: string;
+  /**
+   * `critical` when the release marked itself so in the changelog — a security
+   * or data-loss fix, which the UI says loudly instead of quietly.
+   */
+  severity: Severity | null;
 }
 
 // The last checked update handle, so installUpdate() can apply it without
@@ -27,6 +33,9 @@ export async function checkForUpdate(): Promise<UpdateInfo | null> {
         version: update.version,
         currentVersion: update.currentVersion,
         notes: update.body || undefined,
+        // The notes are the release body, which is the changelog section for
+        // this version — so the marker travels with the text people read.
+        severity: severityOf(update.body),
       };
     }
     pending = null;

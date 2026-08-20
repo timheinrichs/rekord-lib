@@ -113,6 +113,13 @@ export default function SettingsView({
     }
   };
 
+  // The install button says the same thing in both shapes it appears in.
+  const installLabel = installing
+    ? dlPct != null
+      ? `Installing… ${dlPct}%`
+      : "Installing…"
+    : "Install & restart";
+
   const openLogin = async () => {
     setError(null);
     try {
@@ -449,23 +456,54 @@ export default function SettingsView({
         <h2 className="text-sm font-semibold text-fg">About</h2>
 
         {update ? (
-          <div className="mt-3 flex flex-wrap items-center gap-3">
-            <span className="inline-flex items-center gap-2 rounded-full bg-accent-500/15 px-3 py-1 text-sm text-accent-300 ring-1 ring-accent-500/30">
-              <span className="h-1.5 w-1.5 rounded-full bg-accent-500" />
-              Update available: v{update.version}
-            </span>
-            <button
-              onClick={runUpdate}
-              disabled={installing}
-              className="rounded-lg bg-accent-600 px-4 py-2 text-sm font-medium enabled:hover:bg-accent-500 disabled:bg-surface-2 disabled:text-fg-disabled"
-            >
-              {installing
-                ? dlPct != null
-                  ? `Installing… ${dlPct}%`
-                  : "Installing…"
-                : "Install & restart"}
-            </button>
-          </div>
+          <>
+            {/* A release that marked itself critical in the changelog is a
+                security or data-loss fix, so it is said in the same shape as
+                the sidecar failure in the library view rather than as a pill:
+                the state, not a suggestion. */}
+            {update.severity === "critical" ? (
+              <div className="mt-3 flex flex-wrap items-center gap-3 rounded-lg border border-danger-500/40 bg-danger-500/10 px-4 py-3 text-sm">
+                <div className="min-w-0">
+                  <p className="text-danger-500">
+                    Critical update available — v{update.version}
+                  </p>
+                  <p className="mt-0.5 font-sans text-fg-muted">
+                    This release fixes a security or data-loss problem. Install
+                    it now.
+                  </p>
+                </div>
+                <button
+                  onClick={runUpdate}
+                  disabled={installing}
+                  className="ml-auto rounded-lg bg-accent-600 px-4 py-2 text-sm font-medium enabled:hover:bg-accent-500 disabled:bg-surface-2 disabled:text-fg-disabled"
+                >
+                  {installLabel}
+                </button>
+              </div>
+            ) : (
+              <div className="mt-3 flex flex-wrap items-center gap-3">
+                <span className="inline-flex items-center gap-2 rounded-full bg-accent-500/15 px-3 py-1 text-sm text-accent-300 ring-1 ring-accent-500/30">
+                  <span className="h-1.5 w-1.5 rounded-full bg-accent-500" />
+                  Update available: v{update.version}
+                </span>
+                <button
+                  onClick={runUpdate}
+                  disabled={installing}
+                  className="rounded-lg bg-accent-600 px-4 py-2 text-sm font-medium enabled:hover:bg-accent-500 disabled:bg-surface-2 disabled:text-fg-disabled"
+                >
+                  {installLabel}
+                </button>
+              </div>
+            )}
+            {/* What changed, straight from the changelog section for this
+                version. Worth showing whatever the severity: deciding whether
+                to restart now is easier when you can see what you get. */}
+            {update.notes && (
+              <pre className="mt-3 max-h-56 overflow-y-auto whitespace-pre-wrap rounded-lg border border-border bg-surface-2 px-4 py-3 font-sans text-xs text-fg-muted">
+                {update.notes}
+              </pre>
+            )}
+          </>
         ) : (
           <div className="mt-3 flex flex-wrap items-center gap-3">
             <button

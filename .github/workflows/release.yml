@@ -31,6 +31,21 @@ jobs:
 
       - run: npm ci
 
+      # The release body comes from CHANGELOG.md, and tauri-action puts the same
+      # text into latest.json's `notes` — which is what the updater shows before
+      # installing. One source, so the two cannot drift, and a
+      # `**Severity:** critical` line reaches the app without a second place to
+      # maintain. Fails the build when the tag has no section: a release with
+      # empty notes is worse than a failed one, because nobody notices it.
+      - name: Release notes from the changelog
+        id: notes
+        run: |
+          {
+            echo 'body<<RELEASE_NOTES_EOF'
+            node scripts/release-notes.mjs "${{ github.ref_name }}"
+            echo RELEASE_NOTES_EOF
+          } >> "$GITHUB_OUTPUT"
+
       - name: Build, sign and publish
         uses: tauri-apps/tauri-action@v0
         env:
@@ -42,6 +57,7 @@ jobs:
         with:
           tagName: ${{ github.ref_name }}
           releaseName: "rekord-lib ${{ github.ref_name }}"
+          releaseBody: ${{ steps.notes.outputs.body }}
           # Publish directly (fully automatic). This REQUIRES "Immutable
           # releases" to be OFF in repo Settings → General — otherwise the
           # published release becomes read-only before assets are attached and

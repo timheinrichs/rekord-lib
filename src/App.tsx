@@ -231,6 +231,7 @@ export default function App() {
       onCancelDownload={bc.cancelDownload}
       onOpenSettings={() => setSettingsOpen(true)}
       updateAvailable={!!update}
+      updateSeverity={update?.severity ?? null}
       eventBadge={badgeLevel(events, eventsSeen)}
       onOpenEventLog={openEventLog}
     />
@@ -295,6 +296,7 @@ export default function App() {
               onNavigate={setView}
               onOpenSettings={() => setSettingsOpen(true)}
               updateAvailable={!!update}
+              updateSeverity={update?.severity ?? null}
               eventBadge={badgeLevel(events, eventsSeen)}
               onOpenEventLog={openEventLog}
             />

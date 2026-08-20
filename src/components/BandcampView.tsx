@@ -5,6 +5,7 @@ import { GridIcon, ListIcon } from "./icons";
 import { CollectionSkeleton } from "./Skeleton";
 import type { BulkProgress, DownloadEntry } from "../lib/useBandcamp";
 import type { BandcampAccount, BandcampItem } from "../types";
+import type { Severity } from "../lib/changelog";
 
 interface Props {
   account: BandcampAccount | null;
@@ -26,6 +27,7 @@ interface Props {
   onNavigate: (v: "library" | "bandcamp") => void;
   onOpenSettings: () => void;
   updateAvailable?: boolean;
+  updateSeverity?: Severity | null;
   /** Loudest unread level in the event log (see lib/events). */
   eventBadge?: "warn" | "error" | null;
   onOpenEventLog: () => void;
@@ -50,6 +52,7 @@ export default function BandcampView({
   onNavigate,
   onOpenSettings,
   updateAvailable,
+  updateSeverity,
   eventBadge,
   onOpenEventLog,
   onTitleClick,
@@ -66,6 +69,7 @@ export default function BandcampView({
       eventBadge={eventBadge}
       onOpenEventLog={onOpenEventLog}
       updateAvailable={updateAvailable}
+      updateSeverity={updateSeverity}
     />
   );
 

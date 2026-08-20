@@ -37,7 +37,12 @@ export default defineConfig(async () => ({
     environment: "jsdom",
     globals: true,
     setupFiles: ["src/test/setup.ts"],
-    include: ["src/**/*.{test,spec}.{ts,tsx}"],
+    // `scripts/` is in here for the release-notes extractor: it runs in CI on
+    // the way to a release, so a mistake there is expensive and invisible.
+    include: [
+      "src/**/*.{test,spec}.{ts,tsx}",
+      "scripts/**/*.test.{mjs,ts}",
+    ],
     coverage: {
       provider: "v8",
       include: ["src/lib/**", "src/components/**"],

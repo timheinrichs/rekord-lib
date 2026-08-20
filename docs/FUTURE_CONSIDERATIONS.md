@@ -798,15 +798,41 @@ caused by unaligned UTF-16 string slots that no test suite would have caught.
 
 *Size: S to start, then ongoing*
 
-### F5 · Severity marking in the changelog
+### F5 · Severity marking in the changelog — **done**
 
-**What** — mark a release as critical in `CHANGELOG.md` (they use a
-`**Severity:** critical` line under the version heading), and have the updater
-UI render a prominent banner for it instead of the usual quiet indicator.
+**What shipped** — a `**Severity:** critical` line under a version heading in
+`CHANGELOG.md`. The gear badge turns from accent to `danger`, and the About
+section states it as a banner in the shape the library view uses for a broken
+sidecar, instead of the quiet pill.
 
-**Why** — the updater plumbing already exists in `src/lib/updater.ts`; this is
-the missing piece that makes a security or data-loss fix actually reach people
-promptly.
+**It needed a producer as well as a consumer, which the entry did not say.**
+`release.yml` set no `releaseBody` and never read the changelog, so
+`latest.json`'s `notes` carried nothing — consistent with the UI, which never
+displayed `update.notes` either. So there was no text for a marker to travel in.
+`scripts/release-notes.mjs` now cuts the section for the tag out of
+`CHANGELOG.md` and the workflow passes it as the release body; tauri-action puts
+the same text into `notes`. One source, and the release notes cannot drift from
+the changelog.
+
+The extractor **fails the build** when the tag has no section. A release with
+empty notes is worse than a failed one, because nobody notices it. It also has to
+tolerate what the file really contains — sections in any order, prose directly
+under a heading, a `### Note` block, wrapped bullets, and old versions with no
+link definition — so it is tested (`scripts/**` is in the Vitest `include` for
+this).
+
+**Severity is parsed rather than carried as a field.** tauri-action generates
+`latest.json`, so adding a key would mean post-processing the artefact; reading
+the marker out of the notes keeps the changelog the only place it is written.
+An unknown word is treated as ordinary: a banner nobody meant to trigger is
+worse than a quiet one.
+
+The notes are now shown for **every** update, not only critical ones — deciding
+whether to restart is easier when you can see what you get.
+
+**What is left** — the end-to-end path only becomes visible on the next real
+release; `tauri dev` has no endpoint to check against, so the UI is covered by
+component tests instead.
 
 *Size: S*
 

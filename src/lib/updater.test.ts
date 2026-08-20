@@ -24,7 +24,34 @@ describe("checkForUpdate", () => {
       version: "1.2.0",
       currentVersion: "1.1.0",
       notes: "release notes",
+      severity: null,
     });
+  });
+
+  it("reads the severity the release marked itself with", async () => {
+    // The notes are the changelog section for this version, so the marker
+    // travels with the text people read before installing.
+    checkMock.mockResolvedValueOnce({
+      version: "1.2.0",
+      currentVersion: "1.1.0",
+      body: "**Severity:** critical\n\n### Fixed\n- A data-loss bug.",
+      downloadAndInstall: vi.fn(),
+    });
+    const update = await checkForUpdate();
+    expect(update?.severity).toBe("critical");
+  });
+
+  it("has no severity when there are no notes at all", async () => {
+    // Which is every release built before the workflow started passing them.
+    checkMock.mockResolvedValueOnce({
+      version: "1.2.0",
+      currentVersion: "1.1.0",
+      body: "",
+      downloadAndInstall: vi.fn(),
+    });
+    const update = await checkForUpdate();
+    expect(update?.notes).toBeUndefined();
+    expect(update?.severity).toBeNull();
   });
 
   it("returns null when up to date", async () => {
