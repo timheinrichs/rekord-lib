@@ -6,3 +6,4 @@ pub mod dedupe;
 pub mod fingerprint;
 pub mod probe;
 pub mod sidecar;
+pub mod waveform;

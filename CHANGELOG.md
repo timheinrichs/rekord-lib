@@ -45,6 +45,11 @@ contain incompatible changes.
   tempo in it.
 
 ### Added
+- **The player bar shows a waveform.** The progress line is now the track's
+  shape, with the played part filled in — enough to see where the intro ends and
+  the drop starts, and to click straight to it. It appears a moment after
+  playback begins, because it is computed from the whole file rather than
+  guessed, and the plain line stands in until then.
 - `scripts/dev-library.py` and `scripts/dev-app.sh` — a generated audio library
   for development plus a one-command way to run the app against it in its own
   app data directory. Development no longer touches a real collection, and each

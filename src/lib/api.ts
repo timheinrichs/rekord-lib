@@ -23,6 +23,7 @@ import type {
   SkippedFile,
   TrackAnalysis,
   TrackMetadata,
+  Waveform,
 } from "../types";
 
 export interface BandcampDownloadResult {
@@ -316,6 +317,14 @@ export function coverPreview(
 }
 
 /** Returns a small embedded cover thumbnail (data: URL) for the list. */
+/**
+ * The waveform overview of one file. Costs a full decode, so callers go through
+ * `lib/waveformCache` rather than calling this per render.
+ */
+export function waveform(path: string): Promise<Waveform> {
+  return invoke<Waveform>("waveform", { path });
+}
+
 export function coverThumbnail(path: string): Promise<string | null> {
   return invoke<string | null>("cover_thumbnail", { path });
 }

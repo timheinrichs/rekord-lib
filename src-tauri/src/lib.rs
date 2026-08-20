@@ -103,6 +103,7 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             commands::analyze_files,
+            commands::waveform,
             commands::start_scan,
             commands::scan_status,
             commands::cancel_scan,

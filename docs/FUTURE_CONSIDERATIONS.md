@@ -227,16 +227,34 @@ dropdown's help text points at.
 
 *Size: S · done*
 
-### B6 · Waveform preview in the player bar
+### B6 · Waveform preview in the player bar — **done**
 
-**What** — render a downsampled waveform for the currently playing track.
+**What shipped** — the player bar's progress line is a waveform. `audio/waveform.rs`
+decodes the whole file at 11 kHz and reduces it to 2400 bins of **peak and RMS**,
+normalised so the loudest bin is 1.0; `components/Waveform.tsx` draws it on a
+canvas, one column per device pixel, with the played part in accent and the rest
+in the border/subtle tokens. Click-to-seek and the slider semantics of the old
+bar are kept — a canvas that dropped them would have quietly removed a control.
 
-**Why** — makes the built-in player actually useful for checking a file, and it
-is the precondition for generating ANLZ waveform data later (H1). The
-reference project splits this into a UI preview (2400 bins) and a much denser
-detail resolution for the player files; the same split would apply here.
+Two values per bin rather than one because a peak-only waveform is a solid
+block: the peak outlines the transients, the RMS shows where the energy sits, and
+the RMS being the brighter of the two is what makes an intro distinguishable from
+a drop at a glance. Normalised rather than absolute because the bar has a fixed
+height — a quiet master would otherwise draw as a flat line and look broken.
 
-*Size: M · prerequisite for H1*
+**Deliberately not cached on disk**, against what the plan for this item said.
+The waveform is only ever needed for the track that is playing; the frontend
+keeps the last 24 in memory (`lib/waveformCache.ts`, promise-keyed so skipping
+between two tracks cannot start the same decode twice). A stored copy would be
+~19 KB per track — 40 MB for this collection — plus an invalidation contract to
+keep honest, in exchange for a sub-second saving on a replay. The dense per-track
+data that *does* need storing is the ANLZ waveform (H1), which is a different
+artifact at a different resolution.
+
+**Still needed for H1** — the analysis-file waveform is denser and has its own
+format; this covers the UI half of that split, not the player-file half.
+
+*Size: M · done*
 
 ### B7 · Benchmark `stratum-dsp` against our detector — **done**
 

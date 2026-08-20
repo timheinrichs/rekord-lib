@@ -30,6 +30,15 @@ export interface TrackMetadata {
   has_cover: boolean;
 }
 
+/**
+ * A track's waveform overview: `peak` and `rms` per bin, 0..1, normalised so the
+ * loudest bin's peak is 1. Mirrors `audio::waveform::Waveform`.
+ */
+export interface Waveform {
+  peak: number[];
+  rms: number[];
+}
+
 export interface CompatIssue {
   code: string;
   message: string;

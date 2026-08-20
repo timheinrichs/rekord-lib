@@ -4,7 +4,7 @@ use base64::Engine;
 use tauri::{AppHandle, Emitter, Manager, State};
 
 use crate::audio::convert::ConvertProgress;
-use crate::audio::{bpm, compat, convert, dedupe, probe};
+use crate::audio::{bpm, compat, convert, dedupe, probe, waveform};
 use crate::bandcamp::session::BandcampState;
 use crate::bandcamp::{collection, download, session};
 use crate::db::{self, FsIdentity, TrackRecord};
@@ -346,6 +346,19 @@ async fn detect_bpm_pass(
         emit(updated);
     }
     false
+}
+
+/// The waveform overview of one file, for the player bar.
+///
+/// Computed on demand rather than cached on disk: it is only ever needed for the
+/// track that is playing, the frontend keeps the recent ones in memory, and a
+/// stored copy would be ~19 KB per track with an invalidation contract to
+/// maintain for a sub-second saving on a replay. The dense per-track data that
+/// *does* need storing is the ANLZ waveform (roadmap H1), which is a different
+/// artifact.
+#[tauri::command]
+pub async fn waveform(app: AppHandle, path: String) -> AppResult<waveform::Waveform> {
+    waveform::analyze(&app, &path).await
 }
 
 /// Recursively collects all files with an audio extension under `dir`.

@@ -1,6 +1,9 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { usePlayer, usePlayerProgress } from "../lib/player";
-import { coverThumbnail } from "../lib/api";
+import { coverThumbnail, waveform as fetchWaveform } from "../lib/api";
+import { createWaveformCache } from "../lib/waveformCache";
+import Waveform from "./Waveform";
+import type { Waveform as WaveformData } from "../types";
 import { formatDuration } from "../lib/format";
 import {
   CloseIcon,
@@ -28,6 +31,10 @@ export default function PlayerBar() {
   } = usePlayer();
   const { time, duration } = usePlayerProgress();
   const [cover, setCover] = useState<string | null>(null);
+  const [wave, setWave] = useState<WaveformData | null>(null);
+  // One cache for the life of the bar: skipping back to a track played a moment
+  // ago should not decode it again.
+  const waveCache = useMemo(() => createWaveformCache(), []);
 
   // Load the current track's embedded cover for the bar.
   useEffect(() => {
@@ -42,30 +49,60 @@ export default function PlayerBar() {
     };
   }, [current?.path]);
 
+  // The waveform costs a full decode, so it arrives after playback has already
+  // started. Until then the bar falls back to the plain progress line — a player
+  // without a seek control would be worse than one without a picture.
+  useEffect(() => {
+    if (!current) return;
+    let active = true;
+    setWave(null);
+    waveCache
+      .get(current.path, fetchWaveform)
+      .then((w) => active && w.peak.length > 0 && setWave(w))
+      .catch((e) => {
+        // A file that cannot be decoded keeps the plain bar — the player itself
+        // will have failed loudly if the audio is unplayable. Still logged: a
+        // silent catch here would hide a broken command permanently, since the
+        // fallback looks exactly like the old, working UI.
+        console.warn(`No waveform for ${current.path}:`, e);
+      });
+    return () => {
+      active = false;
+    };
+  }, [current?.path, waveCache]);
+
   if (!current) return null;
 
   const pct = duration > 0 ? (time / duration) * 100 : 0;
 
   return (
     <div className="fixed inset-x-0 bottom-0 z-50 border-t border-border bg-surface/95 backdrop-blur">
-      {/* Seek bar */}
-      <div
-        className="group h-1.5 w-full cursor-pointer bg-surface-2"
-        onClick={(e) => {
-          const r = e.currentTarget.getBoundingClientRect();
-          seek((e.clientX - r.left) / r.width);
-        }}
-        role="slider"
-        aria-label="Seek"
-        aria-valuenow={Math.round(pct)}
-        aria-valuemin={0}
-        aria-valuemax={100}
-      >
-        <div
-          className="h-full bg-accent-500 transition-[width]"
-          style={{ width: `${pct}%` }}
+      {/* Seek: the waveform once it has been computed, a plain line until then */}
+      {wave ? (
+        <Waveform
+          data={wave}
+          progress={duration > 0 ? time / duration : 0}
+          onSeek={seek}
         />
-      </div>
+      ) : (
+        <div
+          className="group h-1.5 w-full cursor-pointer bg-surface-2"
+          onClick={(e) => {
+            const r = e.currentTarget.getBoundingClientRect();
+            seek((e.clientX - r.left) / r.width);
+          }}
+          role="slider"
+          aria-label="Seek"
+          aria-valuenow={Math.round(pct)}
+          aria-valuemin={0}
+          aria-valuemax={100}
+        >
+          <div
+            className="h-full bg-accent-500 transition-[width]"
+            style={{ width: `${pct}%` }}
+          />
+        </div>
+      )}
 
       <div className="flex items-center gap-4 px-6 py-3">
         {/* Cover + track info */}
