@@ -10,6 +10,15 @@ contain incompatible changes.
 ## [Unreleased]
 
 ### Fixed
+- **A steady tone no longer gets a confident wrong tempo.** A file with no
+  transients at all — a drone, a test tone — has no tempo, but the detector used
+  to normalise a flat onset curve by its own numerical noise and report a
+  confident number, which the scan then wrote into the file. It now says nothing,
+  which is what it says for silence and noise already.
+- **Every launch no longer re-analyses the whole library.** The start-up sync
+  compared the folder against a track list React had not re-rendered yet, so on
+  an unlucky run every stored track looked new — and files deleted outside the
+  app were never noticed as gone.
 - **A brand-new library gets its tempos on the first run.** Detection is handed
   the list of files a sync just produced instead of reading a list that React
   had not re-rendered yet, which on a fresh library meant nothing looked to be
@@ -36,6 +45,11 @@ contain incompatible changes.
   tempo in it.
 
 ### Added
+- `scripts/dev-library.py` and `scripts/dev-app.sh` — a generated audio library
+  for development plus a one-command way to run the app against it in its own
+  app data directory. Development no longer touches a real collection, and each
+  generated file covers one case the app has to get right, with the expected
+  result known by construction.
 - **The tempo range is selectable** (Settings → Analysis). Six presets: the
   familiar wide 60–200 stays the default, plus five that span exactly one octave
   — within one octave every tempo has a single representative, so half/double

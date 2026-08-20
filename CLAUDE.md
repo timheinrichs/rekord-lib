@@ -97,29 +97,42 @@ its data. It can be dropped one release after 0.4.8.
 ### Driving the real app — mandatory setup
 
 Unit tests do not catch a broken wiring between a command and a view, so
-non-trivial changes get clicked through in a running `npm run tauri dev`. That
-run is **not** a read-only observer: the scan writes BPM tags into files, the
-metadata editor rewrites them, conversion and delete move files to the trash.
-Set it up so it cannot reach anything real:
+non-trivial changes get clicked through in a running app. That run is **not** a
+read-only observer: the scan writes BPM tags into files, the metadata editor
+rewrites them, conversion and delete move files to the trash. So it never runs
+against a real collection:
 
-- **Isolate the data.** Temporarily change `identifier` in
-  `src-tauri/tauri.conf.json` (e.g. to `com.timheinrichs.rekord-lib-devtest`).
-  The dev build then gets its own app data directory, so the maintainer's
-  library database, settings and undo history are untouched — and their
-  installed app can keep running alongside. **Restore the identifier
-  afterwards**, before committing.
-- **Copy the audio files, never link them.** Put real **copies** in a scratch
-  folder and point `library_dir` there. A symlink is not isolation: the app
-  follows it and writes into the original. This has already gone wrong once — a
-  "Re-detect BPM" over a folder of symlinks rewrote the tempo tag in 42 files
-  of the real library. Nothing was lost, because the detector produced the same
-  values, but that was luck.
-- **Prefer generated files** where the test only needs *some* audio: a handful
-  of `ffmpeg`-generated tones costs nothing to lose and can be shaped to the
-  case under test (short, long, broken, high sample rate). Copies of real
-  tracks are for the cases that need real tags or real covers.
-- **Clean up**: remove the scratch library and the `-devtest` app data
-  directory, and check `git status` is clean before committing.
+```sh
+scripts/dev-app.sh            # generated library, separate app data directory
+scripts/dev-app.sh --fresh    # rebuild the library and wipe the devtest database
+```
+
+That is the whole procedure. It generates `.dev/library` if needed
+(`scripts/dev-library.py`, gitignored), points the app's `library_dir` at it, and
+starts `tauri dev` with `--config src-tauri/tauri.devtest.conf.json` — which
+overlays a `-devtest` identifier, so the app gets its own database, settings and
+undo history and the installed app can keep running alongside. Nothing tracked
+is modified, so there is no "remember to change it back" step; the script also
+refuses to run against a folder outside `.dev/`.
+
+Why it is worth having:
+
+- **A symlink is not isolation.** The app follows it and writes into the
+  original. This has already gone wrong once — a "Re-detect BPM" over a folder
+  of symlinks rewrote the tempo tag in 42 files of the real library. Nothing was
+  lost, because the detector produced the same values, but that was luck.
+- **Generated files are better test data, not just safer.** Each file in
+  `dev-library.py` exists for one case — a click track at a known tempo, a
+  fractional tempo, silence, a 3 s file, 96 kHz/24-bit, lossy, FLAC, an untagged
+  file, a duplicate pair, non-ASCII and bracketed filenames — and the expected
+  result is known by construction instead of measured. That set found a
+  confident false tempo on steady tones within minutes of existing.
+- **Real audio is for what only real audio can show:** actual tags, actual
+  covers, and the tempo benchmark (`docs/DSP_BENCHMARK.md`), which needs real
+  music with reference values and is a separate, read-only tool.
+
+When a run does need real files, they are **copies** in `.dev/`, never the
+library itself, and `git status` has to be clean before committing either way.
 
 ## Distribution, robustness & security — mandatory
 

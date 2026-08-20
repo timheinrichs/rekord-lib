@@ -98,6 +98,16 @@ const STRONG_PEAK_RATIO: f32 = 3.00;
 /// Minimum envelope length relative to the longest lag examined.
 const MIN_PERIODS: usize = 4;
 
+/// How much of the spectrum's magnitude has to show up as *rising* energy
+/// before the signal counts as having onsets at all.
+///
+/// Measured on the synthetic material this is tested against: a click track and
+/// white noise carry 0.13–0.23, a steady sine 7×10⁻⁴, silence exactly 0. The
+/// threshold sits an order of magnitude above the sine and more than twenty
+/// times below real material, so it separates "nothing is happening" from
+/// "something is happening" without judging how musical it is.
+const MIN_ONSET_FLUX_RATIO: f32 = 5e-3;
+
 /// What a caller may vary about detection: the search range, which is a user
 /// setting (Settings → Analysis).
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -247,6 +257,7 @@ fn onset_envelope(samples: &[i16], sample_rate: u32) -> Option<(Vec<f32>, f32)> 
     let mut buf = vec![Complex32::new(0.0, 0.0); FRAME];
     let mut env = Vec::with_capacity(samples.len() / HOP);
 
+    let mut mag_total = 0.0f32;
     let mut pos = 0;
     let mut first = true;
     while pos + FRAME <= samples.len() {
@@ -259,6 +270,7 @@ fn onset_envelope(samples: &[i16], sample_rate: u32) -> Option<(Vec<f32>, f32)> 
         let mut flux = 0.0;
         for (k, slot) in prev.iter_mut().enumerate().take(bins) {
             let mag = buf[k].norm();
+            mag_total += mag;
             let rise = mag - *slot;
             if rise > 0.0 {
                 flux += rise;
@@ -275,6 +287,14 @@ fn onset_envelope(samples: &[i16], sample_rate: u32) -> Option<(Vec<f32>, f32)> 
     }
 
     if env.len() < 16 {
+        return None;
+    }
+    // No onsets, no tempo. Without this the autocorrelation normalises a flat
+    // envelope by its own (numerical) variance and turns float jitter into a
+    // perfect-looking periodicity — a steady 440 Hz tone came back as a
+    // *confident* 112 BPM, which the scan then wrote into the file.
+    let flux: f32 = env.iter().sum();
+    if flux < mag_total * MIN_ONSET_FLUX_RATIO {
         return None;
     }
     Some((env, sample_rate as f32 / HOP as f32))
@@ -511,6 +531,28 @@ mod tests {
     #[test]
     fn returns_none_for_silence() {
         assert_eq!(detect_bpm(&vec![0i16; SR as usize * 30], SR), None);
+    }
+
+    #[test]
+    fn returns_none_for_a_steady_tone() {
+        // A continuous sine has no onsets, so it has no tempo. Found by the
+        // generated dev library: four files that were the same 440 Hz tone all
+        // came back with a *confident* ~112 BPM, which the scan then wrote into
+        // them. Silence and noise were covered; a drone was not.
+        let sr = SR as f32;
+        for freq in [220.0f32, 330.0, 440.0] {
+            let samples: Vec<i16> = (0..SR as usize * 30)
+                .map(|i| {
+                    let t = i as f32 / sr;
+                    ((2.0 * std::f32::consts::PI * freq * t).sin() * 12_000.0) as i16
+                })
+                .collect();
+            assert_eq!(
+                detect_bpm(&samples, SR),
+                None,
+                "a steady {freq} Hz tone was given a tempo"
+            );
+        }
     }
 
     #[test]

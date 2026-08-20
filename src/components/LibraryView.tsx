@@ -272,19 +272,27 @@ export default function LibraryView({
 
   // Incremental sync: analyze only new files, drop deleted ones. Cheap enough to
   // run automatically on folder changes. Single-flight with a dirty re-run.
-  // Returns the track list it ended up with, so a caller can act on it without
-  // waiting for a render: `tracksRef` is assigned during render, so reading it
-  // straight after this resolves gives the list from *before* the sync.
-  const incrementalSync = useCallback(async (): Promise<TrackAnalysis[]> => {
-    if (!libraryDir || loadingRef.current) return tracksRef.current;
+  // Reconciles the list against what is on disk and returns what it ended up
+  // with.
+  //
+  // Both the argument and the return value exist for the same reason:
+  // `tracksRef` is assigned during *render*, so a caller that has just called
+  // `setTracks` — or that is about to read the result — would otherwise work
+  // with the list from before. Getting that wrong is not cosmetic: reading a
+  // stale (empty) list here makes every stored track look new, so a start-up
+  // sync re-analyses the whole library and never notices a file that is gone.
+  const incrementalSync = useCallback(
+    async (from?: TrackAnalysis[]): Promise<TrackAnalysis[]> => {
+    const known = from ?? tracksRef.current;
+    if (!libraryDir || loadingRef.current) return known;
     if (syncingRef.current) {
       dirtyRef.current = true;
-      return tracksRef.current;
+      return known;
     }
     syncingRef.current = true;
     setSyncing(true);
     try {
-      let current = tracksRef.current;
+      let current = known;
       do {
         dirtyRef.current = false;
         // A folder that cannot be listed is passed on as `null`, not as an
@@ -316,12 +324,14 @@ export default function LibraryView({
       setError(`Sync failed: ${e}`);
       // Whatever the sync had managed before it failed — the caller's fallback
       // is the pre-sync list either way.
-      return tracksRef.current;
+      return known;
     } finally {
       syncingRef.current = false;
       setSyncing(false);
     }
-  }, [libraryDir]);
+    },
+    [libraryDir],
+  );
 
   // Paths already handed to a BPM run this session. Without this, files whose
   // tempo cannot be detected would be re-queued forever, since they keep
@@ -523,7 +533,7 @@ export default function LibraryView({
       } else {
         // Otherwise just reconcile incrementally against what's on disk, then
         // start chewing through whatever still has no tempo.
-        const synced = await incrementalSync();
+        const synced = await incrementalSync(stored);
         if (!active) return;
         backlogRef.current(synced);
       }

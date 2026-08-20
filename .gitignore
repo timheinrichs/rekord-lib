@@ -25,3 +25,7 @@ coverage
 *.njsproj
 *.sln
 *.sw?
+
+# Generated development library and the devtest app's scratch data.
+# scripts/dev-library.py rebuilds it; nothing in here is worth keeping.
+.dev/
