@@ -276,11 +276,27 @@ deliberate step that only happens when the maintainer says so.
 - **Cutting a release** (only on go): bump the version in **three** places —
   `package.json`, `src-tauri/tauri.conf.json`, `src-tauri/Cargo.toml` — run
   `cargo check` to sync `Cargo.lock`, turn the `CHANGELOG.md` entry into a
-  dated version heading, delete the session's `PLAN.md`, commit, then
-  `git tag -a vX.Y.Z -m vX.Y.Z && git push origin vX.Y.Z`. Run
-  `/security-review` first (see above), and the docs pass above before that.
+  dated version heading, delete the session's `PLAN.md`, commit, then tag **that
+  commit by hash** and push the tag:
+
+  ```sh
+  git tag -a vX.Y.Z <release-commit> -m vX.Y.Z
+  git push origin vX.Y.Z
+  ```
+
+  Run `/security-review` first (see above), and the docs pass above before that.
   `.github/workflows/release.yml` (tauri-action on `macos-14`) builds the dmg +
   updater artifacts + `latest.json` and publishes the GitHub Release.
+- **Name the release commit; never tag `HEAD` implicitly.** `git tag -a vX.Y.Z`
+  without a commit tags whatever is on top, and what is on top is not always the
+  release commit — another session may have committed since, or the tag may be
+  pushed a day after the bump. Then `release.yml` builds unrelated, possibly
+  half-finished work into a published release with updater artifacts — and the
+  number cannot be taken back and reused (see the last bullet). Not
+  hypothetical: during 0.7.1 a parallel session's in-flight work sat on top of
+  the release commit, and tagging by hash is what kept it out. Verify before
+  pushing — `git log --oneline -1 vX.Y.Z` has to show the `chore(release)`
+  commit.
 - **The release notes are the changelog.** `scripts/release-notes.mjs` cuts the
   section for the tag out of `CHANGELOG.md` and the workflow passes it as the
   release body, which is also what lands in `latest.json`'s `notes` and what the
