@@ -44,7 +44,11 @@ tokens, status color = state, mono for technical data. When in doubt, check
 ## Workflow
 
 - After non-trivial changes: `npx tsc --noEmit` (frontend) and
-  `cd src-tauri && cargo check` (backend) must be green.
+  `cd src-tauri && cargo check` (backend) must be green — **including
+  warnings**. Dead constants left behind by a refactor only show up as
+  warnings, and a build that already prints some is a build where the next one
+  goes unnoticed. `cargo check --tests 2>&1 | grep -cE '^(warning|error)'`
+  should print `0`.
 - Commit/PR conventions as in the existing history (Conventional Commits).
 
 ## Persistence

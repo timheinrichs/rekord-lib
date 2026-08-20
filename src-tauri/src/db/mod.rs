@@ -1539,7 +1539,7 @@ mod tests {
     #[test]
     fn seen_marker_only_ever_moves_forward() {
         let db = Db::open_in_memory().unwrap();
-        let mut conn = db.0.lock().unwrap();
+        let conn = db.0.lock().unwrap();
         // Nothing read yet, so every event counts as new.
         assert_eq!(events_seen(&conn).unwrap(), 0);
 

@@ -12,19 +12,10 @@
 
 use rustfft::{num_complex::Complex32, FftPlanner};
 use serde::{Deserialize, Serialize};
-use tauri::AppHandle;
 
-use super::decode;
-use crate::error::{AppError, AppResult};
 
-/// Decode rate, shared with the tempo pass. Nyquist at 5.5 kHz covers every
-/// pitch class that carries tonal information; above that it is cymbals.
-const SAMPLE_RATE: u32 = 11025;
-
-/// Seconds decoded, and where from — the same window the tempo pass uses, so a
-/// future combined pass can decode once and feed both.
-const EXCERPT_SECS: u32 = 120;
-const EXCERPT_OFFSET_SECS: u32 = 30;
+// The decode rate lives in `super::analysis`, which owns the decode all three
+// detectors share.
 
 /// Long frame on purpose: 8192 samples at 11 kHz is 743 ms and 1.35 Hz per bin.
 /// A semitone at the bottom of the range examined is 3.2 Hz wide, so a shorter
@@ -222,21 +213,6 @@ impl Profiles {
 /// The profile set the app uses. Picked by measurement, not by preference.
 pub const DEFAULT_PROFILES: Profiles = Profiles::Shaath;
 
-/// Decodes an excerpt and detects its key. `Ok(None)` means "decoded fine, but
-/// no key that stands out".
-pub async fn analyze_key(app: &AppHandle, path: &str) -> AppResult<Option<DetectedKey>> {
-    let decode_at = |offset| decode::mono_pcm(app, path, SAMPLE_RATE, offset, EXCERPT_SECS);
-    let samples = match decode_at(EXCERPT_OFFSET_SECS).await {
-        Ok(s) if s.len() >= SAMPLE_RATE as usize * 10 => s,
-        Ok(_) | Err(_) => decode_at(0).await?,
-    };
-    tauri::async_runtime::spawn_blocking(move || {
-        detect_key_with(&samples, SAMPLE_RATE, DEFAULT_PROFILES)
-    })
-    .await
-    .map_err(|e| AppError::Probe(format!("Key task failed: {e}")))
-}
-
 /// Detects the key of mono PCM samples with the default profiles.
 pub fn detect_key(samples: &[i16], sample_rate: u32) -> Option<DetectedKey> {
     detect_key_with(samples, sample_rate, DEFAULT_PROFILES)
@@ -411,7 +387,9 @@ fn hann(n: usize) -> Vec<f32> {
 mod tests {
     use super::*;
 
-    const SR: u32 = SAMPLE_RATE;
+    /// The rate `analysis` decodes at. A literal, like the tempo tests use: these
+    /// are about the DSP, not about the pipeline's choice of rate.
+    const SR: u32 = 11025;
 
     /// A chord as a sum of notes, each with an octave partial.
     ///

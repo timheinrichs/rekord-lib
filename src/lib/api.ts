@@ -318,14 +318,6 @@ export function coverPreview(
 
 /** Returns a small embedded cover thumbnail (data: URL) for the list. */
 /**
- * The waveform overview of one file. Costs a full decode, so callers go through
- * `lib/waveformCache` rather than calling this per render.
- */
-export function waveform(path: string): Promise<Waveform> {
-  return invoke<Waveform>("waveform", { path });
-}
-
-/**
  * Waveforms already stored for these paths, keyed by path.
  *
  * A batch call because the library asks for what is on screen: one round trip
@@ -336,6 +328,22 @@ export function storedWaveforms(
   paths: string[],
 ): Promise<Record<string, Waveform>> {
   return invoke<Record<string, Waveform>>("stored_waveforms", { paths });
+}
+
+/**
+ * The waveform overview of one file, computing it if the scan has not.
+ *
+ * Prefers what is stored, because computing costs a full decode: a track the
+ * scan has already seen answers instantly, and only one it has not — a file
+ * dropped in and played straight away — pays for it.
+ */
+export async function waveform(path: string): Promise<Waveform> {
+  const stored: Record<string, Waveform> = await storedWaveforms([path]).catch(
+    () => ({}),
+  );
+  const hit = stored[path];
+  if (hit?.peak.length) return hit;
+  return invoke<Waveform>("waveform", { path });
 }
 
 export function coverThumbnail(path: string): Promise<string | null> {

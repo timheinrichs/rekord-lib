@@ -13,15 +13,9 @@
 use rustfft::{num_complex::Complex32, FftPlanner};
 
 
-/// Sample rate we decode to. Beat energy lives far below the 5.5 kHz Nyquist,
-/// and it matches the fingerprint pipeline (same decoder settings, same cost).
-const SAMPLE_RATE: u32 = 11025;
-
-/// Seconds decoded per file.
-const EXCERPT_SECS: u32 = 120;
-
-/// Offset into the track, so intros/ambient starts do not dominate.
-const EXCERPT_OFFSET_SECS: u32 = 30;
+// The decode rate and the excerpt window live in `super::analysis` now, which
+// owns the one decode all three detectors share. Leaving copies here would be
+// two sources of truth for the window every tempo number was measured against.
 
 /// FFT frame (46 ms at 11025 Hz) and hop (5.8 ms → ~172 Hz envelope).
 /// The small hop is what makes the tempo grid fine enough: at a coarser hop,
@@ -394,7 +388,10 @@ fn hann(n: usize) -> Vec<f32> {
 mod tests {
     use super::*;
 
-    const SR: u32 = SAMPLE_RATE;
+    /// The rate `analysis` decodes at. A literal rather than an import: these
+    /// tests are about the DSP, and they should not change if the pipeline ever
+    /// decodes at a different rate.
+    const SR: u32 = 11025;
 
     /// Deterministic pseudo-noise (no rand dependency, reproducible tests).
     struct Lcg(u32);
