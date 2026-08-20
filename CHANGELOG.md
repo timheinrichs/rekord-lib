@@ -45,6 +45,18 @@ contain incompatible changes.
   tempo in it.
 
 ### Added
+- **Tracks get a musical key.** Detected during the scan and shown in the library
+  table and the metadata editor, as both the name and its Camelot number
+  ("Am · 8A"), with how sure the detector was next to it.
+
+  It stays in the library and is **never written into your files**. Measured
+  against 2180 Rekordbox keys, the best detector available — ours, ahead of the
+  off-the-shelf one — agrees about a third of the time, and a wrong key written
+  into a file is read by every other program and outlives the guess. In the
+  library it is simply replaced when the detector improves. The confidence is
+  shown as a number rather than hidden behind a threshold because it means
+  something: agreement climbs from 32 % at the bottom of the range to 71 % at the
+  top, and no cut-off is both reliable and covers a whole collection.
 - **The player bar shows a waveform.** The progress line is now the track's
   shape, with the played part filled in — enough to see where the intro ends and
   the drop starts, and to click straight to it. It appears a moment after

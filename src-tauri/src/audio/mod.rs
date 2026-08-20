@@ -4,6 +4,7 @@ pub mod decode;
 pub mod convert;
 pub mod dedupe;
 pub mod fingerprint;
+pub mod key;
 pub mod probe;
 pub mod sidecar;
 pub mod waveform;

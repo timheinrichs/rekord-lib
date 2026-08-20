@@ -4,6 +4,8 @@ import {
   bpmIsUncertain,
   editComplete,
   formatBpm,
+  formatKey,
+  keyConfidenceLabel,
   parseBpmInput,
   formatBytes,
   formatDate,
@@ -214,5 +216,42 @@ describe("parseBpmInput", () => {
     // Zero and negatives are not tempos; they used to slip through as numbers.
     expect(parseBpmInput("0")).toBeNull();
     expect(parseBpmInput("-128")).toBeNull();
+  });
+});
+
+describe("formatKey", () => {
+  it("shows the name and the Camelot position", () => {
+    // Two spellings because they answer different questions: the name says what
+    // the track is, the number says what it mixes with.
+    expect(formatKey("Am", "8A")).toBe("Am · 8A");
+    expect(formatKey("F#m", "11A")).toBe("F#m · 11A");
+  });
+
+  it("falls back to the name alone", () => {
+    // Camelot is derived on read; a row from an older database may not have it.
+    expect(formatKey("Am", null)).toBe("Am");
+  });
+
+  it("shows a dash rather than an empty cell", () => {
+    expect(formatKey(null, null)).toBe("–");
+    expect(formatKey(null, "8A")).toBe("–");
+    expect(formatKey(undefined, undefined)).toBe("–");
+  });
+});
+
+describe("keyConfidenceLabel", () => {
+  it("reports the percentage as measured", () => {
+    // A number rather than a threshold: agreement with Rekordbox climbs from
+    // 32 % to 71 % across the confidence range, and no cut-off is both accurate
+    // and covers much of a collection.
+    expect(keyConfidenceLabel(0.45)).toBe("45% sure");
+    expect(keyConfidenceLabel(0.08)).toBe("8% sure");
+    expect(keyConfidenceLabel(1)).toBe("100% sure");
+  });
+
+  it("says nothing where there is nothing to say", () => {
+    expect(keyConfidenceLabel(null)).toBeNull();
+    expect(keyConfidenceLabel(undefined)).toBeNull();
+    expect(keyConfidenceLabel(NaN)).toBeNull();
   });
 });

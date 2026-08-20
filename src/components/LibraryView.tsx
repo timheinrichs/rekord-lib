@@ -50,6 +50,7 @@ import {
   bpmIsUncertain,
   editComplete,
   formatBpm,
+  formatKey,
   formatDate,
   formatDuration,
   formatLabel,
@@ -1836,6 +1837,7 @@ export default function LibraryView({
                   onSort={toggleSort}
                   className="w-20"
                 />
+                <th className="w-24 px-4 py-3 font-medium">Key</th>
                 <SortableHeader
                   label="Downloaded"
                   sortKey="date"
@@ -1929,6 +1931,20 @@ export default function LibraryView({
                       }
                     >
                       {formatBpm(md.bpm)}
+                    </td>
+                    <td
+                      className="whitespace-nowrap px-4 py-3 text-fg-muted"
+                      title={
+                        t.key
+                          ? `Detected, not written into the file${
+                              t.key_confidence != null
+                                ? ` — ${Math.round(t.key_confidence * 100)}% sure`
+                                : ""
+                            }`
+                          : undefined
+                      }
+                    >
+                      {formatKey(t.key, t.key_camelot)}
                     </td>
                     <td className="whitespace-nowrap px-4 py-3 text-fg-muted">
                       {formatDate(t.download_date)}
@@ -2122,6 +2138,10 @@ export default function LibraryView({
                       <td className="whitespace-nowrap px-4 py-2.5 text-fg-muted">
                         {s.bpm}
                       </td>
+                      {/* No key for a group: an album is rarely one key, and a
+                          summary that averaged them would invent something. The
+                          cell stays so the columns line up with the rows. */}
+                      <td className="px-4 py-2.5" />
                       <td className="whitespace-nowrap px-4 py-2.5 text-fg-muted">
                         {formatDate(s.newestDate)}
                       </td>

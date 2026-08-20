@@ -54,5 +54,8 @@ export function makeTrack(over: Partial<TrackAnalysis> = {}): TrackAnalysis {
     metadata_incomplete: over.metadata_incomplete ?? false,
     download_date: over.download_date ?? null,
     bpm_confidence: over.bpm_confidence ?? null,
+    key: over.key ?? null,
+    key_camelot: over.key_camelot ?? null,
+    key_confidence: over.key_confidence ?? null,
   };
 }

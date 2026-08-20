@@ -158,8 +158,11 @@ async fn analyze_path(app: &AppHandle, path: String) -> AppResult<TrackAnalysis>
         compat,
         metadata_incomplete,
         download_date,
-        // The scan's BPM pass fills this in; a plain probe has no opinion.
+        // The scan's analysis pass fills these in; a plain probe has no opinion.
         bpm_confidence: None,
+        key: None,
+        key_camelot: None,
+        key_confidence: None,
     })
 }
 
@@ -280,11 +283,20 @@ async fn detect_bpm_pass(
     mut emit: impl FnMut(Vec<TrackAnalysis>),
     cancelled: impl Fn() -> bool,
 ) -> bool {
-    let todo: Vec<(usize, String)> = tracks
+    // What each track still needs. A file may carry a tempo tag but no key,
+    // which is the normal state of a library that another program has touched.
+    let todo: Vec<(usize, String, bool, bool)> = tracks
         .iter()
         .enumerate()
-        .filter(|(_, t)| force || t.metadata.bpm.is_none())
-        .map(|(i, t)| (i, t.path.clone()))
+        .map(|(i, t)| {
+            (
+                i,
+                t.path.clone(),
+                force || t.metadata.bpm.is_none(),
+                force || t.key.is_none(),
+            )
+        })
+        .filter(|(_, _, tempo, key)| *tempo || *key)
         .collect();
     let total = todo.len();
     if total == 0 {
@@ -300,13 +312,16 @@ async fn detect_bpm_pass(
         }
         let handles: Vec<(usize, _)> = chunk
             .iter()
-            .map(|(index, path)| {
+            .map(|(index, path, want_tempo, want_key)| {
                 let app = app.clone();
                 let path = path.clone();
+                let (want_tempo, want_key) = (*want_tempo, *want_key);
                 (
                     *index,
                     tauri::async_runtime::spawn(async move {
-                        bpm::analyze_bpm(&app, &path, config).await.ok().flatten()
+                        bpm::analyze(&app, &path, config, want_tempo, want_key)
+                            .await
+                            .unwrap_or_default()
                     }),
                 )
             })
@@ -314,29 +329,42 @@ async fn detect_bpm_pass(
 
         let mut updated = Vec::new();
         for (index, handle) in handles {
-            if let Ok(Some(tempo)) = handle.await {
-                // Persist first: the tag is what keeps the next scan from
-                // re-analyzing this file. A failed write is not fatal — the
-                // value still shows up in the library for this session.
-                // Rounded to the precision a tag can hold before it is stored
-                // anywhere. Without this the f32 -> f64 widening leaks artefacts
-                // like 127.5999984741211 into the database and the UI, while the
-                // file would say "127.60" — three places, one value, no reason
-                // for them to disagree.
-                let bpm = (tempo.bpm as f64 * 100.0).round() / 100.0;
-                if tempo.confidence >= MIN_WRITE_CONFIDENCE {
-                    if let Err(e) = write::write_bpm(&tracks[index].path, bpm) {
-                        events::warn(
-                            app,
-                            "bpm",
-                            "Detected a tempo but could not write it into the file",
-                            Some(&format!("{}: {e}", tracks[index].path)),
-                        );
+            if let Ok(analysis) = handle.await {
+                let mut changed = false;
+                if let Some(tempo) = analysis.tempo {
+                    // Persist first: the tag is what keeps the next scan from
+                    // re-analyzing this file. A failed write is not fatal — the
+                    // value still shows up in the library for this session.
+                    // Rounded to the precision a tag can hold before it is
+                    // stored anywhere. Without this the f32 -> f64 widening
+                    // leaks artefacts like 127.5999984741211 into the database
+                    // and the UI, while the file would say "127.60" — three
+                    // places, one value, no reason for them to disagree.
+                    let bpm = (tempo.bpm as f64 * 100.0).round() / 100.0;
+                    if tempo.confidence >= MIN_WRITE_CONFIDENCE {
+                        if let Err(e) = write::write_bpm(&tracks[index].path, bpm) {
+                            events::warn(
+                                app,
+                                "bpm",
+                                "Detected a tempo but could not write it into the file",
+                                Some(&format!("{}: {e}", tracks[index].path)),
+                            );
+                        }
                     }
+                    tracks[index].metadata.bpm = Some(bpm);
+                    tracks[index].bpm_confidence = Some(tempo.confidence);
+                    changed = true;
                 }
-                tracks[index].metadata.bpm = Some(bpm);
-                tracks[index].bpm_confidence = Some(tempo.confidence);
-                updated.push(tracks[index].clone());
+                if let Some(detected) = analysis.key {
+                    // Database only, never the file — see `TrackAnalysis::key`.
+                    tracks[index].key = Some(detected.key.name());
+                    tracks[index].key_camelot = Some(detected.key.camelot_name());
+                    tracks[index].key_confidence = Some(detected.confidence);
+                    changed = true;
+                }
+                if changed {
+                    updated.push(tracks[index].clone());
+                }
             }
             done += 1;
             progress(done, total);
@@ -1994,6 +2022,9 @@ mod tests {
             metadata_incomplete: false,
             download_date: None,
             bpm_confidence: None,
+            key: None,
+            key_camelot: None,
+            key_confidence: None,
         };
 
         let out = dup_candidates(std::slice::from_ref(&track));

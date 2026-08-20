@@ -72,6 +72,35 @@ export function parseBpmInput(raw: string): number | null {
   return parsed;
 }
 
+/**
+ * A detected key for display: `"Am · 8A"`, or a dash where there is none.
+ *
+ * Both spellings, because they answer different questions — the name says what
+ * the track is, the Camelot number says what it mixes with — and a DJ reading a
+ * list wants the second one.
+ */
+export function formatKey(
+  key: string | null | undefined,
+  camelot: string | null | undefined,
+): string {
+  if (!key) return "–";
+  return camelot ? `${key} · ${camelot}` : key;
+}
+
+/**
+ * How much to trust a detected key, as a short label.
+ *
+ * Shown as a percentage rather than hidden behind a threshold because, unlike
+ * the tempo's, this value is *informative*: measured against 2180 Rekordbox
+ * keys, agreement climbs from 32 % in the lowest confidence band to 71 % in the
+ * highest (`docs/DSP_BENCHMARK.md`). There is no threshold that is both accurate
+ * and covers much of a collection, so the number itself is the honest answer.
+ */
+export function keyConfidenceLabel(confidence: number | null | undefined): string | null {
+  if (confidence == null || !Number.isFinite(confidence)) return null;
+  return `${Math.round(confidence * 100)}% sure`;
+}
+
 /** Was this tempo detected without much conviction? */
 export function bpmIsUncertain(confidence: number | null | undefined): boolean {
   return confidence != null && confidence < UNCERTAIN_BPM_CONFIDENCE;

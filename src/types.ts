@@ -66,6 +66,18 @@ export interface TrackAnalysis {
    * deliberately did not write it into the file.
    */
   bpm_confidence: number | null;
+  /**
+   * Detected musical key as its name ("Am"), its Camelot position ("8A"), and
+   * how clearly it won.
+   *
+   * Never written into the file. The best detector measured agrees with
+   * Rekordbox about a third of the time (`docs/DSP_BENCHMARK.md`), and a wrong
+   * TKEY is read by every other program and outlives the guess that made it —
+   * so this lives in the database, where a better detector replaces it.
+   */
+  key: string | null;
+  key_camelot: string | null;
+  key_confidence: number | null;
 }
 
 export interface ConvertOptions {

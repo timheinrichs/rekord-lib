@@ -17,12 +17,13 @@ use super::DbResult;
 /// start. Only changes that transform or drop existing data need a step in
 /// [`super::migrate`].
 ///
+/// - 6: `tracks.music_key`, `tracks.key_confidence`
 /// - 5: `tracks.bpm` became `REAL`, `tracks.bpm_confidence` added
 /// - 4: `events`
 /// - 3: `undo_entries`
 /// - 2: `dismissed_groups`
 /// - 1: initial
-pub const SCHEMA_VERSION: i64 = 5;
+pub const SCHEMA_VERSION: i64 = 6;
 
 /// Key under which the schema version lives in `schema_meta`.
 pub const KEY_SCHEMA_VERSION: &str = "schema_version";
@@ -77,7 +78,20 @@ CREATE TABLE IF NOT EXISTS tracks (
     -- How much the detector trusted its own answer (0..1). NULL where the BPM
     -- came from the file's tag instead of from analysis.
     bpm_confidence  REAL,
-    has_cover       INTEGER NOT NULL
+    has_cover       INTEGER NOT NULL,
+    -- Detected key, as its name ("Am"). Only ever here: it is never written
+    -- into the file, because the best detector available agrees with Rekordbox
+    -- about a third of the time and a wrong TKEY outlives the guess. Camelot is
+    -- derived on read, not stored.
+    --
+    -- Appended after `has_cover` on purpose: `ALTER TABLE ADD COLUMN` can only
+    -- append, so a column added mid-list here would leave a migrated database
+    -- with a different column order than a fresh one. Harmless for queries,
+    -- which name their columns — but `a_migrated_database_has_the_same_tracks_schema_as_a_fresh_one`
+    -- holds the stronger invariant, and it is worth holding. **New columns go
+    -- at the end.**
+    music_key       TEXT,
+    key_confidence  REAL
 );
 
 CREATE INDEX IF NOT EXISTS tracks_library_dir ON tracks(library_dir);
@@ -189,6 +203,13 @@ fn upgrade(conn: &Connection, from: Option<i64>) -> DbResult<()> {
     if from < 5 {
         widen_bpm_to_real(conn)?;
     }
+    if from < 6 {
+        // Purely additive, so no table rebuild and none of its hazards: the
+        // `CREATE … IF NOT EXISTS` batch cannot add a column to a table that
+        // already exists, but `ALTER TABLE` can.
+        add_column(conn, "tracks", "music_key", "TEXT")?;
+        add_column(conn, "tracks", "key_confidence", "REAL")?;
+    }
     Ok(())
 }
 
@@ -205,14 +226,7 @@ fn upgrade(conn: &Connection, from: Option<i64>) -> DbResult<()> {
 /// - **It has to be idempotent.** A crash between the drop and the rename would
 ///   otherwise leave a database no later start can repair.
 fn widen_bpm_to_real(conn: &Connection) -> DbResult<()> {
-    let has_tracks: bool = conn
-        .query_row(
-            "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'tracks'",
-            [],
-            |_| Ok(true),
-        )
-        .unwrap_or(false);
-    if !has_tracks {
+    if !table_exists(conn, "tracks")? {
         return Ok(()); // nothing to migrate; SCHEMA_SQL will create it
     }
     if column_exists(conn, "tracks", "bpm_confidence")? {
@@ -274,6 +288,31 @@ COMMIT;
     // with the cascade silently disabled.
     conn.pragma_update(None, "foreign_keys", "ON")?;
     result
+}
+
+/// Adds a column unless it is already there, so a re-run is a no-op rather than
+/// an error.
+///
+/// A table that does not exist yet is also a no-op, not a failure: migrations
+/// run *before* [`SCHEMA_SQL`], so a database old enough to predate the table
+/// gets it created with the column already in place.
+fn add_column(conn: &Connection, table: &str, column: &str, ty: &str) -> DbResult<()> {
+    if !table_exists(conn, table)? || column_exists(conn, table, column)? {
+        return Ok(());
+    }
+    conn.execute_batch(&format!("ALTER TABLE {table} ADD COLUMN {column} {ty}"))?;
+    Ok(())
+}
+
+/// Is this table there at all?
+fn table_exists(conn: &Connection, table: &str) -> DbResult<bool> {
+    Ok(conn
+        .query_row(
+            "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?1",
+            [table],
+            |_| Ok(true),
+        )
+        .unwrap_or(false))
 }
 
 /// Does a table have this column? Used to make a migration idempotent without

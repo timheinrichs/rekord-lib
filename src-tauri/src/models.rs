@@ -146,6 +146,26 @@ pub struct TrackAnalysis {
     /// analysis state about the last detection.
     #[serde(default)]
     pub bpm_confidence: Option<f32>,
+    /// Detected musical key, as its name (`"Am"`, `"F#m"`, `"C"`).
+    ///
+    /// Also not in [`TrackMetadata`], and for a stronger reason than the
+    /// confidence: the key is **never written into the file**. Measured against
+    /// 2180 Rekordbox keys, the best detector available agrees about a third of
+    /// the time (`docs/DSP_BENCHMARK.md`), and a wrong `TKEY` in someone's
+    /// library is read by every other program and outlives the guess that
+    /// produced it. It lives in the database, where a better detector simply
+    /// replaces it.
+    #[serde(default)]
+    pub key: Option<String>,
+    /// The same key as its Camelot position (`"8A"`). Derived on read from
+    /// [`Self::key`] rather than stored — a pure function of it, like `compat`.
+    #[serde(default)]
+    pub key_camelot: Option<String>,
+    /// How clearly the winning key beat the runner-up (0..1). The runner-up is
+    /// usually the relative or the parallel, so a small margin means precisely
+    /// "it could be that one instead".
+    #[serde(default)]
+    pub key_confidence: Option<f32>,
 }
 
 /// Options for a conversion run.

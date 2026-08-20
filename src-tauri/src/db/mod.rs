@@ -143,14 +143,15 @@ pub fn meta_set(conn: &Connection, key: &str, value: &str) -> DbResult<()> {
 /// Column list shared by the read paths, so they cannot drift apart.
 const TRACK_COLUMNS: &str = "path, file_name, download_date, container, codec, sample_rate, \
      bits_per_sample, channels, duration_secs, lossless, title, artist, album, album_artist, \
-     genre, year, track_number, catalog_number, label, country, bpm, has_cover, bpm_confidence";
+     genre, year, track_number, catalog_number, label, country, bpm, has_cover, bpm_confidence, \
+     music_key, key_confidence";
 
 /// How many columns [`TRACK_COLUMNS`] selects. Queries that append further
 /// columns index them from here instead of from a hardcoded number — appending
 /// `bpm_confidence` to the list above once shifted `mtime_ms` out from under
 /// [`load_track_cache`], which read a confidence where an mtime should have been.
 /// `track_columns_and_count_agree` keeps the two in step.
-const TRACK_COLUMN_COUNT: usize = 23;
+const TRACK_COLUMN_COUNT: usize = 25;
 
 /// Rebuilds a [`TrackAnalysis`] from a row. `compat` and `metadata_incomplete`
 /// are recomputed rather than read: they are derived values, and recomputing
@@ -185,6 +186,14 @@ fn row_to_track(row: &rusqlite::Row) -> DbResult<TrackAnalysis> {
     // column is REAL either way. The model keeps f32 because a 0..1 quality
     // value does not deserve eight bytes of precision.
     let bpm_confidence = row.get::<_, Option<f64>>(22)?.map(|v| v as f32);
+    let key: Option<String> = row.get(23)?;
+    let key_confidence = row.get::<_, Option<f64>>(24)?.map(|v| v as f32);
+    // Derived, not stored — the same treatment `compat` gets, so a change to
+    // the wheel takes effect on read instead of leaving stale values in rows.
+    let key_camelot = key
+        .as_deref()
+        .and_then(crate::audio::key::MusicalKey::parse)
+        .map(|k| k.camelot_name());
     let compat = compat::evaluate(&audio);
     let metadata_incomplete = !metadata.is_complete();
     Ok(TrackAnalysis {
@@ -197,6 +206,9 @@ fn row_to_track(row: &rusqlite::Row) -> DbResult<TrackAnalysis> {
         metadata_incomplete,
         download_date: row.get(2)?,
         bpm_confidence,
+        key,
+        key_camelot,
+        key_confidence,
     })
 }
 
@@ -262,12 +274,13 @@ pub fn upsert_tracks(
                 path, library_dir, file_name, mtime_ms, size_bytes, download_date,
                 container, codec, sample_rate, bits_per_sample, channels, duration_secs, lossless,
                 title, artist, album, album_artist, genre, year, track_number,
-                catalog_number, label, country, bpm, has_cover, bpm_confidence
+                catalog_number, label, country, bpm, has_cover, bpm_confidence,
+                music_key, key_confidence
              ) VALUES (
                 ?1, ?2, ?3, ?4, ?5, ?6,
                 ?7, ?8, ?9, ?10, ?11, ?12, ?13,
                 ?14, ?15, ?16, ?17, ?18, ?19, ?20,
-                ?21, ?22, ?23, ?24, ?25, ?26
+                ?21, ?22, ?23, ?24, ?25, ?26, ?27, ?28
              )
              ON CONFLICT(path) DO UPDATE SET
                 library_dir = excluded.library_dir,
@@ -294,7 +307,9 @@ pub fn upsert_tracks(
                 country = excluded.country,
                 bpm = excluded.bpm,
                 has_cover = excluded.has_cover,
-                bpm_confidence = excluded.bpm_confidence",
+                bpm_confidence = excluded.bpm_confidence,
+                music_key = excluded.music_key,
+                key_confidence = excluded.key_confidence",
         )?;
         for rec in records {
             let t = &rec.track;
@@ -325,6 +340,8 @@ pub fn upsert_tracks(
                 t.metadata.bpm,
                 t.metadata.has_cover,
                 t.bpm_confidence.map(|c| c as f64),
+                t.key,
+                t.key_confidence.map(|c| c as f64),
             ])?;
         }
     }
@@ -863,6 +880,11 @@ mod tests {
             metadata_incomplete: true,
             download_date: Some(1_700_000_000_000),
             bpm_confidence: Some(0.62),
+            key: Some("Am".into()),
+            // Derived on read, so what a factory puts here is irrelevant — the
+            // round-trip test asserts it comes back computed.
+            key_camelot: None,
+            key_confidence: Some(0.41),
         }
     }
 

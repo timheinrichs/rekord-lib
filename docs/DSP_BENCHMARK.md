@@ -11,10 +11,11 @@ crate, and keep whichever wins. Run on **2026-08-20** against
 between 70× and 250× cheaper, both on identical input and when the crate is
 given the whole track it is designed for.
 
-**Key: not bought.** `stratum-dsp` gets 29.6 % of keys exactly right against
-Rekordbox, where the crate's own README claims 72.1 %. Writing that into
-users' files would be worse than writing nothing, so **B1 does not get solved by
-adding a dependency** — it is either written ourselves or deferred.
+**Key: not bought — written, and kept out of the files.** `stratum-dsp` gets
+29.6 % of keys exactly right against Rekordbox where its own README claims
+72.1 %. Ours reaches 35.6 %, which is better and still not a number to write into
+someone's library: the key lives in the database only. Full numbers, and what
+the three engines say about each other, in the key section below.
 
 **Beat grid (B3): no evidence to adopt it.** Grid accuracy was not measured
 directly, but the grid is built on the tempo estimate, and that estimate was
@@ -194,6 +195,81 @@ correct and of wrong answers widens from 0.16 to 0.25, and the best achievable
 write gate improves from 18 to 22 prevented wrong tags out of 337. The mechanism
 was removed again rather than left in unused — this paragraph is what remains of
 it, in case a future detector makes the idea worth re-measuring.
+
+## Key detection — B1, written rather than bought
+
+The crate's 29.6 % ruled out buying it, so the detector in `audio/key.rs` folds
+the spectrum into twelve pitch classes and correlates that against each key's
+expected pitch distribution. Three published profile sets were measured over the
+same 2180 reference keys, because the literature disagrees and the choice is
+cheap to settle:
+
+| profile set | exact | parallel (Am/A) | relative (Am/C) | fifth | wrong | no answer |
+|---|---|---|---|---|---|---|
+| **Shaath** (shipped) | **774 (35.6 %)** | 12.4 % | 6.2 % | 11.6 % | 28.4 % | 128 |
+| Krumhansl-Kessler | 690 (31.7 %) | 12.0 % | 5.9 % | 12.4 % | 33.6 % | 96 |
+| Temperley | 604 (27.8 %) | 6.9 % | 8.7 % | 14.3 % | 36.3 % | 132 |
+| stratum-dsp | 644 (29.6 %) | 12.4 % | 7.6 % | 17.0 % | 33.1 % | 6 |
+
+Normalising each analysis frame before accumulating — so a loud drop does not
+outvote three quiet minutes — was worth 27 tracks (69 fixed, 42 broken,
+p = 0.013). Log-compressing the magnitudes, the other standard step, was
+**dropped**: it broke every synthetic test case and there was no measurement to
+justify it over the objection.
+
+### The confidence is worth showing, and there is still no threshold
+
+Unlike the tempo's, this confidence tracks correctness monotonically. Over the
+2048 tracks where we produce a key and Rekordbox has one:
+
+| confidence | tracks | exact | + mixable |
+|---|---|---|---|
+| 0.0–0.1 | 785 | 31.6 % | 54.0 % |
+| 0.1–0.2 | 643 | 37.6 % | 56.9 % |
+| 0.2–0.3 | 405 | 43.0 % | 59.3 % |
+| 0.3–0.4 | 172 | 48.8 % | 61.0 % |
+| 0.4–0.5 | 36 | 58.3 % | 61.1 % |
+| 0.5+ | 7 | 71.4 % | 71.4 % |
+
+From 32 % to 71 % across the range — a real signal, and the reason the number is
+shown to the user rather than folded into a yes/no. But the volume sits at the
+bottom: keeping only tracks above 0.3 leaves 10.5 % of the collection at 51 %
+exact. There is no cut-off that is both accurate and covers a library.
+
+### How good can this get? — what the three engines say about each other
+
+The reference cannot be scored, since it *is* the reference. But two independent
+detectors can be scored against each other, which bounds how much of the
+disagreement is Rekordbox's fault:
+
+| comparison | exact | + mixable |
+|---|---|---|
+| ours vs Rekordbox | 36.0 % | 55.1 % |
+| stratum-dsp vs Rekordbox | 29.6 % | 54.3 % |
+| ours vs stratum-dsp | 34.1 % | 62.5 % |
+
+If Rekordbox were the odd one out, the two DSP detectors would agree with each
+other far more than with it. They do the opposite: ours agrees with Rekordbox
+(36.0 %) slightly *more* than with the crate (34.1 %). So the reference is
+plausibly the closest of the three to the truth, and the gap is the difficulty of
+the task rather than an error in the yardstick. Key detection on a broad
+electronic collection is simply hard.
+
+### Which is why the key is never written into a file
+
+It goes into the database and the library view, with its confidence, and stays
+there. A wrong `TKEY` is read by every other program and outlives the guess that
+produced it, whereas a database value is replaced the moment a better detector
+exists — the same reasoning that keeps `compat` recomputed instead of stored.
+
+The reference project's own design agrees, which is worth recording because it
+was initially read the other way: it has had key detection for longer than we
+have, but its analysis results go into its own database and from there into the
+Rekordbox export on the USB drive. It depends on `lofty` — the same tag library
+we use, which can write — and never calls its write path (`save_to`,
+`save_to_path` and `WriteOptions` appear nowhere in the repository). So a third
+of a percent of accuracy is acceptable *in a layer you can throw away*, and the
+feature's existence elsewhere says nothing about writing it into source audio.
 
 ## Reproducing it
 

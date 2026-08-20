@@ -10,6 +10,8 @@ import {
   bpmIsUncertain,
   formatBpm,
   formatDuration,
+  formatKey,
+  keyConfidenceLabel,
   formatLabel,
   formatSampleRate,
   parseBpmInput,
@@ -463,6 +465,26 @@ export default function MetadataEditor({
                     )}
                   </div>
                 )}
+              </div>
+              {/* Read-only, unlike BPM: the key is never written into the
+                  file, so there is nothing here for the editor to change. It is
+                  shown because a value the app knows and hides is worse than
+                  either writing it or showing it. */}
+              <div className="flex flex-col gap-0.5">
+                <span className="text-fg-muted">Key</span>
+                <span className="flex items-baseline gap-2">
+                  <span className="text-fg">
+                    {formatKey(track.key, track.key_camelot)}
+                  </span>
+                  {keyConfidenceLabel(track.key_confidence) && (
+                    <span
+                      className="text-xs text-fg-subtle"
+                      title="Detected during the scan and kept in the library only — never written into the file"
+                    >
+                      {keyConfidenceLabel(track.key_confidence)}
+                    </span>
+                  )}
+                </span>
               </div>
               <div className="flex flex-col gap-1">
                 <span className="text-fg-muted">Status</span>

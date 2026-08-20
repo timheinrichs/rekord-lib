@@ -65,6 +65,7 @@ use unicode_normalization::UnicodeNormalization;
 
 use rekord_lib_lib::audio::{bpm, decode};
 use rekord_lib_lib::audio::bpm::TempoConfig;
+use rekord_lib_lib::audio::key::{self, MusicalKey, Profiles};
 
 /// The reference set travels with the test binary — no path juggling, and it
 /// cannot silently go missing.
@@ -175,7 +176,7 @@ fn parse_reference(csv: &str) -> HashMap<String, Reference> {
         };
         // The key column arrived later than the rest, so a file without it is
         // still a valid tempo reference rather than a parse failure.
-        let key = cols.next().and_then(parse_key);
+        let key = cols.next().and_then(MusicalKey::parse);
         let (Ok(bpm), Ok(drift), Ok(secs)) =
             (bpm.parse::<f32>(), drift.parse::<f32>(), secs.parse::<u32>())
         else {
@@ -203,127 +204,29 @@ fn name_hash(filename: &str) -> String {
 
 // --- musical keys -----------------------------------------------------------
 
-/// A key as a pitch class (C = 0) plus a mode — the only representation both
-/// sides can be compared in. Rekordbox exports a mix of sharps and flats
-/// ("F#m", "Abm", "Db"), `stratum-dsp` emits sharps only, and Camelot is a third
-/// spelling of the same thing; comparing strings would score `Abm` against
-/// `G#m` as a miss.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-struct MusicalKey {
-    /// 0 = C, 1 = C#/Db, … 11 = B.
-    pc: u8,
-    minor: bool,
+// `MusicalKey` lives in `audio::key` now, with its parsing, its Camelot mapping
+// and their tests. It used to be defined here, which meant the tested Camelot
+// implementation was the benchmark's and the shipped one was a second copy.
+
+/// One engine's key verdict for the dump, or empty where there is nothing to
+/// judge against.
+fn verdict_of(reference: Option<MusicalKey>, detected: Option<MusicalKey>) -> String {
+    reference
+        .map(|want| format!("{:?}", classify_key(detected, want)))
+        .unwrap_or_default()
 }
 
-impl MusicalKey {
-    /// Camelot wheel position, in the convention Rekordbox and Mixed In Key
-    /// use: **A = minor, B = major**, 8A = A minor, 8B = C major, and one step
-    /// up the number is one fifth up.
-    ///
-    /// Worth stating explicitly because `stratum_dsp::Key::numerical()` uses a
-    /// *different* convention (A = major, 1A = C) — writing its output into a
-    /// tag as "Camelot" would put every track on the wrong spoke of the wheel.
-    /// Human-readable spelling, sharps only — for report tables. Deliberately
-    /// not used for comparisons: `Abm` and `G#m` are the same key.
-    fn spelled(&self) -> String {
-        const NOTES: [&str; 12] = [
-            "C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B",
-        ];
-        let (n, is_major) = self.camelot();
-        format!(
-            "{}{} ({}{})",
-            NOTES[self.pc as usize % 12],
-            if self.minor { "m" } else { "" },
-            n,
-            if is_major { "B" } else { "A" }
-        )
-    }
-
-    fn camelot(&self) -> (u8, bool) {
-        let base: i32 = if self.minor { 9 } else { 0 };
-        let n = (8 + (self.pc as i32 - base) * 7).rem_euclid(12);
-        (if n == 0 { 12 } else { n as u8 }, !self.minor)
-    }
-}
-
-/// Parses a key from any of the spellings involved: Rekordbox' `Tonality`
-/// ("Am", "F#m", "Abm", "C"), spelled-out modes ("A minor", "C major") and
-/// Camelot ("8A", "12B"). Returns `None` for an empty or unrecognised value,
-/// which is how "never analysed" travels through the benchmark.
-fn parse_key(raw: &str) -> Option<MusicalKey> {
-    let text = raw.trim();
-    if text.is_empty() {
-        return None;
-    }
-
-    // Camelot first: it is the only form that starts with a digit.
-    if text.chars().next()?.is_ascii_digit() {
-        let (number, letter) = text.split_at(text.len() - 1);
-        let number: i32 = number.trim().parse().ok()?;
-        if !(1..=12).contains(&number) {
-            return None;
-        }
-        let minor = match letter.trim().to_ascii_uppercase().as_str() {
-            "A" => true,
-            "B" => false,
-            _ => return None,
-        };
-        let base: i32 = if minor { 9 } else { 0 };
-        let pc = (base + 7 * (number - 8)).rem_euclid(12) as u8;
-        return Some(MusicalKey { pc, minor });
-    }
-
-    let mut chars = text.chars();
-    let note = chars.next()?.to_ascii_uppercase();
-    let mut pc: i32 = match note {
-        'C' => 0,
-        'D' => 2,
-        'E' => 4,
-        'F' => 5,
-        'G' => 7,
-        'A' => 9,
-        'B' => 11,
-        _ => return None,
-    };
-    let mut rest = chars.as_str();
-    // Accidentals, including the typographic ones taggers like to emit.
-    if let Some(first) = rest.chars().next() {
-        match first {
-            '#' | '\u{266f}' => {
-                pc += 1;
-                rest = &rest[first.len_utf8()..];
-            }
-            'b' | '\u{266d}' => {
-                pc -= 1;
-                rest = &rest[first.len_utf8()..];
-            }
-            _ => {}
-        }
-    }
-    let mode = rest.trim().to_ascii_lowercase();
-    let minor = match mode.as_str() {
-        "" | "maj" | "major" => false,
-        "m" | "min" | "minor" => true,
-        _ => return None,
-    };
-    Some(MusicalKey {
-        pc: pc.rem_euclid(12) as u8,
-        minor,
-    })
+/// How a key reads in a report: the name plus its Camelot position.
+fn spelled(key: MusicalKey) -> String {
+    format!("{} ({})", key.name(), key.camelot_name())
 }
 
 /// `stratum-dsp`'s key in our representation. Taken from the enum rather than
 /// from `name()`, so no string round-trip can mangle it.
 fn from_stratum(key: stratum_dsp::Key) -> MusicalKey {
     match key {
-        stratum_dsp::Key::Major(pc) => MusicalKey {
-            pc: (pc % 12) as u8,
-            minor: false,
-        },
-        stratum_dsp::Key::Minor(pc) => MusicalKey {
-            pc: (pc % 12) as u8,
-            minor: true,
-        },
+        stratum_dsp::Key::Major(pc) => MusicalKey::new((pc % 12) as u8, false),
+        stratum_dsp::Key::Minor(pc) => MusicalKey::new((pc % 12) as u8, true),
     }
 }
 
@@ -608,8 +511,13 @@ struct Row {
     reference: Reference,
     ours: Option<f32>,
     stratum: Option<f32>,
-    /// `stratum-dsp`'s key. Ours has none — that absence is what B1 is about.
+    /// `stratum-dsp`'s key, and ours.
     stratum_key: Option<MusicalKey>,
+    our_key: Option<MusicalKey>,
+    /// How clearly our key won over the runner-up. Dumped per track so the
+    /// question "is there a subset reliable enough to write into a file" can be
+    /// answered from data rather than from hope.
+    our_key_confidence: Option<f32>,
     /// How much our detector trusted its own answer. Dumped per track so the
     /// write threshold in `commands.rs` can be picked from measured data rather
     /// than guessed: a confidence that does not track correctness would be worse
@@ -646,6 +554,21 @@ fn env_f32(key: &str) -> Option<f32> {
 
 /// Our detector's configuration for this run, so the range and the window count
 /// can be swept without touching the code they are being measured against.
+/// Which key profile set our detector uses for this run (B1). The literature
+/// disagrees on them and the choice is measurable, which is the point.
+fn profiles_from_env() -> Profiles {
+    match std::env::var("REKORD_BENCH_PROFILES")
+        .unwrap_or_default()
+        .to_ascii_lowercase()
+        .as_str()
+    {
+        "kk" | "krumhansl" => Profiles::KrumhanslKessler,
+        "temperley" => Profiles::Temperley,
+        "shaath" => Profiles::Shaath,
+        _ => key::DEFAULT_PROFILES,
+    }
+}
+
 fn tempo_config_from_env() -> TempoConfig {
     let default = TempoConfig::default();
     TempoConfig {
@@ -667,6 +590,7 @@ fn benchmark() {
     let limit = env_usize("REKORD_BENCH_LIMIT").unwrap_or(usize::MAX);
     let full_track = std::env::var("REKORD_BENCH_FULL_TRACK").is_ok();
     let our_config = tempo_config_from_env();
+    let profiles = profiles_from_env();
     let jobs = env_usize("REKORD_BENCH_JOBS").unwrap_or_else(|| {
         std::thread::available_parallelism()
             .map(|n| n.get().saturating_sub(2).max(1))
@@ -726,7 +650,8 @@ fn benchmark() {
     let rows: Mutex<Vec<Row>> = Mutex::new(Vec::with_capacity(work.len()));
     let mut ours_tally: HashMap<Tier, Tally> = HashMap::new();
     let mut stratum_tally: HashMap<Tier, Tally> = HashMap::new();
-    let timings: Mutex<Vec<(Tier, Option<KeyVerdict>, Timed, Timed)>> = Mutex::new(Vec::new());
+    let timings: Mutex<Vec<(Tier, Option<KeyVerdict>, Option<KeyVerdict>, Timed, Timed)>> =
+        Mutex::new(Vec::new());
     let started = Instant::now();
 
     std::thread::scope(|scope| {
@@ -742,8 +667,16 @@ fn benchmark() {
                 let excerpt = our_excerpt(path, OUR_OFFSET_SECS);
                 let our_decode = t0.elapsed();
                 let t0 = Instant::now();
-                let detected =
-                    excerpt.and_then(|s| bpm::detect_bpm_with(&s, OUR_RATE, our_config));
+                // Key detection reuses the same excerpt, which is how the app
+                // will do it too — one decode, two answers.
+                let detected = excerpt.as_ref().and_then(|s| {
+                    bpm::detect_bpm_with(s, OUR_RATE, our_config)
+                });
+                let detected_key = excerpt
+                    .as_ref()
+                    .and_then(|s| key::detect_key_with(s, OUR_RATE, profiles));
+                let our_key = detected_key.map(|k| k.key);
+                let our_key_confidence = detected_key.map(|k| k.confidence);
                 let our_analyze = t0.elapsed();
                 let ours = detected.map(|t| t.bpm);
                 let our_confidence = detected.map(|t| t.confidence);
@@ -781,6 +714,7 @@ fn benchmark() {
                 timings.lock().unwrap().push((
                     reference.tier(),
                     reference.key.map(|r| classify_key(stratum_key, r)),
+                    reference.key.map(|r| classify_key(our_key, r)),
                     Timed {
                         verdict: classify(ours, reference.bpm),
                         decode: our_decode,
@@ -804,6 +738,8 @@ fn benchmark() {
                     ours,
                     stratum,
                     stratum_key,
+                    our_key,
+                    our_key_confidence,
                     our_confidence,
                 });
 
@@ -816,12 +752,18 @@ fn benchmark() {
     });
 
     let mut key_tally = KeyTally::default();
-    for (tier, key_verdict, our_timed, stratum_timed) in timings.into_inner().unwrap() {
+    let mut our_key_tally = KeyTally::default();
+    for (tier, stratum_key_verdict, our_key_verdict, our_timed, stratum_timed) in
+        timings.into_inner().unwrap()
+    {
         ours_tally.entry(tier).or_default().add(our_timed);
         stratum_tally.entry(tier).or_default().add(stratum_timed);
         // Only tracks Rekordbox has a key for can score one.
-        if let Some(v) = key_verdict {
+        if let Some(v) = stratum_key_verdict {
             key_tally.add(v);
+        }
+        if let Some(v) = our_key_verdict {
+            our_key_tally.add(v);
         }
     }
 
@@ -832,9 +774,11 @@ fn benchmark() {
         &ours_tally,
         &stratum_tally,
         &key_tally,
+        &our_key_tally,
         started.elapsed(),
         full_track,
         our_config,
+        profiles,
     );
     println!("{report}");
 
@@ -853,13 +797,13 @@ fn benchmark() {
 /// exists to keep out of the repository.
 fn per_track_csv(rows: &[Row]) -> String {
     let mut out = String::from(
-        "file,ref_bpm,drift,ref_key,ours,our_confidence,our_verdict,stratum,stratum_verdict,stratum_key,key_verdict\n",
+        "file,ref_bpm,drift,ref_key,ours,our_confidence,our_verdict,our_key,our_key_confidence,our_key_verdict,stratum,stratum_verdict,stratum_key,stratum_key_verdict\n",
     );
     for r in rows {
         let num = |v: Option<f32>| v.map(|x| format!("{x:.2}")).unwrap_or_default();
-        let key = |v: Option<MusicalKey>| v.map(|k| k.spelled()).unwrap_or_default();
+        let key = |v: Option<MusicalKey>| v.map(spelled).unwrap_or_default();
         out.push_str(&format!(
-            "\"{}\",{:.2},{:.2},{},{},{},{:?},{},{:?},{},{}\n",
+            "\"{}\",{:.2},{:.2},{},{},{},{:?},{},{},{},{},{:?},{},{}\n",
             r.name.replace('"', "'"),
             r.reference.bpm,
             r.reference.drift,
@@ -869,13 +813,19 @@ fn per_track_csv(rows: &[Row]) -> String {
                 .map(|c| format!("{c:.3}"))
                 .unwrap_or_default(),
             classify(r.ours, r.reference.bpm),
+            key(r.our_key),
+            r.our_key_confidence
+                .map(|c| format!("{c:.3}"))
+                .unwrap_or_default(),
+            // Both engines' key verdicts, named after the engine they judge.
+            // One unnamed `key_verdict` column held stratum's while the row also
+            // carried our key and our confidence — an analysis correlating the
+            // two read our confidence against the crate's correctness.
+            verdict_of(r.reference.key, r.our_key),
             num(r.stratum),
             classify(r.stratum, r.reference.bpm),
             key(r.stratum_key),
-            r.reference
-                .key
-                .map(|want| format!("{:?}", classify_key(r.stratum_key, want)))
-                .unwrap_or_default(),
+            verdict_of(r.reference.key, r.stratum_key),
         ));
     }
     out
@@ -888,9 +838,11 @@ fn report(
     ours: &HashMap<Tier, Tally>,
     stratum: &HashMap<Tier, Tally>,
     keys: &KeyTally,
+    our_keys: &KeyTally,
     wall: Duration,
     full_track: bool,
     our_config: TempoConfig,
+    profiles: Profiles,
 ) -> String {
     let mut out = String::new();
     out.push_str("\n## Results\n\n");
@@ -967,35 +919,35 @@ fn report(
         out.push('\n');
     }
 
-    // Key detection: only stratum-dsp has an entry here, which is the whole
-    // point of B1 — we produce no key at all, so the question is not "is it
-    // better than ours" but "is it good enough to adopt".
+    // Key detection. Camelot is derived from the pitch class, not from
+    // `stratum_dsp::Key::numerical()`, whose A/B convention is the inverse of
+    // Rekordbox'.
     if keys.total() > 0 {
         out.push_str(&format!(
-            "### Key detection — {} tracks\n\nOnly stratum-dsp appears here: we \
-             detect no key today. Camelot is derived from the pitch class, not from \
-             `Key::numerical()`, whose A/B convention is the inverse of \
-             Rekordbox'.\n\n",
+            "### Key detection — {} tracks\n\nOurs uses the {profiles:?} profiles.\n\n",
             keys.total()
         ));
         out.push_str(
             "| engine | exact | parallel (Am/A) | relative (Am/C) | fifth neighbour | wrong | no result |\n",
         );
         out.push_str("|---|---|---|---|---|---|---|\n");
-        out.push_str(&format!(
-            "| stratum-dsp | {} ({:.1} %) | {} ({:.1} %) | {} ({:.1} %) | {} ({:.1} %) | {} ({:.1} %) | {} |\n\n",
-            keys.exact,
-            keys.pct(keys.exact),
-            keys.parallel,
-            keys.pct(keys.parallel),
-            keys.relative,
-            keys.pct(keys.relative),
-            keys.fifth,
-            keys.pct(keys.fifth),
-            keys.wrong,
-            keys.pct(keys.wrong),
-            keys.none,
-        ));
+        for (name, t) in [("ours", our_keys), ("stratum-dsp", keys)] {
+            out.push_str(&format!(
+                "| {name} | {} ({:.1} %) | {} ({:.1} %) | {} ({:.1} %) | {} ({:.1} %) | {} ({:.1} %) | {} |\n",
+                t.exact,
+                t.pct(t.exact),
+                t.parallel,
+                t.pct(t.parallel),
+                t.relative,
+                t.pct(t.relative),
+                t.fifth,
+                t.pct(t.fifth),
+                t.wrong,
+                t.pct(t.wrong),
+                t.none,
+            ));
+        }
+        out.push('\n');
 
         // A sample of the misses, because *how* a key detector is wrong matters:
         // a consistent semitone offset is a tuning problem, scattered errors are
@@ -1004,14 +956,14 @@ fn report(
             .iter()
             .filter_map(|r| {
                 let want = r.reference.key?;
-                let got = r.stratum_key?;
+                let got = r.our_key?;
                 (classify_key(Some(got), want) == KeyVerdict::Wrong).then_some((r, want, got))
             })
             .collect();
         misses.sort_by(|a, b| a.0.name.cmp(&b.0.name));
         if !misses.is_empty() {
             out.push_str(&format!(
-                "Outright key misses, first {} of {}:\n\n| Rekordbox | stratum-dsp | semitones off | file |\n|---|---|---|---|\n",
+                "Our outright key misses, first {} of {}:\n\n| Rekordbox | ours | semitones off | file |\n|---|---|---|---|\n",
                 misses.len().min(20),
                 misses.len()
             ));
@@ -1019,8 +971,8 @@ fn report(
                 let semitones = (got.pc as i32 - want.pc as i32).rem_euclid(12);
                 out.push_str(&format!(
                     "| {} | {} | {} | `{}` |\n",
-                    want.spelled(),
-                    got.spelled(),
+                    spelled(*want),
+                    spelled(*got),
                     semitones,
                     row.name,
                 ));
@@ -1235,67 +1187,10 @@ mod tests {
         assert!(steady < refs.len(), "expected drifting references too");
     }
 
-    #[test]
-    fn parses_every_key_spelling_rekordbox_and_stratum_emit() {
-        let am = MusicalKey { pc: 9, minor: true };
-        for text in ["Am", "am", " Am ", "A minor", "Amin", "8A"] {
-            assert_eq!(parse_key(text), Some(am), "failed on {text:?}");
-        }
-        let c = MusicalKey { pc: 0, minor: false };
-        for text in ["C", "C major", "Cmaj", "8B"] {
-            assert_eq!(parse_key(text), Some(c), "failed on {text:?}");
-        }
-    }
 
-    #[test]
-    fn enharmonic_spellings_are_the_same_key() {
-        // This is the reason keys are compared as pitch classes: Rekordbox
-        // writes flats, stratum-dsp writes sharps, and a string comparison
-        // would score every flat key as a miss.
-        assert_eq!(parse_key("Abm"), parse_key("G#m"));
-        assert_eq!(parse_key("Db"), parse_key("C#"));
-        assert_eq!(parse_key("Bbm"), parse_key("A#m"));
-        // Typographic accidentals, as some taggers write them.
-        assert_eq!(parse_key("F\u{266f}m"), parse_key("F#m"));
-        assert_eq!(parse_key("E\u{266d}m"), parse_key("D#m"));
-        // Wrap-around at the ends of the scale.
-        assert_eq!(parse_key("Cb"), Some(MusicalKey { pc: 11, minor: false }));
-        assert_eq!(parse_key("B#"), Some(MusicalKey { pc: 0, minor: false }));
-    }
 
-    #[test]
-    fn rejects_what_is_not_a_key() {
-        for text in ["", "   ", "H", "Xm", "13A", "0A", "8C", "Am7", "minor"] {
-            assert_eq!(parse_key(text), None, "accepted {text:?}");
-        }
-    }
 
-    #[test]
-    fn camelot_follows_the_rekordbox_convention_not_the_crates() {
-        // 8A = A minor, 8B = C major, A = minor. stratum_dsp::Key::numerical()
-        // uses the inverse (A = major, 1A = C), which is exactly why we derive
-        // the wheel position ourselves.
-        assert_eq!(parse_key("Am").unwrap().camelot(), (8, false));
-        assert_eq!(parse_key("C").unwrap().camelot(), (8, true));
-        assert_eq!(parse_key("Em").unwrap().camelot(), (9, false));
-        assert_eq!(parse_key("G").unwrap().camelot(), (9, true));
-        assert_eq!(parse_key("Dm").unwrap().camelot(), (7, false));
-        assert_eq!(parse_key("F").unwrap().camelot(), (7, true));
-        assert_eq!(parse_key("E").unwrap().camelot(), (12, true));
-        assert_eq!(parse_key("Abm").unwrap().camelot(), (1, false));
-    }
 
-    #[test]
-    fn camelot_round_trips_through_parsing() {
-        for pc in 0..12u8 {
-            for minor in [false, true] {
-                let key = MusicalKey { pc, minor };
-                let (n, is_major) = key.camelot();
-                let text = format!("{n}{}", if is_major { "B" } else { "A" });
-                assert_eq!(parse_key(&text), Some(key), "{text} != {key:?}");
-            }
-        }
-    }
 
     #[test]
     fn stratum_keys_convert_by_pitch_class() {
@@ -1317,15 +1212,15 @@ mod tests {
 
     #[test]
     fn classify_key_separates_mixable_misses_from_wrong_ones() {
-        let am = parse_key("Am").unwrap();
+        let am = MusicalKey::parse("Am").unwrap();
         assert_eq!(classify_key(Some(am), am), KeyVerdict::Exact);
         // Relative major: same Camelot number, other letter.
-        assert_eq!(classify_key(parse_key("C"), am), KeyVerdict::Relative);
+        assert_eq!(classify_key(MusicalKey::parse("C"), am), KeyVerdict::Relative);
         // One step around the wheel, same mode — a fifth away either way.
-        assert_eq!(classify_key(parse_key("Em"), am), KeyVerdict::Fifth);
-        assert_eq!(classify_key(parse_key("Dm"), am), KeyVerdict::Fifth);
+        assert_eq!(classify_key(MusicalKey::parse("Em"), am), KeyVerdict::Fifth);
+        assert_eq!(classify_key(MusicalKey::parse("Dm"), am), KeyVerdict::Fifth);
         // A semitone off is not mixable and must not be excused.
-        assert_eq!(classify_key(parse_key("Bbm"), am), KeyVerdict::Wrong);
+        assert_eq!(classify_key(MusicalKey::parse("Bbm"), am), KeyVerdict::Wrong);
         assert_eq!(classify_key(None, am), KeyVerdict::NoResult);
     }
 
@@ -1334,24 +1229,24 @@ mod tests {
         // 12 % of the first real run landed here: right tonic, wrong mode. It is
         // not mixable and not "close", but it is a different failure from a
         // random miss, and reporting it as plain "wrong" hid that.
-        let am = parse_key("Am").unwrap();
-        assert_eq!(classify_key(parse_key("A"), am), KeyVerdict::Parallel);
-        let c = parse_key("C").unwrap();
-        assert_eq!(classify_key(parse_key("Cm"), c), KeyVerdict::Parallel);
+        let am = MusicalKey::parse("Am").unwrap();
+        assert_eq!(classify_key(MusicalKey::parse("A"), am), KeyVerdict::Parallel);
+        let c = MusicalKey::parse("C").unwrap();
+        assert_eq!(classify_key(MusicalKey::parse("Cm"), c), KeyVerdict::Parallel);
         // Parallel must win over the wheel-distance rules, not fall through
         // to Fifth or Wrong.
         let (n_am, _) = am.camelot();
-        let (n_a, _) = parse_key("A").unwrap().camelot();
+        let (n_a, _) = MusicalKey::parse("A").unwrap().camelot();
         assert_ne!(n_am, n_a, "parallel keys sit far apart on the wheel");
     }
 
     #[test]
     fn classify_key_wraps_around_the_wheel() {
         // 1A and 12A are neighbours, so the step must be computed modulo 12.
-        let one = parse_key("Abm").unwrap();
+        let one = MusicalKey::parse("Abm").unwrap();
         assert_eq!(one.camelot(), (1, false));
-        assert_eq!(classify_key(parse_key("Dbm"), one), KeyVerdict::Fifth);
-        assert_eq!(classify_key(parse_key("Ebm"), one), KeyVerdict::Fifth);
+        assert_eq!(classify_key(MusicalKey::parse("Dbm"), one), KeyVerdict::Fifth);
+        assert_eq!(classify_key(MusicalKey::parse("Ebm"), one), KeyVerdict::Fifth);
     }
 
     #[test]
@@ -1376,11 +1271,6 @@ mod tests {
         assert!(keyed > 500, "expected a key reference, got {keyed} rows");
     }
 
-    #[test]
-    fn spelled_shows_note_and_camelot() {
-        assert_eq!(parse_key("Am").unwrap().spelled(), "Am (8A)");
-        assert_eq!(parse_key("Db").unwrap().spelled(), "C# (3B)");
-    }
 
     #[test]
     fn the_bundled_ffmpeg_is_where_the_benchmark_expects_it() {

@@ -96,26 +96,46 @@ input and a sine wave; ours covers click tracks, half/double-time traps,
 silence and white noise — and ours deliberately returns nothing rather than a
 wrong number. But it produces a single integer, and that is the gap.
 
-### B1 · Key detection
+### B1 · Key detection — **done**
 
 **What** — musical key, written as Camelot or Open Key.
 
 **Why** — the one piece of technical metadata DJs sort by that we do not
 produce. Feeds the metadata editor and the library table.
 
-**Not buyable, measured** — this item used to read "`stratum-dsp` returns it
-alongside BPM, so it can be bought rather than written". B7 measured that crate
-at **29.6 % exact** against a 2180-track Rekordbox reference (its README claims
-72.1 %), with a further 12.4 % landing on the parallel key — right tonic, wrong
-mode. Half of all keys land somewhere mixable, a third are outright wrong. That
-is not a number to write into thousands of files, so this is chroma/HPCP plus
-Krumhansl templates written by hand, or it waits.
+**What shipped** — `audio/key.rs`: the spectrum folded into twelve pitch classes
+and correlated against each key's expected pitch distribution, with the Shaath
+profiles. It reaches **35.6 % exact** against the 2180-track Rekordbox reference,
+against the crate's 29.6 %, and comes with a confidence that rises from 32 % to
+71 % agreement across its range. `MusicalKey` — the pitch-class-plus-mode type
+with the Camelot mapping — moved out of the benchmark harness into the shipped
+code, so the tested implementation and the used one are the same one.
 
-It should *not* feed `TrackMetadata::is_complete` despite what this item
+**In the database, never in the file.** This is the decision that matters more
+than the accuracy. A wrong `TKEY` is read by every other program and outlives the
+guess that produced it, while a database value is replaced the moment a better
+detector exists — the reasoning that already keeps `compat` recomputed rather
+than stored. Shown in the library table and the metadata editor, read-only, with
+the percentage next to it.
+
+**What that leaned on** — the reference project has had key detection longer than
+we have, which reads like an argument for shipping it into tags. Its own design
+says otherwise: analysis results go into its database and from there into the
+Rekordbox export on the USB drive, and although it depends on the same tag
+library we do, it never calls the write path. A third of a percent of accuracy is
+acceptable in a layer you can throw away.
+
+**What the numbers cannot settle** — the reference cannot be scored, being the
+reference. But our detector agrees with Rekordbox (36.0 %) slightly *more* than
+with the crate (34.1 %), so Rekordbox is not the outlier and the gap is the
+difficulty of the task. See [`DSP_BENCHMARK.md`](DSP_BENCHMARK.md).
+
+It does *not* feed `TrackMetadata::is_complete`, despite what this item
 originally said: BPM is deliberately optional there, and a required key would
-mark practically every library incomplete overnight.
+mark practically every library incomplete overnight. A filter facet is the
+obvious follow-up and is not built yet.
 
-*Size: L (was M, before the crate was ruled out)*
+*Size: L · done*
 
 ### B2 · Fractional BPM and an exposed confidence value — **done**
 

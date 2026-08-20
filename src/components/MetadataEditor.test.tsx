@@ -112,6 +112,36 @@ describe("MetadataEditor", () => {
     expect(saved[0].metadata.bpm).toBe(140);
   });
 
+  it("shows a detected key, and that it stayed out of the file", async () => {
+    const track = makeTrack({ key: "Am", key_camelot: "8A", key_confidence: 0.42 });
+    render(<MetadataEditor track={track} onClose={() => {}} onSave={() => {}} />);
+    expect(screen.getByText("Am · 8A")).toBeTruthy();
+    const label = screen.getByText("42% sure");
+    expect(label.getAttribute("title")).toMatch(/never written into the file/);
+  });
+
+  it("offers no way to edit the key", async () => {
+    // Read-only on purpose: it is never written into the file, so an editable
+    // field would promise something the app does not do.
+    const saved: TrackEdit[] = [];
+    const track = makeTrack({ key: "Am", key_camelot: "8A", key_confidence: 0.42 });
+    render(
+      <MetadataEditor track={track} onClose={() => {}} onSave={(e) => saved.push(e)} />,
+    );
+    expect(screen.queryByTitle("Edit key")).toBeNull();
+    await userEvent.click(screen.getByRole("button", { name: /confirm/i }));
+    // And nothing key-shaped travels through the write path.
+    expect("key" in saved[0].metadata).toBe(false);
+  });
+
+  it("shows a dash where no key was detected", async () => {
+    const track = makeTrack({ key: null, key_camelot: null, key_confidence: null });
+    render(<MetadataEditor track={track} onClose={() => {}} onSave={() => {}} />);
+    const row = screen.getByText("Key").parentElement;
+    expect(row?.textContent).toContain("–");
+    expect(screen.queryByText(/% sure/)).toBeNull();
+  });
+
   it("says so when a detected tempo never reached the file", async () => {
     // The row and the file disagree in exactly this case, and nothing else in
     // the UI would tell the user.
