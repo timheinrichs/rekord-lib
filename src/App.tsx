@@ -260,6 +260,7 @@ export default function App() {
           >
             <LibraryView
               settings={settings}
+              onSettingsChange={updateSettings}
               originById={originById}
               onTracksChange={setLibraryTracks}
               onBootPhase={handleBootPhase}

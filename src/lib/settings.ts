@@ -88,6 +88,11 @@ export interface Settings {
    */
   bpm_min: number;
   bpm_max: number;
+  /**
+   * Library columns the user has switched off, by id. Empty means all of them —
+   * the default is everything visible, and a column is hidden only on request.
+   */
+  hidden_columns: string[];
   /** Discogs app credentials for metadata suggestions (stored locally only). */
   discogs_key: string | null;
   discogs_secret: string | null;
@@ -104,6 +109,7 @@ export const DEFAULT_SETTINGS: Settings = {
   // narrower default would silently move every user's results on update.
   bpm_min: 60,
   bpm_max: 200,
+  hidden_columns: [],
   discogs_key: null,
   discogs_secret: null,
 };

@@ -32,6 +32,9 @@ contain incompatible changes.
   launch. Timing-dependent, so it did not fail every time.
 
 ### Changed
+- **The library columns are in a more useful order** and the expand arrow has a
+  column of its own, so the title column shows nesting on its own and the rows
+  line up with the group headers above them in every view.
 - **The scan button says what it is detecting.** A run over a fresh library reads
   "BPM/Key", one that only needs keys reads "Key" — the analysis decodes each
   file once and produces whichever of the two is missing, and the label now says
@@ -55,6 +58,10 @@ contain incompatible changes.
   tempo in it.
 
 ### Added
+- **Choose which columns the library shows.** A new button left of the filter
+  lists them; everything is on by default, and the choice is remembered. The
+  columns that carry selection and hierarchy are not offered — a list you cannot
+  select in is broken, not customised.
 - **Beat positions, not just tempo.** The analysis works out where the beats sit,
   which is what a waveform needs before it can show them. Measured against
   Rekordbox' own grids, the median error is 0.035 of a beat — 16 ms at 128 BPM.

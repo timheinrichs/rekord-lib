@@ -44,6 +44,7 @@ import {
   saveEdit as persistEdit,
 } from "../lib/library";
 import { relocateMessage, shouldRelocate } from "../lib/relocate";
+import { visibleColumns, type ColumnDef, type ColumnId } from "../lib/columns";
 import { addSkipped, skippedLabel } from "../lib/skipped";
 import { dismissDuplicates, loadDuplicates, saveDuplicates } from "../lib/duplicates";
 import {
@@ -70,6 +71,7 @@ import type {
   SkippedFile,
   TrackAnalysis,
   TrackEdit,
+  TrackMetadata,
 } from "../types";
 import { STAGE_ANALYZING } from "../types";
 import MetadataEditor from "./MetadataEditor";
@@ -121,7 +123,7 @@ import {
   labelTrackList,
   type LabelNode,
 } from "../lib/labelTree";
-import { albumsLabel, summarizeGroup } from "../lib/groupSummary";
+import { albumsLabel, summarizeGroup, type GroupSummary } from "../lib/groupSummary";
 import {
   convertedOutputs,
   diffAudioFiles,
@@ -140,6 +142,7 @@ import {
   type FilterContext,
   type TrackFilter,
 } from "../lib/trackFilter";
+import ColumnMenu from "./ColumnMenu";
 import FilterMenu from "./FilterMenu";
 
 interface Props {
@@ -157,6 +160,11 @@ interface Props {
   onOpenSettings: () => void;
   /** Re-points the library after the folder was found again (see lib/relocate). */
   onLibraryDirChange?: (dir: string) => void;
+  /**
+   * Persists a settings change made from the library toolbar — the column
+   * choice. Optional so the component can be rendered without it.
+   */
+  onSettingsChange?: (patch: Partial<Settings>) => void;
 }
 
 /**
@@ -177,6 +185,7 @@ type Grouping = "flat" | "album" | "folder" | "label";
 
 export default function LibraryView({
   settings,
+  onSettingsChange,
   originById,
   onTracksChange,
   onBootPhase,
@@ -783,6 +792,12 @@ export default function LibraryView({
   // Not edit-aware, unlike the genres: the key is analysis state, so no pending
   // edit can change it.
   const keyOptions = useMemo(() => collectKeys(tracks), [tracks]);
+  // The one list the header, the group rows and the track rows all iterate, so
+  // a column cannot exist in one of them and not the others.
+  const cols = useMemo(
+    () => visibleColumns((settings.hidden_columns ?? []) as ColumnId[]),
+    [settings.hidden_columns],
+  );
   const activeChips = useMemo(() => activeFilterChips(filter), [filter]);
   // Whether the list is narrowed at all — the search counts, the chips do not
   // cover it.
@@ -1742,6 +1757,10 @@ export default function LibraryView({
             ))}
           </div>
           <div className="flex shrink-0 items-center gap-2">
+            <ColumnMenu
+              hidden={(settings.hidden_columns ?? []) as ColumnId[]}
+              onChange={(hidden_columns) => onSettingsChange?.({ hidden_columns })}
+            />
             <FilterMenu
               filter={filter}
               onChange={setFilter}
@@ -1790,221 +1809,226 @@ export default function LibraryView({
           <table className="w-full min-w-[95rem] table-fixed text-sm">
             <thead className="text-left text-fg-muted">
               <tr className="border-b border-border">
-                <th className="w-10 px-4 py-3">
-                  <input
-                    type="checkbox"
-                    checked={allVisibleSelected}
-                    onChange={toggleSelectAll}
-                    className="h-4 w-4 rounded border-border-strong bg-surface-2"
-                    aria-label="Select all"
-                  />
-                </th>
-                <th className="w-14 px-4 py-3"></th>
-                {/* Title has no fixed width: it absorbs the remaining space
-                    (widest column); min table width keeps it ~600px+. */}
-                <SortableHeader
-                  label="Title"
-                  sortKey="title"
-                  activeKey={sortKey}
-                  dir={sortDir}
-                  onSort={toggleSort}
-                />
-                <SortableHeader
-                  label="Artist"
-                  sortKey="artist"
-                  activeKey={sortKey}
-                  dir={sortDir}
-                  onSort={toggleSort}
-                  className="w-40"
-                />
-                <SortableHeader
-                  label="Album"
-                  sortKey="album"
-                  activeKey={sortKey}
-                  dir={sortDir}
-                  onSort={toggleSort}
-                  className="w-40"
-                />
-                <th className="w-44 px-4 py-3 font-medium">Format</th>
-                <SortableHeader
-                  label="Length"
-                  sortKey="length"
-                  activeKey={sortKey}
-                  dir={sortDir}
-                  onSort={toggleSort}
-                  className="w-20"
-                />
-                <SortableHeader
-                  label="BPM"
-                  sortKey="bpm"
-                  activeKey={sortKey}
-                  dir={sortDir}
-                  onSort={toggleSort}
-                  className="w-20"
-                />
-                <th className="w-24 px-4 py-3 font-medium">Key</th>
-                <SortableHeader
-                  label="Downloaded"
-                  sortKey="date"
-                  activeKey={sortKey}
-                  dir={sortDir}
-                  onSort={toggleSort}
-                  className="w-32"
-                />
-                <th className="w-24 px-4 py-3 font-medium">Status</th>
-                <th className="w-16 px-4 py-3 font-medium"></th>
+                {cols.map((c) =>
+                  c.id === "select" ? (
+                    <th key={c.id} className={`${c.width} px-4 py-3`}>
+                      <input
+                        type="checkbox"
+                        checked={allVisibleSelected}
+                        onChange={toggleSelectAll}
+                        className="h-4 w-4 rounded border-border-strong bg-surface-2"
+                        aria-label="Select all"
+                      />
+                    </th>
+                  ) : c.sortKey ? (
+                    <SortableHeader
+                      key={c.id}
+                      label={c.label}
+                      sortKey={c.sortKey}
+                      activeKey={sortKey}
+                      dir={sortDir}
+                      onSort={toggleSort}
+                      className={c.width}
+                    />
+                  ) : (
+                    // Title is the column with no width: it absorbs the slack.
+                    <th
+                      key={c.id}
+                      className={`${c.width ?? ""} px-4 py-3 font-medium`}
+                    >
+                      {c.label}
+                    </th>
+                  ),
+                )}
               </tr>
             </thead>
             <tbody ref={bodyRef}>
               {(() => {
-                const renderTrackRow = (
+                /**
+                 * One cell of a track row, chosen by column id.
+                 *
+                 * A switch rather than a table of render functions: the cells
+                 * close over a dozen values from this scope (selection, the
+                 * player, pending edits, conversion state) and hoisting them out
+                 * would mean threading all of it through a parameter list.
+                 */
+                const trackCell = (
+                  c: ColumnDef,
                   t: TrackAnalysis,
                   index: number,
-                  depth = 0,
-                ) => {
-                const prog = progress[t.id];
-                const result = results[t.id];
-                const fromBandcamp = !!originById[t.id];
-                // Show confirmed edits in the list immediately.
-                const md = edits[t.id]?.metadata ?? t.metadata;
-                return (
-                  <tr
-                    key={t.id}
-                    onClick={() => setEditingId(t.id)}
-                    className="group cursor-pointer border-b border-border last:border-0 hover:bg-surface-2"
-                  >
-                    {/* Never indented. Nesting is shown in the title column,
-                        the way the group headers do it — indenting this cell
-                        instead pushed the checkbox out of its 40 px column at
-                        depth 2, where it vanished behind the next one, and left
-                        the ones that survived out of line with the groups'. */}
-                    <td
-                      className="px-4 py-3"
-                      onClick={(e) => e.stopPropagation()}
-                    >
-                      <input
-                        type="checkbox"
-                        checked={selected.has(t.id)}
-                        onChange={() => {}}
-                        onMouseDown={(e) => e.shiftKey && e.preventDefault()}
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          handleRowSelect(index, e.shiftKey);
-                        }}
-                        className="h-4 w-4 rounded border-border-strong bg-surface-2"
-                        aria-label={`Select ${t.file_name}`}
-                      />
-                    </td>
-                    <td className="px-4 py-3">
-                      <CoverThumb
-                        path={t.path}
-                        hasCover={t.metadata.has_cover}
-                        onPlay={() => playFrom(renderOrder, index)}
-                        active={player.current?.path === t.path}
-                        playing={player.playing}
-                        onToggle={player.toggle}
-                      />
-                    </td>
-                    {/* The indent lives here, matching the group headers, so
-                        one glance down the title column shows the hierarchy and
-                        every checkbox above it stays in line. */}
-                    <td
-                      className="px-4 py-3 text-fg"
-                      title={t.path}
-                      style={depth ? { paddingLeft: 16 + depth * 20 } : undefined}
-                    >
-                      <MarqueeText text={md.title || t.file_name} />
-                    </td>
-                    <td className="max-w-[10rem] truncate px-4 py-3 text-fg-muted">
-                      {md.artist || "–"}
-                    </td>
-                    <td className="max-w-[10rem] truncate px-4 py-3 text-fg-muted">
-                      {md.album || "–"}
-                    </td>
-                    <td className="truncate whitespace-nowrap px-4 py-3 text-fg-muted">
-                      {formatLabel(
-                        t.audio.codec,
-                        t.audio.container,
-                        t.audio.bits_per_sample,
-                      )}
-                      <span className="text-fg-subtle">
-                        , {formatSampleRate(t.audio.sample_rate)}
-                      </span>
-                    </td>
-                    <td className="whitespace-nowrap px-4 py-3 text-fg-muted">
-                      {formatDuration(t.audio.duration_secs)}
-                    </td>
-                    <td
-                      className={`whitespace-nowrap px-4 py-3 ${
-                        bpmIsUncertain(t.bpm_confidence)
-                          ? "text-fg-warning"
-                          : "text-fg-muted"
-                      }`}
-                      title={
-                        bpmIsUncertain(t.bpm_confidence)
-                          ? "Detected, but not convincingly — this tempo was not written into the file"
-                          : undefined
-                      }
-                    >
-                      {formatBpm(md.bpm)}
-                    </td>
-                    <td
-                      className="whitespace-nowrap px-4 py-3 text-fg-muted"
-                      title={
-                        t.key
-                          ? `Detected, not written into the file${
-                              t.key_confidence != null
-                                ? ` — ${Math.round(t.key_confidence * 100)}% sure`
-                                : ""
-                            }`
-                          : undefined
-                      }
-                    >
-                      {formatKey(t.key, t.key_camelot)}
-                    </td>
-                    <td className="whitespace-nowrap px-4 py-3 text-fg-muted">
-                      {formatDate(t.download_date)}
-                    </td>
-                    <td className="px-4 py-3">
-                      {result ? (
-                        result.success ? (
-                          <span
-                            className="flex text-success-500"
-                            title="Converted"
-                            aria-label="Converted"
-                            role="img"
-                          >
-                            <CheckIcon />
-                          </span>
-                        ) : (
-                          <span
-                            className="flex text-danger-500"
-                            title={result.error ?? "Conversion failed"}
-                            aria-label="Conversion failed"
-                            role="img"
-                          >
-                            <XIcon />
-                          </span>
-                        )
-                      ) : prog && converting ? (
-                        <div
-                          className="flex items-center gap-1.5 text-fg-muted"
-                          title={`Converting – ${prog.percent}%`}
+                  depth: number,
+                  md: TrackMetadata,
+                  prog: ConvertProgress | undefined,
+                  result: ConvertResult | undefined,
+                  fromBandcamp: boolean,
+                ): ReactNode => {
+                  const pad = "px-4 py-3";
+                  switch (c.id) {
+                    case "select":
+                      // Never indented. Nesting is shown in the title column,
+                      // the way the group headers do it — indenting this cell
+                      // instead pushed the checkbox out of its 40 px column at
+                      // depth 2, where it vanished behind the next one.
+                      return (
+                        <td key={c.id} className={pad} onClick={(e) => e.stopPropagation()}>
+                          <input
+                            type="checkbox"
+                            checked={selected.has(t.id)}
+                            onChange={() => {}}
+                            onMouseDown={(e) => e.shiftKey && e.preventDefault()}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleRowSelect(index, e.shiftKey);
+                            }}
+                            className="h-4 w-4 rounded border-border-strong bg-surface-2"
+                            aria-label={`Select ${t.file_name}`}
+                          />
+                        </td>
+                      );
+                    case "expand":
+                      // A track has nothing to expand; the cell keeps the
+                      // columns aligned with the group rows above it.
+                      return <td key={c.id} className={pad} />;
+                    case "cover":
+                      return (
+                        <td key={c.id} className={pad}>
+                          <CoverThumb
+                            path={t.path}
+                            hasCover={t.metadata.has_cover}
+                            onPlay={() => playFrom(renderOrder, index)}
+                            active={player.current?.path === t.path}
+                            playing={player.playing}
+                            onToggle={player.toggle}
+                          />
+                        </td>
+                      );
+                    case "waveform":
+                      return <td key={c.id} className={pad} />;
+                    case "title":
+                      // The indent lives here, matching the group headers, so
+                      // one glance down the column shows the hierarchy and every
+                      // checkbox above it stays in line.
+                      return (
+                        <td
+                          key={c.id}
+                          className={`${pad} text-fg`}
+                          title={t.path}
+                          style={depth ? { paddingLeft: 16 + depth * 20 } : undefined}
                         >
-                          <SpinnerIcon />
-                          <span className="text-xs">{prog.percent}%</span>
-                        </div>
-                      ) : (
-                        <StatusIcons
-                          items={trackStatus(t, edits[t.id], fromBandcamp)}
-                        />
-                      )}
-                    </td>
-                    <td
-                      className="relative px-4 py-3"
-                      onClick={(e) => e.stopPropagation()}
-                    >
-                      <div className="pointer-events-none absolute inset-y-0 right-4 flex items-center gap-2 rounded-lg bg-surface-2 pl-3 opacity-0 transition-opacity group-hover:pointer-events-auto group-hover:opacity-100">
+                          <MarqueeText text={md.title || t.file_name} />
+                        </td>
+                      );
+                    case "artist":
+                      return (
+                        <td key={c.id} className={`max-w-[10rem] truncate ${pad} text-fg-muted`}>
+                          {md.artist || "–"}
+                        </td>
+                      );
+                    case "album":
+                      return (
+                        <td key={c.id} className={`max-w-[10rem] truncate ${pad} text-fg-muted`}>
+                          {md.album || "–"}
+                        </td>
+                      );
+                    case "length":
+                      return (
+                        <td key={c.id} className={`whitespace-nowrap ${pad} text-fg-muted`}>
+                          {formatDuration(t.audio.duration_secs)}
+                        </td>
+                      );
+                    case "bpm":
+                      return (
+                        <td
+                          key={c.id}
+                          className={`whitespace-nowrap ${pad} ${
+                            bpmIsUncertain(t.bpm_confidence) ? "text-fg-warning" : "text-fg-muted"
+                          }`}
+                          title={
+                            bpmIsUncertain(t.bpm_confidence)
+                              ? "Detected, but not convincingly — this tempo was not written into the file"
+                              : undefined
+                          }
+                        >
+                          {formatBpm(md.bpm)}
+                        </td>
+                      );
+                    case "key":
+                      return (
+                        <td
+                          key={c.id}
+                          className={`whitespace-nowrap ${pad} text-fg-muted`}
+                          title={
+                            t.key
+                              ? `Detected, not written into the file${
+                                  t.key_confidence != null
+                                    ? ` — ${Math.round(t.key_confidence * 100)}% sure`
+                                    : ""
+                                }`
+                              : undefined
+                          }
+                        >
+                          {formatKey(t.key, t.key_camelot)}
+                        </td>
+                      );
+                    case "format":
+                      return (
+                        <td key={c.id} className={`truncate whitespace-nowrap ${pad} text-fg-muted`}>
+                          {formatLabel(t.audio.codec, t.audio.container, t.audio.bits_per_sample)}
+                          <span className="text-fg-subtle">
+                            , {formatSampleRate(t.audio.sample_rate)}
+                          </span>
+                        </td>
+                      );
+                    case "downloaded":
+                      return (
+                        <td key={c.id} className={`whitespace-nowrap ${pad} text-fg-muted`}>
+                          {formatDate(t.download_date)}
+                        </td>
+                      );
+                    case "status":
+                      return (
+                        <td key={c.id} className={pad}>
+                          {result ? (
+                            result.success ? (
+                              <span
+                                className="flex text-success-500"
+                                title="Converted"
+                                aria-label="Converted"
+                                role="img"
+                              >
+                                <CheckIcon />
+                              </span>
+                            ) : (
+                              <span
+                                className="flex text-danger-500"
+                                title={result.error ?? "Conversion failed"}
+                                aria-label="Conversion failed"
+                                role="img"
+                              >
+                                <XIcon />
+                              </span>
+                            )
+                          ) : prog && converting ? (
+                            <div
+                              className="flex items-center gap-1.5 text-fg-muted"
+                              title={`Converting – ${prog.percent}%`}
+                            >
+                              <SpinnerIcon />
+                              <span className="text-xs">{prog.percent}%</span>
+                            </div>
+                          ) : (
+                            <StatusIcons items={trackStatus(t, edits[t.id], fromBandcamp)} />
+                          )}
+                        </td>
+                      );
+                    case "actions":
+                      return (
+                        <td
+                          key={c.id}
+                          className={`relative ${pad}`}
+                          onClick={(e) => e.stopPropagation()}
+                        >
+<div className="pointer-events-none absolute inset-y-0 right-4 flex items-center gap-2 rounded-lg bg-surface-2 pl-3 opacity-0 transition-opacity group-hover:pointer-events-auto group-hover:opacity-100">
                         {!t.compat.compatible && (
                           <button
                             onClick={() => convertOne(t)}
@@ -2039,7 +2063,28 @@ export default function LibraryView({
                           <TrashIcon />
                         </button>
                       </div>
-                    </td>
+                        </td>
+                      );
+                  }
+                };
+
+                const renderTrackRow = (
+                  t: TrackAnalysis,
+                  index: number,
+                  depth = 0,
+                ) => {
+                const prog = progress[t.id];
+                const result = results[t.id];
+                const fromBandcamp = !!originById[t.id];
+                // Show confirmed edits in the list immediately.
+                const md = edits[t.id]?.metadata ?? t.metadata;
+                return (
+                  <tr
+                    key={t.id}
+                    onClick={() => setEditingId(t.id)}
+                    className="group cursor-pointer border-b border-border last:border-0 hover:bg-surface-2"
+                  >
+                    {cols.map((c) => trackCell(c, t, index, depth, md, prog, result, fromBandcamp))}
                   </tr>
                 );
                 };
@@ -2050,6 +2095,159 @@ export default function LibraryView({
                 // One header row for every kind of group (album, label, folder)
                 // so a group shows the same columns everywhere. `cover` is only
                 // passed where one artwork really represents the group.
+                /** One cell of a group row, chosen by the same column list. */
+                const groupCell = (
+                  c: ColumnDef,
+                  opts: {
+                    id: string;
+                    title: string;
+                    depth: number;
+                    tracks: TrackAnalysis[];
+                    expanded: boolean;
+                    onToggle: () => void;
+                    cover?: TrackAnalysis;
+                    albumText?: string;
+                    actions?: ReactNode;
+                  },
+                  s: GroupSummary,
+                  allSel: boolean,
+                  someSel: boolean,
+                  groupStatus: TrackStatus[],
+                ): ReactNode => {
+                  const pad = "px-4 py-2.5";
+                  const gTracks = opts.tracks;
+                  switch (c.id) {
+                    case "select":
+                      return (
+                        <td key={c.id} className={pad} onClick={(e) => e.stopPropagation()}>
+                          <input
+                            type="checkbox"
+                            checked={allSel}
+                            ref={(el) => {
+                              if (el) el.indeterminate = someSel;
+                            }}
+                            onChange={() => toggleAlbumSelect(gTracks)}
+                            className="h-4 w-4 rounded border-border-strong bg-surface-2"
+                            aria-label={`Select ${opts.title}`}
+                          />
+                        </td>
+                      );
+                    case "expand":
+                      // The chevron is its own column now, which is what lets
+                      // the title carry the indent without pushing anything out
+                      // of line.
+                      return (
+                        <td key={c.id} className={pad}>
+                          <span className="flex text-fg-subtle">
+                            <ChevronIcon open={opts.expanded} />
+                          </span>
+                        </td>
+                      );
+                    case "cover":
+                      return (
+                        <td key={c.id} className={pad}>
+                          {opts.cover && (
+                            <CoverThumb
+                              path={opts.cover.path}
+                              hasCover={opts.cover.metadata.has_cover}
+                              onPlay={() => playFrom(gTracks, 0, true)}
+                              active={gTracks.some((t) => t.path === player.current?.path)}
+                              playing={player.playing}
+                              onToggle={player.toggle}
+                            />
+                          )}
+                        </td>
+                      );
+                    case "waveform":
+                      // No waveform for a group: it would be a picture of
+                      // several tracks at once, which is a picture of nothing.
+                      return <td key={c.id} className={pad} />;
+                    case "title":
+                      return (
+                        <td
+                          key={c.id}
+                          className={pad}
+                          style={
+                            opts.depth ? { paddingLeft: 16 + opts.depth * 20 } : undefined
+                          }
+                        >
+                          <div className="flex items-center gap-2">
+                            <MarqueeText
+                              text={opts.title}
+                              className="min-w-0 font-medium text-fg"
+                            />
+                            <span className="shrink-0 whitespace-nowrap pl-2 text-xs text-fg-subtle">
+                              {s.count} tracks
+                            </span>
+                          </div>
+                        </td>
+                      );
+                    case "artist":
+                      return (
+                        <td key={c.id} className={`max-w-[10rem] truncate ${pad} text-fg-muted`}>
+                          {s.albumArtist || "–"}
+                        </td>
+                      );
+                    case "album":
+                      return (
+                        <td key={c.id} className={`truncate ${pad} text-fg-muted`}>
+                          {opts.albumText ?? albumsLabel(s.albums)}
+                        </td>
+                      );
+                    case "length":
+                      return (
+                        <td key={c.id} className={`whitespace-nowrap ${pad} text-fg-muted`}>
+                          {formatDuration(s.totalLength)}
+                        </td>
+                      );
+                    case "bpm":
+                      return (
+                        <td key={c.id} className={`whitespace-nowrap ${pad} text-fg-muted`}>
+                          {s.bpm}
+                        </td>
+                      );
+                    case "key":
+                      // An album is rarely one key, and a summary that averaged
+                      // them would invent something.
+                      return <td key={c.id} className={pad} />;
+                    case "format":
+                      return (
+                        <td key={c.id} className={`truncate whitespace-nowrap ${pad} text-fg-muted`}>
+                          {s.format}
+                        </td>
+                      );
+                    case "downloaded":
+                      return (
+                        <td key={c.id} className={`whitespace-nowrap ${pad} text-fg-muted`}>
+                          {formatDate(s.newestDate)}
+                        </td>
+                      );
+                    case "status":
+                      return (
+                        <td key={c.id} className={pad}>
+                          <StatusIcons
+                            items={groupStatus}
+                            counts={{ convert: s.needConvert, incomplete: s.needIncomplete }}
+                          />
+                        </td>
+                      );
+                    case "actions":
+                      return (
+                        <td
+                          key={c.id}
+                          className={`relative ${pad}`}
+                          onClick={(e) => e.stopPropagation()}
+                        >
+                          {opts.actions && (
+                            <div className="pointer-events-none absolute inset-y-0 right-4 flex items-center gap-2 rounded-lg bg-surface-2 pl-3 opacity-0 transition-opacity group-hover:pointer-events-auto group-hover:opacity-100">
+                              {opts.actions}
+                            </div>
+                          )}
+                        </td>
+                      );
+                  }
+                };
+
                 const renderGroupHeader = (opts: {
                   id: string;
                   title: string;
@@ -2062,7 +2260,7 @@ export default function LibraryView({
                   albumText?: string;
                   actions?: ReactNode;
                 }) => {
-                  const { tracks: gTracks, depth } = opts;
+                  const { tracks: gTracks } = opts;
                   const s = summarizeGroup(gTracks, edits, isIncomplete);
                   const allSel =
                     gTracks.length > 0 && gTracks.every((t) => selected.has(t.id));
@@ -2093,93 +2291,9 @@ export default function LibraryView({
                       onClick={opts.onToggle}
                       className="group cursor-pointer border-b border-border bg-surface-2/40 hover:bg-surface-2"
                     >
-                      <td
-                        className="px-4 py-2.5"
-                        onClick={(e) => e.stopPropagation()}
-                      >
-                        <input
-                          type="checkbox"
-                          checked={allSel}
-                          ref={(el) => {
-                            if (el) el.indeterminate = someSel;
-                          }}
-                          onChange={() => toggleAlbumSelect(gTracks)}
-                          className="h-4 w-4 rounded border-border-strong bg-surface-2"
-                          aria-label={`Select ${opts.title}`}
-                        />
-                      </td>
-                      <td className="px-4 py-2.5">
-                        {opts.cover && (
-                          <CoverThumb
-                            path={opts.cover.path}
-                            hasCover={opts.cover.metadata.has_cover}
-                            onPlay={() => playFrom(gTracks, 0, true)}
-                            active={gTracks.some(
-                              (t) => t.path === player.current?.path,
-                            )}
-                            playing={player.playing}
-                            onToggle={player.toggle}
-                          />
-                        )}
-                      </td>
-                      <td
-                        className="px-4 py-2.5"
-                        style={depth ? { paddingLeft: 16 + depth * 20 } : undefined}
-                      >
-                        <div className="flex items-center gap-2">
-                          <span className="shrink-0 text-fg-subtle">
-                            <ChevronIcon open={opts.expanded} />
-                          </span>
-                          <MarqueeText
-                            text={opts.title}
-                            className="min-w-0 font-medium text-fg"
-                          />
-                          <span className="shrink-0 whitespace-nowrap pl-2 text-xs text-fg-subtle">
-                            {s.count} tracks
-                          </span>
-                        </div>
-                      </td>
-                      <td className="max-w-[10rem] truncate px-4 py-2.5 text-fg-muted">
-                        {s.albumArtist || "–"}
-                      </td>
-                      <td className="truncate px-4 py-2.5 text-fg-muted">
-                        {opts.albumText ?? albumsLabel(s.albums)}
-                      </td>
-                      <td className="truncate whitespace-nowrap px-4 py-2.5 text-fg-muted">
-                        {s.format}
-                      </td>
-                      <td className="whitespace-nowrap px-4 py-2.5 text-fg-muted">
-                        {formatDuration(s.totalLength)}
-                      </td>
-                      <td className="whitespace-nowrap px-4 py-2.5 text-fg-muted">
-                        {s.bpm}
-                      </td>
-                      {/* No key for a group: an album is rarely one key, and a
-                          summary that averaged them would invent something. The
-                          cell stays so the columns line up with the rows. */}
-                      <td className="px-4 py-2.5" />
-                      <td className="whitespace-nowrap px-4 py-2.5 text-fg-muted">
-                        {formatDate(s.newestDate)}
-                      </td>
-                      <td className="px-4 py-2.5">
-                        <StatusIcons
-                          items={groupStatus}
-                          counts={{
-                            convert: s.needConvert,
-                            incomplete: s.needIncomplete,
-                          }}
-                        />
-                      </td>
-                      <td
-                        className="relative px-4 py-2.5"
-                        onClick={(e) => e.stopPropagation()}
-                      >
-                        {opts.actions && (
-                          <div className="pointer-events-none absolute inset-y-0 right-4 flex items-center gap-2 rounded-lg bg-surface-2 pl-3 opacity-0 transition-opacity group-hover:pointer-events-auto group-hover:opacity-100">
-                            {opts.actions}
-                          </div>
-                        )}
-                      </td>
+                      {cols.map((c) =>
+                        groupCell(c, opts, s, allSel, someSel, groupStatus),
+                      )}
                     </tr>,
                   );
                 };
