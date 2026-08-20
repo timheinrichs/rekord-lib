@@ -17,11 +17,12 @@ use super::DbResult;
 /// start. Only changes that transform or drop existing data need a step in
 /// [`super::migrate`].
 ///
+/// - 5: `tracks.bpm` became `REAL`, `tracks.bpm_confidence` added
 /// - 4: `events`
 /// - 3: `undo_entries`
 /// - 2: `dismissed_groups`
 /// - 1: initial
-pub const SCHEMA_VERSION: i64 = 4;
+pub const SCHEMA_VERSION: i64 = 5;
 
 /// Key under which the schema version lives in `schema_meta`.
 pub const KEY_SCHEMA_VERSION: &str = "schema_version";
@@ -71,7 +72,11 @@ CREATE TABLE IF NOT EXISTS tracks (
     catalog_number  TEXT,
     label           TEXT,
     country         TEXT,
-    bpm             INTEGER,
+    -- REAL, not INTEGER: Rekordbox stores fractional tempos and so do we.
+    bpm             REAL,
+    -- How much the detector trusted its own answer (0..1). NULL where the BPM
+    -- came from the file's tag instead of from analysis.
+    bpm_confidence  REAL,
     has_cover       INTEGER NOT NULL
 );
 
@@ -140,9 +145,147 @@ pub fn apply_pragmas(conn: &Connection) -> DbResult<()> {
 }
 
 /// Creates the schema if needed and records the version. Safe to call repeatedly.
+///
+/// Order matters: transforming steps run *before* [`SCHEMA_SQL`], because that
+/// batch is all `CREATE … IF NOT EXISTS` and would otherwise be a no-op over a
+/// table a step has just rebuilt — and because rebuilding a table drops its
+/// indexes, which the batch then recreates.
 pub fn init(conn: &Connection) -> DbResult<()> {
     apply_pragmas(conn)?;
+    let from = stored_version(conn)?;
+    upgrade(conn, from)?;
     conn.execute_batch(SCHEMA_SQL)?;
     super::meta_set(conn, KEY_SCHEMA_VERSION, &SCHEMA_VERSION.to_string())?;
     Ok(())
+}
+
+/// The version recorded in the database, or `None` for one that has never been
+/// initialised. A value that is present but unparseable counts as "very old",
+/// so every step runs rather than none.
+fn stored_version(conn: &Connection) -> DbResult<Option<i64>> {
+    let exists: bool = conn.query_row(
+        "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'schema_meta'",
+        [],
+        |_| Ok(true),
+    )
+    .unwrap_or(false);
+    if !exists {
+        return Ok(None);
+    }
+    Ok(Some(
+        super::meta_get(conn, KEY_SCHEMA_VERSION)?
+            .and_then(|v| v.parse().ok())
+            .unwrap_or(0),
+    ))
+}
+
+/// Transforming migrations — the ones `CREATE … IF NOT EXISTS` cannot express.
+/// A fresh database (`from == None`) needs none of them: [`SCHEMA_SQL`] already
+/// describes the current shape.
+fn upgrade(conn: &Connection, from: Option<i64>) -> DbResult<()> {
+    let Some(from) = from else {
+        return Ok(());
+    };
+    if from < 5 {
+        widen_bpm_to_real(conn)?;
+    }
+    Ok(())
+}
+
+/// Rebuilds `tracks` so `bpm` is declared `REAL` and `bpm_confidence` exists.
+///
+/// SQLite cannot change a column's type in place, so this is the documented
+/// create/copy/drop/rename dance. Two things about it are easy to get wrong:
+///
+/// - **Foreign keys have to be off.** `fingerprints.path` references
+///   `tracks(path)` with `ON DELETE CASCADE`, and `apply_pragmas` turns
+///   enforcement on — so dropping the old table would take every cached
+///   fingerprint with it. The pragma cannot change inside a transaction, hence
+///   the explicit off/commit/on order below.
+/// - **It has to be idempotent.** A crash between the drop and the rename would
+///   otherwise leave a database no later start can repair.
+fn widen_bpm_to_real(conn: &Connection) -> DbResult<()> {
+    let has_tracks: bool = conn
+        .query_row(
+            "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'tracks'",
+            [],
+            |_| Ok(true),
+        )
+        .unwrap_or(false);
+    if !has_tracks {
+        return Ok(()); // nothing to migrate; SCHEMA_SQL will create it
+    }
+    if column_exists(conn, "tracks", "bpm_confidence")? {
+        return Ok(()); // already migrated
+    }
+
+    conn.pragma_update(None, "foreign_keys", "OFF")?;
+    let result = (|| -> DbResult<()> {
+        conn.execute_batch(
+            r#"
+BEGIN;
+CREATE TABLE tracks_v5 (
+    path            TEXT PRIMARY KEY,
+    library_dir     TEXT NOT NULL,
+    file_name       TEXT NOT NULL,
+    mtime_ms        INTEGER,
+    size_bytes      INTEGER,
+    download_date   INTEGER,
+    container       TEXT NOT NULL,
+    codec           TEXT NOT NULL,
+    sample_rate     INTEGER NOT NULL,
+    bits_per_sample INTEGER NOT NULL,
+    channels        INTEGER NOT NULL,
+    duration_secs   REAL NOT NULL,
+    lossless        INTEGER NOT NULL,
+    title           TEXT,
+    artist          TEXT,
+    album           TEXT,
+    album_artist    TEXT,
+    genre           TEXT,
+    year            TEXT,
+    track_number    INTEGER,
+    catalog_number  TEXT,
+    label           TEXT,
+    country         TEXT,
+    bpm             REAL,
+    bpm_confidence  REAL,
+    has_cover       INTEGER NOT NULL
+);
+INSERT INTO tracks_v5 (
+    path, library_dir, file_name, mtime_ms, size_bytes, download_date,
+    container, codec, sample_rate, bits_per_sample, channels, duration_secs,
+    lossless, title, artist, album, album_artist, genre, year, track_number,
+    catalog_number, label, country, bpm, has_cover
+)
+SELECT
+    path, library_dir, file_name, mtime_ms, size_bytes, download_date,
+    container, codec, sample_rate, bits_per_sample, channels, duration_secs,
+    lossless, title, artist, album, album_artist, genre, year, track_number,
+    catalog_number, label, country, bpm, has_cover
+FROM tracks;
+DROP TABLE tracks;
+ALTER TABLE tracks_v5 RENAME TO tracks;
+COMMIT;
+"#,
+        )
+    })();
+    // Restore enforcement whatever happened, or the rest of the session runs
+    // with the cascade silently disabled.
+    conn.pragma_update(None, "foreign_keys", "ON")?;
+    result
+}
+
+/// Does a table have this column? Used to make a migration idempotent without
+/// relying on the recorded version alone.
+fn column_exists(conn: &Connection, table: &str, column: &str) -> DbResult<bool> {
+    let mut stmt = conn.prepare(&format!("PRAGMA table_info({table})"))?;
+    let mut rows = stmt.query([])?;
+    while let Some(row) = rows.next()? {
+        let name: String = row.get(1)?;
+        if name == column {
+            return Ok(true);
+        }
+    }
+    Ok(false)
 }

@@ -53,5 +53,6 @@ export function makeTrack(over: Partial<TrackAnalysis> = {}): TrackAnalysis {
     compat: over.compat ?? makeCompat(),
     metadata_incomplete: over.metadata_incomplete ?? false,
     download_date: over.download_date ?? null,
+    bpm_confidence: over.bpm_confidence ?? null,
   };
 }

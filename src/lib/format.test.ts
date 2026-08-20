@@ -1,6 +1,10 @@
 import { describe, expect, it } from "vitest";
 import {
+  UNCERTAIN_BPM_CONFIDENCE,
+  bpmIsUncertain,
   editComplete,
+  formatBpm,
+  parseBpmInput,
   formatBytes,
   formatDate,
   formatDuration,
@@ -147,5 +151,68 @@ describe("trackStatus", () => {
       cover: { kind: "keep" },
     };
     expect(kinds(track, edit)).toEqual(["incomplete"]);
+  });
+});
+
+describe("formatBpm", () => {
+  it("shows whole beats", () => {
+    // What a DJ reads, and what other DJ software shows. The decimals stay in
+    // the file and the library; this is display only.
+    expect(formatBpm(128)).toBe("128");
+    expect(formatBpm(127.61)).toBe("128");
+    expect(formatBpm(127.4)).toBe("127");
+    expect(formatBpm(128)).not.toContain(".");
+  });
+
+  it("hides the artefacts of a widened f32", () => {
+    // The detector works in f32; 127.6 widened to f64 is this.
+    expect(formatBpm(127.5999984741211)).toBe("128");
+    expect(formatBpm(89.99999237060547)).toBe("90");
+  });
+
+  it("shows a dash rather than a number for nothing", () => {
+    expect(formatBpm(null)).toBe("–");
+    expect(formatBpm(undefined)).toBe("–");
+    expect(formatBpm(NaN)).toBe("–");
+    expect(formatBpm(Infinity)).toBe("–");
+  });
+});
+
+describe("bpmIsUncertain", () => {
+  it("is false where the tempo came from the tag", () => {
+    // No confidence means nobody detected it — that is not "uncertain".
+    expect(bpmIsUncertain(null)).toBe(false);
+    expect(bpmIsUncertain(undefined)).toBe(false);
+  });
+
+  it("marks exactly what the backend refused to write", () => {
+    // The threshold has to agree with MIN_WRITE_CONFIDENCE in commands.rs, or
+    // the app shows a value as trustworthy that is not in the file.
+    expect(bpmIsUncertain(UNCERTAIN_BPM_CONFIDENCE - 0.01)).toBe(true);
+    expect(bpmIsUncertain(UNCERTAIN_BPM_CONFIDENCE)).toBe(false);
+    expect(bpmIsUncertain(0)).toBe(true);
+    expect(bpmIsUncertain(1)).toBe(false);
+  });
+});
+
+describe("parseBpmInput", () => {
+  it("accepts a comma as the decimal separator", () => {
+    // A German keyboard produces this, and so do plenty of taggers.
+    expect(parseBpmInput("127,6")).toBe(127.6);
+    expect(parseBpmInput("127.6")).toBe(127.6);
+  });
+
+  it("takes whole numbers and stray whitespace", () => {
+    expect(parseBpmInput("128")).toBe(128);
+    expect(parseBpmInput("  174 ")).toBe(174);
+  });
+
+  it("clears the field for anything unusable", () => {
+    expect(parseBpmInput("")).toBeNull();
+    expect(parseBpmInput("   ")).toBeNull();
+    expect(parseBpmInput("fast")).toBeNull();
+    // Zero and negatives are not tempos; they used to slip through as numbers.
+    expect(parseBpmInput("0")).toBeNull();
+    expect(parseBpmInput("-128")).toBeNull();
   });
 });

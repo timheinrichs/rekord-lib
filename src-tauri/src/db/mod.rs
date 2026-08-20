@@ -143,7 +143,14 @@ pub fn meta_set(conn: &Connection, key: &str, value: &str) -> DbResult<()> {
 /// Column list shared by the read paths, so they cannot drift apart.
 const TRACK_COLUMNS: &str = "path, file_name, download_date, container, codec, sample_rate, \
      bits_per_sample, channels, duration_secs, lossless, title, artist, album, album_artist, \
-     genre, year, track_number, catalog_number, label, country, bpm, has_cover";
+     genre, year, track_number, catalog_number, label, country, bpm, has_cover, bpm_confidence";
+
+/// How many columns [`TRACK_COLUMNS`] selects. Queries that append further
+/// columns index them from here instead of from a hardcoded number — appending
+/// `bpm_confidence` to the list above once shifted `mtime_ms` out from under
+/// [`load_track_cache`], which read a confidence where an mtime should have been.
+/// `track_columns_and_count_agree` keeps the two in step.
+const TRACK_COLUMN_COUNT: usize = 23;
 
 /// Rebuilds a [`TrackAnalysis`] from a row. `compat` and `metadata_incomplete`
 /// are recomputed rather than read: they are derived values, and recomputing
@@ -174,6 +181,10 @@ fn row_to_track(row: &rusqlite::Row) -> DbResult<TrackAnalysis> {
         bpm: row.get(20)?,
         has_cover: row.get(21)?,
     };
+    // Read as f64 and narrowed: rusqlite has no `FromSql` for `f32`, and the
+    // column is REAL either way. The model keeps f32 because a 0..1 quality
+    // value does not deserve eight bytes of precision.
+    let bpm_confidence = row.get::<_, Option<f64>>(22)?.map(|v| v as f32);
     let compat = compat::evaluate(&audio);
     let metadata_incomplete = !metadata.is_complete();
     Ok(TrackAnalysis {
@@ -185,6 +196,7 @@ fn row_to_track(row: &rusqlite::Row) -> DbResult<TrackAnalysis> {
         compat,
         metadata_incomplete,
         download_date: row.get(2)?,
+        bpm_confidence,
     })
 }
 
@@ -223,8 +235,8 @@ pub fn load_track_cache(
     let rows = stmt.query_map(params![library_dir], |row| {
         let track = row_to_track(row)?;
         let fs = FsIdentity {
-            mtime_ms: row.get(22)?,
-            size_bytes: row.get(23)?,
+            mtime_ms: row.get(TRACK_COLUMN_COUNT)?,
+            size_bytes: row.get(TRACK_COLUMN_COUNT + 1)?,
         };
         Ok((track.path.clone(), CachedTrack { track, fs }))
     })?;
@@ -250,12 +262,12 @@ pub fn upsert_tracks(
                 path, library_dir, file_name, mtime_ms, size_bytes, download_date,
                 container, codec, sample_rate, bits_per_sample, channels, duration_secs, lossless,
                 title, artist, album, album_artist, genre, year, track_number,
-                catalog_number, label, country, bpm, has_cover
+                catalog_number, label, country, bpm, has_cover, bpm_confidence
              ) VALUES (
                 ?1, ?2, ?3, ?4, ?5, ?6,
                 ?7, ?8, ?9, ?10, ?11, ?12, ?13,
                 ?14, ?15, ?16, ?17, ?18, ?19, ?20,
-                ?21, ?22, ?23, ?24, ?25
+                ?21, ?22, ?23, ?24, ?25, ?26
              )
              ON CONFLICT(path) DO UPDATE SET
                 library_dir = excluded.library_dir,
@@ -281,7 +293,8 @@ pub fn upsert_tracks(
                 label = excluded.label,
                 country = excluded.country,
                 bpm = excluded.bpm,
-                has_cover = excluded.has_cover",
+                has_cover = excluded.has_cover,
+                bpm_confidence = excluded.bpm_confidence",
         )?;
         for rec in records {
             let t = &rec.track;
@@ -311,6 +324,7 @@ pub fn upsert_tracks(
                 t.metadata.country,
                 t.metadata.bpm,
                 t.metadata.has_cover,
+                t.bpm_confidence.map(|c| c as f64),
             ])?;
         }
     }
@@ -800,6 +814,18 @@ mod tests {
         }
     }
 
+    #[test]
+    fn track_columns_and_count_agree() {
+        // The count is what keeps queries that append columns (load_track_cache)
+        // pointing at the right ones. Add a column to TRACK_COLUMNS without
+        // bumping this, and the failure is silent and wrong rather than loud.
+        assert_eq!(
+            TRACK_COLUMNS.split(',').count(),
+            TRACK_COLUMN_COUNT,
+            "TRACK_COLUMN_COUNT no longer matches TRACK_COLUMNS"
+        );
+    }
+
     fn track(path: &str) -> TrackAnalysis {
         TrackAnalysis {
             id: path.to_string(),
@@ -825,7 +851,7 @@ mod tests {
                 catalog_number: Some("TD4503".into()),
                 label: Some("Topic Drift".into()),
                 country: None,
-                bpm: Some(120),
+                bpm: Some(120.0),
                 has_cover: true,
             },
             // Deliberately wrong on the way in: both derived fields must come
@@ -836,6 +862,7 @@ mod tests {
             },
             metadata_incomplete: true,
             download_date: Some(1_700_000_000_000),
+            bpm_confidence: Some(0.62),
         }
     }
 
@@ -887,7 +914,7 @@ mod tests {
         assert_eq!(t.file_name, "a.aiff");
         assert_eq!(t.audio.sample_rate, 44100);
         assert!(t.audio.lossless);
-        assert_eq!(t.metadata.bpm, Some(120));
+        assert_eq!(t.metadata.bpm, Some(120.0));
         assert_eq!(t.metadata.label.as_deref(), Some("Topic Drift"));
         assert_eq!(t.metadata.country, None);
         assert_eq!(t.download_date, Some(1_700_000_000_000));
@@ -904,12 +931,12 @@ mod tests {
         upsert_tracks(&mut conn, "/lib", &[record("/lib/a.aiff", Some(identity(1, 2)))]).unwrap();
 
         let mut changed = record("/lib/a.aiff", Some(identity(99, 100)));
-        changed.track.metadata.bpm = Some(128);
+        changed.track.metadata.bpm = Some(128.0);
         upsert_tracks(&mut conn, "/lib", &[changed]).unwrap();
 
         let loaded = load_tracks(&conn, "/lib").unwrap();
         assert_eq!(loaded.len(), 1);
-        assert_eq!(loaded[0].metadata.bpm, Some(128));
+        assert_eq!(loaded[0].metadata.bpm, Some(128.0));
         let cache = load_track_cache(&conn, "/lib").unwrap();
         assert_eq!(cache["/lib/a.aiff"].fs, identity(99, 100));
     }
@@ -1475,6 +1502,202 @@ mod tests {
 
         push_undo(&mut conn, "after upgrade", &[undo_item("/lib/a.aiff", "1")]).unwrap();
         assert_eq!(latest_undo(&conn).unwrap().unwrap().label, "after upgrade");
+    }
+
+    /// A v4 `tracks` table: `bpm INTEGER`, no `bpm_confidence`. Written out in
+    /// full rather than generated, because the point of the migration tests is
+    /// to run against the shape that is really out there on users' disks.
+    fn create_v4_tracks(conn: &Connection) {
+        conn.execute_batch(
+            "CREATE TABLE schema_meta (key TEXT PRIMARY KEY, value TEXT NOT NULL);
+             INSERT INTO schema_meta VALUES ('schema_version', '4');
+             CREATE TABLE tracks (
+                path TEXT PRIMARY KEY, library_dir TEXT NOT NULL, file_name TEXT NOT NULL,
+                mtime_ms INTEGER, size_bytes INTEGER, download_date INTEGER,
+                container TEXT NOT NULL, codec TEXT NOT NULL, sample_rate INTEGER NOT NULL,
+                bits_per_sample INTEGER NOT NULL, channels INTEGER NOT NULL,
+                duration_secs REAL NOT NULL, lossless INTEGER NOT NULL,
+                title TEXT, artist TEXT, album TEXT, album_artist TEXT, genre TEXT,
+                year TEXT, track_number INTEGER, catalog_number TEXT, label TEXT,
+                country TEXT, bpm INTEGER, has_cover INTEGER NOT NULL
+             );
+             CREATE INDEX tracks_library_dir ON tracks(library_dir);
+             CREATE TABLE fingerprints (
+                path TEXT PRIMARY KEY REFERENCES tracks(path) ON DELETE CASCADE,
+                mtime_ms INTEGER NOT NULL, size_bytes INTEGER NOT NULL,
+                algo_version INTEGER NOT NULL, data BLOB NOT NULL
+             );
+             INSERT INTO tracks VALUES (
+                '/lib/a.aiff', '/lib', 'a.aiff', 42, 4242, NULL,
+                'aiff', 'pcm_s16be', 44100, 16, 2, 210.5, 1,
+                'Running', 'Monika', 'TD', 'Monika', NULL, NULL, NULL, NULL, NULL,
+                NULL, 128, 1
+             );
+             INSERT INTO fingerprints VALUES ('/lib/a.aiff', 42, 4242, 1, x'0102');",
+        )
+        .unwrap();
+    }
+
+    #[test]
+    fn the_v5_migration_keeps_the_tracks_and_their_fingerprints() {
+        // The trap this guards: fingerprints.path cascades on delete, and the
+        // migration drops the tracks table. With foreign keys left on, every
+        // cached fingerprint in the library would go with it — silently, and
+        // only noticed as a duplicate search that suddenly re-reads every file.
+        let conn = Connection::open_in_memory().unwrap();
+        create_v4_tracks(&conn);
+        schema::init(&conn).unwrap();
+
+        let tracks = load_tracks(&conn, "/lib").unwrap();
+        assert_eq!(tracks.len(), 1, "the track itself must survive");
+        assert_eq!(tracks[0].metadata.bpm, Some(128.0));
+        assert_eq!(tracks[0].metadata.title.as_deref(), Some("Running"));
+        assert_eq!(tracks[0].bpm_confidence, None, "v4 knew no confidence");
+
+        let count: i64 = conn
+            .query_row("SELECT count(*) FROM fingerprints", [], |r| r.get(0))
+            .unwrap();
+        assert_eq!(count, 1, "the fingerprint cache was cascaded away");
+
+        // Enforcement has to be back on afterwards, or the rest of the session
+        // runs without the cascade it relies on.
+        let fk: i64 = conn
+            .query_row("PRAGMA foreign_keys", [], |r| r.get(0))
+            .unwrap();
+        assert_eq!(fk, 1, "foreign key enforcement was left off");
+    }
+
+    #[test]
+    fn a_migrated_database_stores_fractional_tempos() {
+        // The reason for the migration: an INTEGER-affinity column would have
+        // taken 127.6 as well, but the declared type would have disagreed with
+        // a fresh install's. This asserts the value, not the affinity.
+        let mut conn = Connection::open_in_memory().unwrap();
+        create_v4_tracks(&conn);
+        schema::init(&conn).unwrap();
+
+        let mut t = track("/lib/b.aiff");
+        t.metadata.bpm = Some(127.6);
+        t.bpm_confidence = Some(0.42);
+        let rec = TrackRecord {
+            track: t,
+            fs: Some(identity(1, 2)),
+        };
+        upsert_tracks(&mut conn, "/lib", &[rec]).unwrap();
+
+        let loaded = load_tracks(&conn, "/lib").unwrap();
+        let b = loaded.iter().find(|t| t.path == "/lib/b.aiff").unwrap();
+        assert_eq!(b.metadata.bpm, Some(127.6));
+        assert_eq!(b.bpm_confidence, Some(0.42));
+    }
+
+    #[test]
+    fn a_migrated_database_has_the_same_tracks_schema_as_a_fresh_one() {
+        // Without this, the migration and SCHEMA_SQL drift apart the next time a
+        // column is added, and only one of the two paths gets it.
+        let migrated = Connection::open_in_memory().unwrap();
+        create_v4_tracks(&migrated);
+        schema::init(&migrated).unwrap();
+        let fresh = Connection::open_in_memory().unwrap();
+        schema::init(&fresh).unwrap();
+
+        let describe = |conn: &Connection| -> Vec<(String, String, i64)> {
+            let mut stmt = conn.prepare("PRAGMA table_info(tracks)").unwrap();
+            let rows = stmt
+                .query_map([], |r| {
+                    Ok((r.get::<_, String>(1)?, r.get::<_, String>(2)?, r.get::<_, i64>(3)?))
+                })
+                .unwrap();
+            rows.map(|r| r.unwrap()).collect()
+        };
+        assert_eq!(describe(&migrated), describe(&fresh));
+
+        // The index goes with the dropped table, so the additive batch has to
+        // put it back — otherwise every library listing turns into a table scan.
+        let index: i64 = migrated
+            .query_row(
+                "SELECT count(*) FROM sqlite_master
+                 WHERE type = 'index' AND name = 'tracks_library_dir'",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(index, 1, "tracks_library_dir was not recreated");
+    }
+
+    #[test]
+    fn the_v5_migration_runs_only_once() {
+        let conn = Connection::open_in_memory().unwrap();
+        create_v4_tracks(&conn);
+        schema::init(&conn).unwrap();
+        // A second start must not rebuild again, and must not lose the row.
+        schema::init(&conn).unwrap();
+        schema::init(&conn).unwrap();
+        assert_eq!(load_tracks(&conn, "/lib").unwrap().len(), 1);
+        assert_eq!(
+            meta_get(&conn, schema::KEY_SCHEMA_VERSION).unwrap(),
+            Some(schema::SCHEMA_VERSION.to_string())
+        );
+    }
+
+    /// Runs the migration over a **copy** of a real database, which is the only
+    /// way to find out whether it survives data the tests never thought of.
+    ///
+    /// ```text
+    /// REKORD_DB_COPY=/tmp/dbcheck \
+    ///   cargo test --release --lib migrates_a_real_database -- --ignored --nocapture
+    /// ```
+    ///
+    /// The directory must hold a copy of `rekord-lib.sqlite3` (plus its `-wal`,
+    /// or recent writes are missing). Never point this at the live app data
+    /// directory: it migrates in place.
+    #[test]
+    #[ignore = "needs a copy of a real database; set REKORD_DB_COPY"]
+    fn migrates_a_real_database_copy() {
+        let dir = std::env::var("REKORD_DB_COPY").expect("set REKORD_DB_COPY");
+        let path = std::path::Path::new(&dir).join(DB_FILE);
+        assert!(path.is_file(), "no database at {}", path.display());
+
+        // Counts before, through a connection that does no migrating.
+        let before = Connection::open(&path).unwrap();
+        let count = |c: &Connection, sql: &str| -> i64 { c.query_row(sql, [], |r| r.get(0)).unwrap() };
+        let tracks_before = count(&before, "SELECT count(*) FROM tracks");
+        let fps_before = count(&before, "SELECT count(*) FROM fingerprints");
+        let bpms_before = count(&before, "SELECT count(*) FROM tracks WHERE bpm IS NOT NULL");
+        let version_before = meta_get(&before, schema::KEY_SCHEMA_VERSION).unwrap();
+        drop(before);
+        println!(
+            "before: {tracks_before} tracks, {fps_before} fingerprints, \
+             {bpms_before} with a tempo, schema {version_before:?}"
+        );
+
+        // Db::open runs schema::init, and with it the migration.
+        let db = Db::open(std::path::Path::new(&dir)).unwrap();
+        let conn = db.conn().unwrap();
+        assert_eq!(count(&conn, "SELECT count(*) FROM tracks"), tracks_before);
+        assert_eq!(count(&conn, "SELECT count(*) FROM fingerprints"), fps_before);
+        assert_eq!(
+            count(&conn, "SELECT count(*) FROM tracks WHERE bpm IS NOT NULL"),
+            bpms_before
+        );
+        assert_eq!(
+            meta_get(&conn, schema::KEY_SCHEMA_VERSION).unwrap(),
+            Some(schema::SCHEMA_VERSION.to_string())
+        );
+
+        // And the rows still read back through the production path.
+        let dirs: Vec<String> = {
+            let mut stmt = conn.prepare("SELECT DISTINCT library_dir FROM tracks").unwrap();
+            let rows = stmt.query_map([], |r| r.get(0)).unwrap();
+            rows.map(|r| r.unwrap()).collect()
+        };
+        let mut loaded = 0;
+        for d in &dirs {
+            loaded += load_tracks(&conn, d).unwrap().len();
+            load_track_cache(&conn, d).unwrap();
+        }
+        println!("after: {loaded} tracks read back from {} folders", dirs.len());
+        assert_eq!(loaded as i64, tracks_before);
     }
 
     #[test]

@@ -44,6 +44,103 @@ describe("MetadataEditor", () => {
     expect(screen.getByText("Catalog no.")).toBeInTheDocument();
   });
 
+  it("keeps a typed decimal tempo, comma included", async () => {
+    // parseInt used to truncate this to 127, silently rewriting the user's tag.
+    const saved: TrackEdit[] = [];
+    const track = makeTrack({ metadata: makeMetadata({ bpm: null }) });
+    render(
+      <MetadataEditor
+        track={track}
+        onClose={() => {}}
+        onSave={(e) => saved.push(e)}
+      />,
+    );
+    await userEvent.click(screen.getByTitle("Edit BPM"));
+    await userEvent.type(screen.getByPlaceholderText("–"), "127,6");
+    await userEvent.click(screen.getByRole("button", { name: /confirm/i }));
+    expect(saved[0].metadata.bpm).toBe(127.6);
+  });
+
+  it("shows a rounded tempo but saves the stored one untouched", async () => {
+    // The display is whole beats, the file holds 127.61. Writing the field back
+    // verbatim would round the decimals away on every save — including one that
+    // only changed the genre.
+    const saved: TrackEdit[] = [];
+    const track = makeTrack({ metadata: makeMetadata({ bpm: 127.61 }) });
+    render(
+      <MetadataEditor
+        track={track}
+        onClose={() => {}}
+        onSave={(e) => saved.push(e)}
+      />,
+    );
+    expect(screen.getByTitle("Edit BPM").textContent).toBe("128");
+    await userEvent.click(screen.getByRole("button", { name: /confirm/i }));
+    expect(saved[0].metadata.bpm).toBe(127.61);
+  });
+
+  it("keeps the stored tempo when an unrelated field is edited", async () => {
+    const saved: TrackEdit[] = [];
+    const track = makeTrack({ metadata: makeMetadata({ bpm: 127.61 }) });
+    render(
+      <MetadataEditor
+        track={track}
+        onClose={() => {}}
+        onSave={(e) => saved.push(e)}
+      />,
+    );
+    await userEvent.type(fieldInput("Genre"), "Electro");
+    await userEvent.click(screen.getByRole("button", { name: /confirm/i }));
+    expect(saved[0].metadata.bpm).toBe(127.61);
+  });
+
+  it("takes a real edit of the tempo", async () => {
+    const saved: TrackEdit[] = [];
+    const track = makeTrack({ metadata: makeMetadata({ bpm: 127.61 }) });
+    render(
+      <MetadataEditor
+        track={track}
+        onClose={() => {}}
+        onSave={(e) => saved.push(e)}
+      />,
+    );
+    await userEvent.click(screen.getByTitle("Edit BPM"));
+    const input = screen.getByDisplayValue("128");
+    await userEvent.clear(input);
+    await userEvent.type(input, "140");
+    await userEvent.click(screen.getByRole("button", { name: /confirm/i }));
+    expect(saved[0].metadata.bpm).toBe(140);
+  });
+
+  it("says so when a detected tempo never reached the file", async () => {
+    // The row and the file disagree in exactly this case, and nothing else in
+    // the UI would tell the user.
+    const track = makeTrack({
+      metadata: makeMetadata({ bpm: 128 }),
+      bpm_confidence: 0.12,
+    });
+    render(<MetadataEditor track={track} onClose={() => {}} onSave={() => {}} />);
+    expect(screen.getByText(/12% sure, not written/)).toBeTruthy();
+  });
+
+  it("reports a confident detection without alarming about it", async () => {
+    const track = makeTrack({
+      metadata: makeMetadata({ bpm: 128 }),
+      bpm_confidence: 0.93,
+    });
+    render(<MetadataEditor track={track} onClose={() => {}} onSave={() => {}} />);
+    expect(screen.getByText("93% sure")).toBeTruthy();
+  });
+
+  it("shows nothing about confidence for a tempo read from the tag", async () => {
+    const track = makeTrack({
+      metadata: makeMetadata({ bpm: 128 }),
+      bpm_confidence: null,
+    });
+    render(<MetadataEditor track={track} onClose={() => {}} onSave={() => {}} />);
+    expect(screen.queryByText(/sure/)).toBeNull();
+  });
+
   it("shows a disabled path field and reveals it in Finder", async () => {
     const track = makeTrack({ path: "/music/Album/song.aiff" });
     render(<MetadataEditor track={track} onClose={() => {}} onSave={() => {}} />);

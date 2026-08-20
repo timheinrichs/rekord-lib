@@ -78,8 +78,12 @@ pub struct TrackMetadata {
     pub country: Option<String>,
     /// Tempo in beats per minute (ID3 `TBPM`, MP4 `tmpo`, Vorbis `BPM`).
     /// Either read from the tag or detected by [`crate::audio::bpm`].
+    ///
+    /// Fractional, because Rekordbox stores it that way and nearly half of a
+    /// real collection's tempos are not integers. Older stored values were
+    /// integers, which deserialise into this without help.
     #[serde(default)]
-    pub bpm: Option<u32>,
+    pub bpm: Option<f64>,
     pub has_cover: bool,
 }
 
@@ -134,6 +138,14 @@ pub struct TrackAnalysis {
     pub metadata_incomplete: bool,
     /// File creation time (Unix millis) — used as the "downloaded/added" date.
     pub download_date: Option<i64>,
+    /// How much the detector trusted its own tempo (0..1), or `None` where the
+    /// BPM came from the file's tag rather than from analysis.
+    ///
+    /// Deliberately *not* in [`TrackMetadata`]: that mirrors what is written
+    /// into files and travels through the write and undo paths, while this is
+    /// analysis state about the last detection.
+    #[serde(default)]
+    pub bpm_confidence: Option<f32>,
 }
 
 /// Options for a conversion run.

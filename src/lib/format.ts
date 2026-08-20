@@ -31,6 +31,52 @@ export function formatDate(ms: number | null): string {
   return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
 }
 
+/**
+ * Confidence below which a detected tempo was **not** written into the file.
+ * Mirrors `MIN_WRITE_CONFIDENCE` in `src-tauri/src/commands.rs` (measured there,
+ * not chosen), and the marker means exactly that: the number on screen is not in
+ * your file. Roughly 1 % of a real collection lands here, so it stays a rare
+ * mark rather than a wall of colour.
+ */
+export const UNCERTAIN_BPM_CONFIDENCE = 0.3;
+
+/**
+ * A tempo for display: whole beats, "128".
+ *
+ * The decimals are kept in the file and in the library — nearly half of a real
+ * collection's tempos are fractional — but showing them turns every column into
+ * "127.61" where "128" is what a DJ reads. Other DJ software displays it the
+ * same way.
+ *
+ * This is display only, and that distinction carries weight in the metadata
+ * editor: the field there is editable, so `toMetadata` keeps the original value
+ * whenever the text was not touched. Otherwise editing an album's genre would
+ * round every tempo in it.
+ */
+export function formatBpm(bpm: number | null | undefined): string {
+  if (bpm == null || !Number.isFinite(bpm)) return "–";
+  return String(Math.round(bpm));
+}
+
+/**
+ * A tempo the user typed, as a number. Accepts a comma as the decimal
+ * separator, because that is what a German keyboard produces and what taggers
+ * write ("127,6"); `parseFloat` alone would read that as 127.
+ *
+ * Returns null for anything that is not a usable tempo, which is how the editor
+ * clears the field.
+ */
+export function parseBpmInput(raw: string): number | null {
+  const parsed = parseFloat(raw.trim().replace(",", "."));
+  if (!Number.isFinite(parsed) || parsed <= 0) return null;
+  return parsed;
+}
+
+/** Was this tempo detected without much conviction? */
+export function bpmIsUncertain(confidence: number | null | undefined): boolean {
+  return confidence != null && confidence < UNCERTAIN_BPM_CONFIDENCE;
+}
+
 export function formatSampleRate(hz: number): string {
   if (!hz) return "–";
   return `${(hz / 1000).toFixed(1)} kHz`;

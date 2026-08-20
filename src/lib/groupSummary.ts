@@ -70,11 +70,19 @@ export function summarizeGroup(
   };
 }
 
-/** "128" for an agreeing group, "126–130" for a spread, "–" for none. */
+/**
+ * "128" for an agreeing group, "126–130" for a spread, "–" for none.
+ *
+ * Rounded to whole beats first: tempos are fractional now, and an album whose
+ * tracks were detected at 127.96 and 128.04 is one tempo as far as a group
+ * header is concerned — printing "127.96–128.04" there would be noise, not
+ * information. The per-track cell still shows the decimal.
+ */
 function tempoLabel(tempos: number[]): string {
   if (!tempos.length) return "–";
-  const min = Math.min(...tempos);
-  const max = Math.max(...tempos);
+  const whole = tempos.map((t) => Math.round(t));
+  const min = Math.min(...whole);
+  const max = Math.max(...whole);
   return min === max ? String(min) : `${min}–${max}`;
 }
 

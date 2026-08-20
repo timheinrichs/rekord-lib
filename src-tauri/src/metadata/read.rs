@@ -47,8 +47,8 @@ fn non_empty(v: Option<String>) -> Option<String> {
 /// Reads the BPM from whichever key the tag format uses. Both variants are
 /// tried because lofty maps only `IntegerBpm` for ID3v2 (`TBPM`) but only
 /// `Bpm` for Vorbis comments. Values are parsed leniently: taggers write
-/// "128", "128.00" and "128,0" alike, and only whole beats are kept.
-pub(crate) fn bpm_of(tag: &lofty::tag::Tag) -> Option<u32> {
+/// "128", "128.00" and "128,0" alike, and the fraction is kept.
+pub(crate) fn bpm_of(tag: &lofty::tag::Tag) -> Option<f64> {
     for key in [ItemKey::IntegerBpm, ItemKey::Bpm] {
         if let Some(raw) = tag.get_string(&key) {
             if let Some(bpm) = parse_bpm(raw) {
@@ -59,14 +59,19 @@ pub(crate) fn bpm_of(tag: &lofty::tag::Tag) -> Option<u32> {
     None
 }
 
-/// "128.00" / "128,5" / " 128 " -> 128. Rejects 0 and implausible values.
-fn parse_bpm(raw: &str) -> Option<u32> {
+/// "128.00" -> 128.0, "128,5" -> 128.5, " 128 " -> 128.0. Rejects 0 and
+/// implausible values.
+///
+/// The decimals are kept rather than rounded away: Rekordbox writes fractional
+/// tempos, and rounding on read would silently rewrite the user's own value the
+/// next time we save the tag.
+fn parse_bpm(raw: &str) -> Option<f64> {
     let cleaned = raw.trim().replace(',', ".");
     let value: f64 = cleaned.parse().ok()?;
     if !value.is_finite() || value < 1.0 || value > 1000.0 {
         return None;
     }
-    Some(value.round() as u32)
+    Some(value)
 }
 
 #[cfg(test)]
@@ -75,10 +80,13 @@ mod tests {
 
     #[test]
     fn parses_the_shapes_taggers_actually_write() {
-        assert_eq!(parse_bpm("128"), Some(128));
-        assert_eq!(parse_bpm("128.00"), Some(128));
-        assert_eq!(parse_bpm("127,6"), Some(128));
-        assert_eq!(parse_bpm("  174 "), Some(174));
+        assert_eq!(parse_bpm("128"), Some(128.0));
+        assert_eq!(parse_bpm("128.00"), Some(128.0));
+        // The fraction survives — this used to round to 128 and throw away
+        // exactly what Rekordbox had stored.
+        assert_eq!(parse_bpm("127,6"), Some(127.6));
+        assert_eq!(parse_bpm("128.53"), Some(128.53));
+        assert_eq!(parse_bpm("  174 "), Some(174.0));
     }
 
     #[test]

@@ -110,7 +110,7 @@ pub async fn resolve_cover(source: &str, cover: &CoverInput) -> AppResult<Option
 /// Writes *only* the BPM into an existing file. Deliberately not routed through
 /// [`finalize`]: that resolves and re-encodes the cover, and the scan's BPM pass
 /// must touch nothing but this one tag on thousands of files.
-pub fn write_bpm(path: &str, bpm: u32) -> AppResult<()> {
+pub fn write_bpm(path: &str, bpm: f64) -> AppResult<()> {
     let mut tagged = read_from_path(path).map_err(|e| AppError::Metadata(e.to_string()))?;
     if tagged.primary_tag().is_none() {
         let tag_type = tagged.file_type().primary_tag_type();
@@ -119,7 +119,7 @@ pub fn write_bpm(path: &str, bpm: u32) -> AppResult<()> {
     let tag = tagged
         .primary_tag_mut()
         .ok_or_else(|| AppError::Metadata("no writable tag".into()))?;
-    tag.insert_text(bpm_key(tag.tag_type()), bpm.to_string());
+    tag.insert_text(bpm_key(tag.tag_type()), format_bpm(bpm));
     tag.save_to_path(path, WriteOptions::default())
         .map_err(|e| AppError::Metadata(format!("Failed to write BPM: {e}")))
 }
@@ -204,7 +204,7 @@ pub async fn finalize(
         let bpm_key = bpm_key(tag.tag_type());
         match md.bpm {
             Some(n) => {
-                tag.insert_text(bpm_key, n.to_string());
+                tag.insert_text(bpm_key, format_bpm(n));
             }
             None if clear_empty => {
                 tag.remove_key(&ItemKey::IntegerBpm);
@@ -256,6 +256,14 @@ fn clean(v: &Option<String>) -> Option<String> {
     v.as_ref()
         .map(|s| s.trim().to_string())
         .filter(|s| !s.is_empty())
+}
+
+/// How a tempo is spelled in a tag: two decimals, the way Rekordbox writes it
+/// ("128.00", "127.60"). A fixed number of decimals keeps the round trip stable
+/// — read gives 128.0, write gives "128.00", read gives 128.0 again — so saving
+/// a file twice does not keep changing its tag.
+fn format_bpm(bpm: f64) -> String {
+    format!("{bpm:.2}")
 }
 
 /// The BPM key the given tag format actually maps. lofty drops unmapped keys
@@ -310,13 +318,45 @@ mod tests {
     }
 
     #[test]
+    fn bpm_keeps_its_decimals_through_a_tag_round_trip() {
+        for tag_type in [TagType::Id3v2, TagType::Mp4Ilst, TagType::VorbisComments] {
+            let mut tag = Tag::new(tag_type);
+            tag.insert_text(bpm_key(tag_type), format_bpm(127.6));
+            assert_eq!(
+                crate::metadata::read::bpm_of(&tag),
+                Some(127.6),
+                "the fraction was lost for {tag_type:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn format_bpm_is_stable_and_rekordbox_shaped() {
+        assert_eq!(format_bpm(128.0), "128.00");
+        assert_eq!(format_bpm(127.6), "127.60");
+        assert_eq!(format_bpm(174.128), "174.13");
+        // Exact halves round to even, because that is what Rust's formatter
+        // does and 174.125 is exactly representable in binary. Asserted rather
+        // than worked around: the value only has to be *stable*, not to follow
+        // school rounding.
+        assert_eq!(format_bpm(174.125), "174.12");
+        // Writing what we just read must not drift: the second pass has to
+        // produce the same text as the first, or every save would nudge the tag.
+        let mut tag = Tag::new(TagType::Id3v2);
+        let once = format_bpm(127.6);
+        tag.insert_text(bpm_key(TagType::Id3v2), once.clone());
+        let reread = crate::metadata::read::bpm_of(&tag).expect("read back");
+        assert_eq!(format_bpm(reread), once);
+    }
+
+    #[test]
     fn bpm_survives_a_generic_tag_round_trip() {
         for tag_type in WRITTEN_TAG_TYPES {
             let mut tag = Tag::new(tag_type);
             tag.insert_text(bpm_key(tag_type), "128".to_string());
             assert_eq!(
                 crate::metadata::read::bpm_of(&tag),
-                Some(128),
+                Some(128.0),
                 "{tag_type:?} did not round-trip"
             );
         }

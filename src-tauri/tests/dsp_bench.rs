@@ -595,6 +595,11 @@ struct Row {
     stratum: Option<f32>,
     /// `stratum-dsp`'s key. Ours has none — that absence is what B1 is about.
     stratum_key: Option<MusicalKey>,
+    /// How much our detector trusted its own answer. Dumped per track so the
+    /// write threshold in `commands.rs` can be picked from measured data rather
+    /// than guessed: a confidence that does not track correctness would be worse
+    /// than none, because it gates writes into users' files.
+    our_confidence: Option<f32>,
 }
 
 fn collect_audio_files(dir: &Path, out: &mut Vec<PathBuf>) {
@@ -703,10 +708,10 @@ fn benchmark() {
                 let excerpt = our_excerpt(path);
                 let our_decode = t0.elapsed();
                 let t0 = Instant::now();
-                let ours = excerpt
-                    .and_then(|samples| bpm::detect_bpm(&samples, OUR_RATE))
-                    .map(|v| v as f32);
+                let detected = excerpt.and_then(|samples| bpm::detect_bpm(&samples, OUR_RATE));
                 let our_analyze = t0.elapsed();
+                let ours = detected.map(|t| t.bpm);
+                let our_confidence = detected.map(|t| t.confidence);
 
                 // stratum-dsp: 44.1 kHz, mono f32 in [-1, 1], same window as
                 // ours unless the full-track experiment was asked for.
@@ -764,6 +769,7 @@ fn benchmark() {
                     ours,
                     stratum,
                     stratum_key,
+                    our_confidence,
                 });
 
                 let n = done.fetch_add(1, Ordering::Relaxed) + 1;
@@ -811,18 +817,21 @@ fn benchmark() {
 /// exists to keep out of the repository.
 fn per_track_csv(rows: &[Row]) -> String {
     let mut out = String::from(
-        "file,ref_bpm,drift,ref_key,ours,our_verdict,stratum,stratum_verdict,stratum_key,key_verdict\n",
+        "file,ref_bpm,drift,ref_key,ours,our_confidence,our_verdict,stratum,stratum_verdict,stratum_key,key_verdict\n",
     );
     for r in rows {
         let num = |v: Option<f32>| v.map(|x| format!("{x:.2}")).unwrap_or_default();
         let key = |v: Option<MusicalKey>| v.map(|k| k.spelled()).unwrap_or_default();
         out.push_str(&format!(
-            "\"{}\",{:.2},{:.2},{},{},{:?},{},{:?},{},{}\n",
+            "\"{}\",{:.2},{:.2},{},{},{},{:?},{},{:?},{},{}\n",
             r.name.replace('"', "'"),
             r.reference.bpm,
             r.reference.drift,
             key(r.reference.key),
             num(r.ours),
+            r.our_confidence
+                .map(|c| format!("{c:.3}"))
+                .unwrap_or_default(),
             classify(r.ours, r.reference.bpm),
             num(r.stratum),
             classify(r.stratum, r.reference.bpm),

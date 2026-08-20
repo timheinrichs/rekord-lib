@@ -3,6 +3,12 @@
 //! Split in two: [`detect_bpm`] is pure DSP over decoded samples (unit-tested
 //! below with synthetic click tracks), [`analyze_bpm`] only adds the ffmpeg
 //! decode — the same sidecar pipeline the fingerprint uses.
+//!
+//! The result carries a [`Tempo`]: an unrounded BPM plus a confidence. Both
+//! matter downstream. Rekordbox stores fractional tempos and 1042 of the 2180
+//! tracks in our reference set are not integers (`docs/DSP_BENCHMARK.md`), so
+//! rounding threw away real information; and the confidence is what lets the
+//! scan refuse to overwrite an existing tag with a weak guess.
 
 use rustfft::{num_complex::Complex32, FftPlanner};
 use tauri::AppHandle;
@@ -72,12 +78,33 @@ const ENVELOPE_SMOOTH_SECS: f32 = 0.5;
 const MIN_PEAK_CORRELATION: f32 = 0.10;
 const MIN_PEAK_RATIO: f32 = 1.30;
 
+/// Where the two confidence components saturate. A peak correlating at 0.5, or
+/// standing three times above the mean of the searched range, is as convincing
+/// as this detector gets — beyond that the number says nothing more.
+///
+/// These only scale the reported confidence; they are not gates. The gates above
+/// decide whether there is an answer at all, which is why a value that barely
+/// passes them reports a confidence near zero rather than a comfortable one.
+const STRONG_PEAK_CORRELATION: f32 = 0.50;
+const STRONG_PEAK_RATIO: f32 = 3.00;
+
 /// Minimum envelope length relative to the longest lag examined.
 const MIN_PERIODS: usize = 4;
 
+/// A tempo estimate and how strongly the signal supported it.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct Tempo {
+    /// Beats per minute, unrounded — Rekordbox stores decimals and so do we.
+    pub bpm: f32,
+    /// 0..1, where 0 means "only just convincing enough to report at all".
+    /// Derived from how strongly the autocorrelation peaked and how far it stood
+    /// out from the rest of the searched range.
+    pub confidence: f32,
+}
+
 /// Decodes an excerpt of a file to mono PCM via the ffmpeg sidecar and detects
 /// its tempo. `Ok(None)` means "decoded fine, but no convincing tempo".
-pub async fn analyze_bpm(app: &AppHandle, path: &str) -> AppResult<Option<u32>> {
+pub async fn analyze_bpm(app: &AppHandle, path: &str) -> AppResult<Option<Tempo>> {
     // Skip the intro; fall back to the start for tracks shorter than the offset.
     let decode_at = |offset| decode::mono_pcm(app, path, SAMPLE_RATE, offset, EXCERPT_SECS);
     let samples = match decode_at(EXCERPT_OFFSET_SECS).await {
@@ -94,7 +121,7 @@ pub async fn analyze_bpm(app: &AppHandle, path: &str) -> AppResult<Option<u32>> 
 
 /// Detects the tempo of mono PCM samples, or `None` when the signal carries no
 /// convincing periodic pulse (silence, noise, spoken word, too short). Pure.
-pub fn detect_bpm(samples: &[i16], sample_rate: u32) -> Option<u32> {
+pub fn detect_bpm(samples: &[i16], sample_rate: u32) -> Option<Tempo> {
     let (envelope, env_rate) = onset_envelope(samples, sample_rate)?;
     let envelope = subtract_moving_mean(&envelope, (ENVELOPE_SMOOTH_SECS * env_rate) as usize);
 
@@ -126,7 +153,32 @@ pub fn detect_bpm(samples: &[i16], sample_rate: u32) -> Option<u32> {
     let refined = refine_peak(&acf, best);
     let bpm = 60.0 * env_rate / refined;
 
-    Some(fold_to_preferred(bpm, &acf, env_rate).round() as u32)
+    Some(Tempo {
+        bpm: fold_to_preferred(bpm, &acf, env_rate),
+        confidence: confidence(acf[best], mean),
+    })
+}
+
+/// Turns the two quantities the gates already measure into one 0..1 value: how
+/// strongly the envelope correlated at the winning lag, and how far that peak
+/// stood above the average of the searched range.
+///
+/// Combined as a geometric mean, so a peak that is strong but unremarkable —
+/// or distinct but weak — does not pass for confident. Both have to hold.
+fn confidence(peak: f32, range_mean: f32) -> f32 {
+    let span = |value: f32, gate: f32, strong: f32| {
+        ((value - gate) / (strong - gate)).clamp(0.0, 1.0)
+    };
+    let strength = span(peak, MIN_PEAK_CORRELATION, STRONG_PEAK_CORRELATION);
+    // The ratio is undefined for a flat range; such a signal never gets here,
+    // because the gate above rejects it first.
+    let ratio = if range_mean > 0.0 {
+        peak / range_mean
+    } else {
+        STRONG_PEAK_RATIO
+    };
+    let distinctness = span(ratio, MIN_PEAK_RATIO, STRONG_PEAK_RATIO);
+    (strength * distinctness).sqrt()
 }
 
 /// Half-wave rectified spectral flux per frame, plus the envelope's rate in Hz.
@@ -336,9 +388,25 @@ mod tests {
         for bpm in [100.0, 120.0, 128.0, 140.0, 174.0] {
             let samples = click_track(bpm, 30.0, 1.0);
             let got = detect_bpm(&samples, SR).unwrap_or_else(|| panic!("no BPM at {bpm}"));
-            let diff = (got as f32 - bpm).abs();
-            assert!(diff <= 1.0, "expected ~{bpm}, got {got}");
+            let diff = (got.bpm - bpm).abs();
+            assert!(diff <= 1.0, "expected ~{bpm}, got {}", got.bpm);
         }
+    }
+
+    #[test]
+    fn reports_an_unrounded_tempo() {
+        // The whole point of keeping f32: a tempo between two integers has to
+        // survive. A click track at 128.5 must not come back as 128 or 129.
+        let got = detect_bpm(&click_track(128.5, 40.0, 1.0), SR).expect("no BPM");
+        assert!(
+            (got.bpm - 128.5).abs() <= 0.6,
+            "expected ~128.5, got {}",
+            got.bpm
+        );
+        assert!(
+            got.bpm.fract() != 0.0,
+            "a rounded value means the fraction was thrown away again"
+        );
     }
 
     #[test]
@@ -346,8 +414,8 @@ mod tests {
         // Strong beat, weak off-beat: the 70 BPM period correlates better than
         // the 140 BPM one, so octave folding must not push this to 140.
         let samples = click_track(70.0, 40.0, 0.35);
-        let got = detect_bpm(&samples, SR).expect("no BPM detected");
-        assert!((got as f32 - 70.0).abs() <= 1.0, "expected ~70, got {got}");
+        let got = detect_bpm(&samples, SR).expect("no BPM detected").bpm;
+        assert!((got - 70.0).abs() <= 1.0, "expected ~70, got {got}");
     }
 
     #[test]
@@ -355,8 +423,8 @@ mod tests {
         // 300 BPM is above the search range; its 150 BPM subharmonic is the
         // musically sensible answer.
         let samples = click_track(300.0, 30.0, 1.0);
-        let got = detect_bpm(&samples, SR).expect("no BPM detected");
-        assert!((got as f32 - 150.0).abs() <= 1.0, "expected ~150, got {got}");
+        let got = detect_bpm(&samples, SR).expect("no BPM detected").bpm;
+        assert!((got - 150.0).abs() <= 1.0, "expected ~150, got {got}");
     }
 
     #[test]
@@ -368,9 +436,11 @@ mod tests {
         // exists to prevent.
         for bpm in [137.0, 140.0] {
             let samples = click_track(bpm, 40.0, 1.8);
-            let got = detect_bpm(&samples, SR).unwrap_or_else(|| panic!("no BPM at {bpm}"));
+            let got = detect_bpm(&samples, SR)
+                .unwrap_or_else(|| panic!("no BPM at {bpm}"))
+                .bpm;
             assert!(
-                (got as f32 - bpm).abs() <= 1.0,
+                (got - bpm).abs() <= 1.0,
                 "expected ~{bpm}, got {got} (half time is {})",
                 bpm / 2.0
             );
@@ -406,6 +476,64 @@ mod tests {
         assert_eq!(detect_bpm(&click_track(128.0, 2.0, 1.0), SR), None);
         assert_eq!(detect_bpm(&[], SR), None);
         assert_eq!(detect_bpm(&[0i16; 10], SR), None);
+    }
+
+    #[test]
+    fn a_clean_click_track_is_reported_as_confident() {
+        // The confidence exists to gate tag writes, so the easiest possible
+        // signal has to land high — otherwise the gate blocks everything.
+        let got = detect_bpm(&click_track(128.0, 40.0, 1.0), SR).expect("no BPM");
+        assert!(
+            got.confidence > 0.5,
+            "a metronome should be convincing, got {}",
+            got.confidence
+        );
+    }
+
+    #[test]
+    fn confidence_stays_inside_zero_and_one() {
+        // Whatever the DSP produces, downstream treats this as a 0..1 value:
+        // the UI shows it and the scan compares it against a threshold.
+        for (peak, mean) in [
+            (0.0, 1.0),
+            (MIN_PEAK_CORRELATION, MIN_PEAK_CORRELATION),
+            (1.0, 0.0),
+            (1.0, 0.000_001),
+            (f32::MAX, 1.0),
+        ] {
+            let c = confidence(peak, mean);
+            assert!((0.0..=1.0).contains(&c), "confidence {c} out of range");
+        }
+    }
+
+    #[test]
+    fn confidence_needs_both_strength_and_distinctness() {
+        // Geometric mean: excelling at one while sitting at the other's gate is
+        // not confidence. This is what keeps a loud but shapeless track from
+        // overwriting a tag.
+        let strong_but_ordinary = confidence(STRONG_PEAK_CORRELATION, STRONG_PEAK_CORRELATION);
+        assert!(
+            strong_but_ordinary < 0.1,
+            "a peak that does not stand out scored {strong_but_ordinary}"
+        );
+        let distinct_but_weak = confidence(MIN_PEAK_CORRELATION, MIN_PEAK_CORRELATION / 10.0);
+        assert!(
+            distinct_but_weak < 0.1,
+            "a weak peak scored {distinct_but_weak}"
+        );
+        // Both strong -> saturated.
+        assert!(
+            confidence(STRONG_PEAK_CORRELATION, STRONG_PEAK_CORRELATION / STRONG_PEAK_RATIO)
+                > 0.99
+        );
+    }
+
+    #[test]
+    fn confidence_grows_with_the_peak() {
+        let weak = confidence(0.15, 0.05);
+        let mid = confidence(0.30, 0.05);
+        let strong = confidence(0.45, 0.05);
+        assert!(weak < mid && mid < strong, "{weak} {mid} {strong}");
     }
 
     #[test]

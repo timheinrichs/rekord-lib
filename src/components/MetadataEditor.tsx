@@ -7,9 +7,12 @@ import {
   suggestMetadata,
 } from "../lib/api";
 import {
+  bpmIsUncertain,
+  formatBpm,
   formatDuration,
   formatLabel,
   formatSampleRate,
+  parseBpmInput,
   trackStatus,
 } from "../lib/format";
 import StatusIcons from "./StatusIcons";
@@ -70,16 +73,32 @@ function toForm(md: TrackMetadata): FormState {
     catalog_number: md.catalog_number ?? "",
     label: md.label ?? "",
     country: md.country ?? "",
-    bpm: md.bpm != null ? String(md.bpm) : "",
+    // Rounded, like everywhere else. `toMetadata` is what keeps that from
+    // costing the stored decimals.
+    bpm: md.bpm != null ? formatBpm(md.bpm) : "",
   };
 }
 
-function toMetadata(f: FormState, hasCover: boolean): TrackMetadata {
+/**
+ * The form as metadata to save.
+ *
+ * `original` is the track's stored tempo. The BPM field displays whole beats, so
+ * a stored 127.61 shows as "128" — writing the field back verbatim would round
+ * the file's value away on any save, including one that only changed the genre.
+ * An untouched field therefore keeps `original`, and only a real edit replaces
+ * it.
+ */
+function toMetadata(
+  f: FormState,
+  hasCover: boolean,
+  original: TrackMetadata,
+): TrackMetadata {
   const s = (v: string) => (v.trim() ? v.trim() : null);
   const n = (v: string) => {
     const parsed = parseInt(v, 10);
     return Number.isFinite(parsed) ? parsed : null;
   };
+
   return {
     title: s(f.title),
     artist: s(f.artist),
@@ -91,7 +110,8 @@ function toMetadata(f: FormState, hasCover: boolean): TrackMetadata {
     catalog_number: s(f.catalog_number),
     label: s(f.label),
     country: s(f.country),
-    bpm: n(f.bpm),
+    bpm:
+      f.bpm === toForm(original).bpm ? original.bpm : parseBpmInput(f.bpm),
     has_cover: hasCover,
   };
 }
@@ -213,7 +233,7 @@ export default function MetadataEditor({
   const handleSave = () => {
     if (!canSave) return;
     const hasCover = cover.kind !== "none" && coverUrl != null;
-    onSave({ metadata: toMetadata(form, hasCover), cover });
+    onSave({ metadata: toMetadata(form, hasCover, track.metadata), cover });
   };
 
   const coverKind = cover.kind;
@@ -398,7 +418,7 @@ export default function MetadataEditor({
                 {editingBpm ? (
                   <input
                     value={form.bpm}
-                    inputMode="numeric"
+                    inputMode="decimal"
                     placeholder="–"
                     autoFocus
                     onChange={(e) => set("bpm", e.target.value)}
@@ -412,13 +432,36 @@ export default function MetadataEditor({
                     className="w-20 rounded-md border border-border-strong bg-surface-2 px-2 py-0.5 text-fg outline-none focus:border-accent-500"
                   />
                 ) : (
-                  <button
-                    onClick={() => setEditingBpm(true)}
-                    title="Edit BPM"
-                    className="-mx-2 w-fit rounded-md px-2 py-0.5 text-left text-fg hover:bg-surface-2"
-                  >
-                    {form.bpm.trim() || "–"}
-                  </button>
+                  <div className="flex items-baseline gap-2">
+                    <button
+                      onClick={() => setEditingBpm(true)}
+                      title="Edit BPM"
+                      className="-mx-2 w-fit rounded-md px-2 py-0.5 text-left text-fg hover:bg-surface-2"
+                    >
+                      {form.bpm.trim() || "–"}
+                    </button>
+                    {/* Shown only where the tempo was detected rather than read
+                        from the tag. Below the write threshold it also says the
+                        value never reached the file, which is the difference the
+                        user cannot otherwise see. */}
+                    {track.bpm_confidence != null && (
+                      <span
+                        className={`text-xs ${
+                          bpmIsUncertain(track.bpm_confidence)
+                            ? "text-fg-warning"
+                            : "text-fg-subtle"
+                        }`}
+                        title={
+                          bpmIsUncertain(track.bpm_confidence)
+                            ? "Too uncertain to write into the file"
+                            : "Detected during the scan"
+                        }
+                      >
+                        {Math.round(track.bpm_confidence * 100)}% sure
+                        {bpmIsUncertain(track.bpm_confidence) && ", not written"}
+                      </span>
+                    )}
+                  </div>
                 )}
               </div>
               <div className="flex flex-col gap-1">

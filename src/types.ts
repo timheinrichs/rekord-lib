@@ -25,7 +25,7 @@ export interface TrackMetadata {
   catalog_number: string | null;
   label: string | null;
   country: string | null;
-  /** Tempo in beats per minute (tag value or detected during the scan). */
+  /** Tempo in beats per minute, fractional (tag value or detected in the scan). */
   bpm: number | null;
   has_cover: boolean;
 }
@@ -51,6 +51,12 @@ export interface TrackAnalysis {
   metadata_incomplete: boolean;
   /** File creation time (Unix millis), used as the "downloaded" date. */
   download_date: number | null;
+  /**
+   * How much the detector trusted the tempo it found (0..1), or null where the
+   * BPM came from the file's tag. Below `UNCERTAIN_BPM_CONFIDENCE` the backend
+   * deliberately did not write it into the file.
+   */
+  bpm_confidence: number | null;
 }
 
 export interface ConvertOptions {

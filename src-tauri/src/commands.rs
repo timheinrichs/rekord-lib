@@ -43,6 +43,36 @@ const STAGE_DUPLICATES: &str = "Finding duplicates";
 /// search's fingerprint pass.
 const BPM_CONCURRENCY: usize = 8;
 
+/// Below this confidence a detected tempo is kept but **not** written into the
+/// file. The value still reaches the library, so the UI can show it as
+/// uncertain and the user can accept it by hand — it just does not get baked
+/// into thousands of files on a guess.
+///
+/// A wrong tag is worse than no tag in both directions: on an untagged file it
+/// invents a number, and on a `force` re-detection it destroys one the user may
+/// have set deliberately.
+///
+/// **Measured, not chosen.** Over the 2143 reference tracks that produce a
+/// tempo at all (`docs/DSP_BENCHMARK.md`), what each threshold prevents against
+/// what it costs:
+///
+/// | threshold | wrong tags prevented | correct ones lost |
+/// |---|---|---|
+/// | 0.30 | 20 | 4 |
+/// | 0.40 | 23 | 14 |
+/// | 0.60 | 66 | 67 |
+/// | 0.90 | 201 | 375 |
+///
+/// 0.30 trades five to one in our favour; past 0.6 the trade is break-even and
+/// beyond that it destroys more than it saves, because most of the collection
+/// scores above 0.9 and is 92 % correct there.
+///
+/// Worth being honest about the ceiling: this gate stops 20 of 327 wrong values,
+/// about 6 %. The confidence separates hopeless from plausible, not right from
+/// wrong. What actually protects the files is the hard gate in `audio::bpm`
+/// (which returns nothing at all rather than a guess) and undo.
+const MIN_WRITE_CONFIDENCE: f32 = 0.30;
+
 /// Concurrent ffprobe processes in the analysis pass. One probe is short
 /// (~100 ms, dominated by process startup rather than CPU), so the pass is
 /// bound by how many can be in flight at once, not by cores.
@@ -115,6 +145,8 @@ async fn analyze_path(app: &AppHandle, path: String) -> AppResult<TrackAnalysis>
         compat,
         metadata_incomplete,
         download_date,
+        // The scan's BPM pass fills this in; a plain probe has no opinion.
+        bpm_confidence: None,
     })
 }
 
@@ -257,19 +289,28 @@ async fn detect_bpm_pass(
 
         let mut updated = Vec::new();
         for (index, handle) in handles {
-            if let Ok(Some(value)) = handle.await {
+            if let Ok(Some(tempo)) = handle.await {
                 // Persist first: the tag is what keeps the next scan from
                 // re-analyzing this file. A failed write is not fatal — the
                 // value still shows up in the library for this session.
-                if let Err(e) = write::write_bpm(&tracks[index].path, value) {
-                    events::warn(
-                        app,
-                        "bpm",
-                        "Detected a tempo but could not write it into the file",
-                        Some(&format!("{}: {e}", tracks[index].path)),
-                    );
+                // Rounded to the precision a tag can hold before it is stored
+                // anywhere. Without this the f32 -> f64 widening leaks artefacts
+                // like 127.5999984741211 into the database and the UI, while the
+                // file would say "127.60" — three places, one value, no reason
+                // for them to disagree.
+                let bpm = (tempo.bpm as f64 * 100.0).round() / 100.0;
+                if tempo.confidence >= MIN_WRITE_CONFIDENCE {
+                    if let Err(e) = write::write_bpm(&tracks[index].path, bpm) {
+                        events::warn(
+                            app,
+                            "bpm",
+                            "Detected a tempo but could not write it into the file",
+                            Some(&format!("{}: {e}", tracks[index].path)),
+                        );
+                    }
                 }
-                tracks[index].metadata.bpm = Some(value);
+                tracks[index].metadata.bpm = Some(bpm);
+                tracks[index].bpm_confidence = Some(tempo.confidence);
                 updated.push(tracks[index].clone());
             }
             done += 1;
@@ -1911,6 +1952,7 @@ mod tests {
             },
             metadata_incomplete: false,
             download_date: None,
+            bpm_confidence: None,
         };
 
         let out = dup_candidates(std::slice::from_ref(&track));

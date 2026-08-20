@@ -117,18 +117,53 @@ mark practically every library incomplete overnight.
 
 *Size: L (was M, before the crate was ruled out)*
 
-### B2 · Fractional BPM and an exposed confidence value
+### B2 · Fractional BPM and an exposed confidence value — **done**
 
-**What** — keep the fractional part instead of rounding to `u32`, and surface
-the confidence the detector already computes internally (today it only feeds
-the `MIN_PEAK_CORRELATION` / `MIN_PEAK_RATIO` gate in `audio/bpm.rs`).
+**What shipped** — `detect_bpm` returns a `Tempo { bpm: f32, confidence: f32 }`
+instead of an `Option<u32>`. The tempo keeps its decimals all the way into the
+tag (`format_bpm` writes two, the way Rekordbox does) and into a `REAL` column
+(schema v5). The confidence comes from the two quantities the gates already
+measured — how strongly the autocorrelation peaked, and how far that peak stood
+above the mean of the searched range — combined as a geometric mean so that
+strong-but-unremarkable does not pass for confident.
 
-**Why** — Rekordbox stores fractional BPM; we throw the decimals away. And a
-confidence value lets the UI say "detected, uncertain" and lets us refuse to
-overwrite an existing tag with a weak guess — which matters, because a wrong
-number written into thousands of files is worse than no number.
+Below `MIN_WRITE_CONFIDENCE` a tempo is stored but **not** written into the file;
+the library table marks it, and the metadata editor shows the percentage next to
+the value along with "not written". So the number on screen and the number in
+the file can never silently disagree.
 
-*Size: S*
+The **display** rounds to whole beats, which is what DJ software shows and what
+the maintainer asked for. That is only safe because the editor's tempo field
+keeps its stored value unless it is actually edited — otherwise a whole-number
+field would write 128 back over a stored 127.61 on any save, including one that
+changed nothing but the genre.
+
+**The threshold is measured, not chosen.** Over the 2143 reference tracks that
+yield a tempo, 0.30 prevents 20 wrong tags at the cost of 4 correct ones; 0.40
+costs 14 for three more; at 0.60 the trade is one-for-one, and at 0.90 it
+destroys 375 correct values to prevent 201 wrong ones. Worth stating plainly:
+the gate catches 20 of 327 wrong values, about 6 %. The confidence separates
+hopeless from plausible, not right from wrong — the hard gate in `audio/bpm.rs`
+and undo are what actually protect the files.
+
+**Three bugs the tests found**, none of them in the DSP:
+
+- Appending `bpm_confidence` to `TRACK_COLUMNS` shifted the columns
+  `load_track_cache` reads by index, so it took a confidence for an mtime.
+  `TRACK_COLUMN_COUNT` plus a test that compares it against the list makes the
+  next added column fail loudly instead of silently.
+- The v5 migration has to rebuild `tracks` (SQLite cannot retype a column), and
+  `fingerprints` cascades on its deletion — with foreign keys left enabled the
+  whole fingerprint cache would have gone with it, silently.
+- The `f32` detector widened to `f64` produced values like `127.5999984741211`,
+  which reached the database and the editor while the file said `127.60`.
+  Rounding now happens once, before anything is stored.
+
+**Verified end to end** in a `-devtest` app instance over generated click tracks:
+a 127.6 BPM tone comes back as `127.61` in both the tag and the database, and
+silence gets no tempo at all.
+
+*Size: S — the DSP change was small; the persistence and display around it were not*
 
 ### B3 · Beat grid and first downbeat
 

@@ -231,7 +231,7 @@ mod tests {
 
         let tracks = super::super::load_tracks(&conn, "/lib").unwrap();
         assert_eq!(tracks.len(), 2);
-        assert_eq!(tracks[0].metadata.bpm, Some(123));
+        assert_eq!(tracks[0].metadata.bpm, Some(123.0));
         assert_eq!(super::super::load_edits(&conn).unwrap().len(), 1);
         assert_eq!(super::super::load_duplicate_groups(&conn).unwrap().len(), 1);
     }

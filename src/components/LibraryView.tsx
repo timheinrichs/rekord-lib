@@ -47,7 +47,9 @@ import { relocateMessage, shouldRelocate } from "../lib/relocate";
 import { addSkipped, skippedLabel } from "../lib/skipped";
 import { dismissDuplicates, loadDuplicates, saveDuplicates } from "../lib/duplicates";
 import {
+  bpmIsUncertain,
   editComplete,
+  formatBpm,
   formatDate,
   formatDuration,
   formatLabel,
@@ -1883,8 +1885,19 @@ export default function LibraryView({
                     <td className="whitespace-nowrap px-4 py-3 text-fg-muted">
                       {formatDuration(t.audio.duration_secs)}
                     </td>
-                    <td className="whitespace-nowrap px-4 py-3 text-fg-muted">
-                      {md.bpm ?? "–"}
+                    <td
+                      className={`whitespace-nowrap px-4 py-3 ${
+                        bpmIsUncertain(t.bpm_confidence)
+                          ? "text-fg-warning"
+                          : "text-fg-muted"
+                      }`}
+                      title={
+                        bpmIsUncertain(t.bpm_confidence)
+                          ? "Detected, but not convincingly — this tempo was not written into the file"
+                          : undefined
+                      }
+                    >
+                      {formatBpm(md.bpm)}
                     </td>
                     <td className="whitespace-nowrap px-4 py-3 text-fg-muted">
                       {formatDate(t.download_date)}

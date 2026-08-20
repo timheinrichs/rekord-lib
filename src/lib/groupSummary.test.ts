@@ -152,3 +152,21 @@ describe("summarizeGroup bpm", () => {
     expect(summarizeGroup([bpmTrack("a", 90)], edits, never).bpm).toBe("174");
   });
 });
+
+describe("summarizeGroup bpm with fractional tempos", () => {
+  const bpmTrack = (id: string, bpm: number | null) =>
+    makeTrack({ id, path: `/lib/${id}.aiff`, metadata: makeMetadata({ bpm }) });
+  const never = () => false;
+
+  it("reads as one tempo when the tracks only differ in decimals", () => {
+    // Detection now returns fractions, so an album that used to show "128"
+    // would otherwise show "127.96–128.04" — a range that means nothing.
+    const group = [bpmTrack("a", 127.96), bpmTrack("b", 128.04)];
+    expect(summarizeGroup(group, NO_EDITS, never).bpm).toBe("128");
+  });
+
+  it("still shows a real spread", () => {
+    const group = [bpmTrack("a", 126.4), bpmTrack("b", 130.2)];
+    expect(summarizeGroup(group, NO_EDITS, never).bpm).toBe("126–130");
+  });
+});

@@ -9,6 +9,25 @@ contain incompatible changes.
 
 ## [Unreleased]
 
+### Changed
+- **Tempos keep their decimals.** Detection used to round to a whole number and
+  throw the rest away — on a real collection nearly half of all tempos are not
+  integers, and Rekordbox stores them that way too. A detected tempo now travels
+  as a fractional value into the file's tag ("127.60", Rekordbox' own format) and
+  into the library.
+- **A tempo the app is unsure about is no longer written into your files.** The
+  detector reports how convinced it was; below the threshold the value still
+  appears in the library, marked, and the metadata editor says how sure it was
+  and that the file was left alone. A wrong number in a thousand files is worse
+  than no number — and the threshold was picked by measuring what each setting
+  prevents against what it costs, not by taste.
+- **Tempos are shown as whole beats** — "128", not "127.61" — because that is
+  what a DJ reads and what other DJ software displays. The decimals live in the
+  file and the library, not in the columns. The metadata editor still accepts a
+  decimal if you type one (comma included), and a tempo field you did not touch
+  keeps its stored value, so editing an album's genre no longer rounds every
+  tempo in it.
+
 ### Added
 - `docs/DSP_BENCHMARK.md` — the tempo and key detection of `stratum-dsp` measured
   against ours over 2176 tracks with Rekordbox reference values, with the
