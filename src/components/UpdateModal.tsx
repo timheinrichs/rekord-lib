@@ -45,14 +45,20 @@ export default function UpdateModal({ update, onClose }: Props) {
       <div className="flex max-h-[85vh] w-full max-w-xl flex-col overflow-hidden rounded-2xl border border-border bg-surface shadow-2xl">
         <header className="flex items-start justify-between gap-4 border-b border-border px-5 py-3">
           <div className="min-w-0">
-            <h2
-              className={`text-sm font-medium ${critical ? "text-danger-500" : "text-fg"}`}
-            >
-              {critical ? "Critical update available" : "Update available"}
-            </h2>
-            <p className="mt-0.5 text-xs text-fg-subtle">
-              v{update.currentVersion} → v{update.version}
-            </p>
+            <h2 className="text-base font-medium text-fg">Update available</h2>
+            <div className="mt-0.5 flex items-center gap-2">
+              <p className="text-xs text-fg-subtle">
+                v{update.currentVersion} → v{update.version}
+              </p>
+              {/* The severity as a tag beside the version rather than in the
+                  title: the heading says what the dialog is, the tag says what
+                  kind of release it is about. */}
+              {critical && (
+                <span className="shrink-0 rounded-full bg-danger-500/15 px-2 py-0.5 text-xs text-danger-500 ring-1 ring-danger-500/30">
+                  critical
+                </span>
+              )}
+            </div>
           </div>
           <button
             onClick={onClose}
@@ -66,9 +72,11 @@ export default function UpdateModal({ update, onClose }: Props) {
 
         <div className="flex-1 overflow-y-auto px-5 py-4">
           {/* Only said for a critical release: on an ordinary one it would be
-              noise, and the styleguide keeps status colour for state. */}
+              noise, and the styleguide keeps status colour for state. Colour
+              alone carries it — the tag above is already the marker, and a
+              second panel around the same fact would say it twice. */}
           {critical && (
-            <p className="mb-3 rounded-lg border border-danger-500/40 bg-danger-500/10 px-3 py-2 font-sans text-sm text-danger-500">
+            <p className="mb-3 font-sans text-sm text-danger-500">
               This release fixes a security or data-loss problem.
             </p>
           )}

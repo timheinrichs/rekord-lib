@@ -38,22 +38,23 @@ describe("UpdateModal", () => {
     expect(screen.getByText(/came without notes/)).toBeInTheDocument();
   });
 
-  it("states a critical release in danger, and only then", () => {
+  it("marks a critical release with a tag beside the version, and only then", () => {
+    // The heading says what the dialog is; the tag says what kind of release it
+    // is about. So the title does not change with the severity.
     const { rerender } = render(
       <UpdateModal update={update()} onClose={() => {}} />,
     );
-    expect(screen.getByText("Update available")).not.toHaveClass(
-      "text-danger-500",
-    );
+    expect(screen.queryByText("critical")).toBeNull();
     expect(screen.queryByText(/security or data-loss/)).toBeNull();
 
     rerender(
       <UpdateModal update={update({ severity: "critical" })} onClose={() => {}} />,
     );
-    expect(screen.getByText("Critical update available")).toHaveClass(
+    expect(screen.getByText("Update available")).toBeInTheDocument();
+    expect(screen.getByText("critical")).toHaveClass("text-danger-500");
+    expect(screen.getByText(/security or data-loss/)).toHaveClass(
       "text-danger-500",
     );
-    expect(screen.getByText(/security or data-loss/)).toBeInTheDocument();
   });
 
   it("closes from the close icon and from Cancel", async () => {
