@@ -1,6 +1,26 @@
 import type { DuplicateGroup, TrackAnalysis, TrackEdit } from "../types";
 
 /** Column the top-level list (collapsed albums + single tracks) is sorted by. */
+/** How the library list is grouped. */
+export type Grouping = "flat" | "album" | "folder" | "label";
+
+/**
+ * The grouping switch, in display order.
+ *
+ * Flat comes first and is the default: it is the plain list of everything, so
+ * it is both the cheapest thing to look at and the one that always shows every
+ * track as its own row. The three groupings after it fold rows away, which is a
+ * choice the user makes rather than the state the app opens in.
+ */
+export const GROUPINGS: readonly (readonly [Grouping, string])[] = [
+  ["flat", "Flat"],
+  ["album", "Album"],
+  ["label", "Label"],
+  ["folder", "Folder"],
+];
+
+export const DEFAULT_GROUPING: Grouping = "flat";
+
 export type SortKey = "title" | "artist" | "album" | "length" | "date" | "bpm";
 
 /** Columns sorted as numbers rather than as text. */

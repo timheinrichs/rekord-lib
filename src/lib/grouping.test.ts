@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
+  DEFAULT_GROUPING,
+  GROUPINGS,
   albumArtistOf,
   albumOf,
   buildAlbumItems,
@@ -334,5 +336,26 @@ describe("BPM sorting", () => {
       "undated",
       "dated",
     ]);
+  });
+});
+
+describe("GROUPINGS", () => {
+  it("is in the order the switch shows, Flat first", () => {
+    expect(GROUPINGS.map(([key]) => key)).toEqual([
+      "flat",
+      "album",
+      "label",
+      "folder",
+    ]);
+  });
+
+  it("opens on the plain list", () => {
+    // Every grouping after Flat folds rows into collapsed groups, which hides
+    // tracks behind a click. The list the app opens with shows all of them.
+    expect(DEFAULT_GROUPING).toBe("flat");
+  });
+
+  it("offers the default as one of its options", () => {
+    expect(GROUPINGS.map(([key]) => key)).toContain(DEFAULT_GROUPING);
   });
 });

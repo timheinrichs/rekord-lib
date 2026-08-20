@@ -107,9 +107,12 @@ import { Skeleton, TrackTableSkeleton } from "./Skeleton";
 import { resizeHeights, visibleRange, type Range } from "../lib/virtualList";
 import {
   buildAlbumItems,
+  DEFAULT_GROUPING,
+  GROUPINGS,
   pruneGroups,
   sortTracks,
   type AlbumItem,
+  type Grouping,
   type SortKey,
 } from "../lib/grouping";
 import { foldersToPrune, parentDir } from "../lib/dupAlbums";
@@ -182,7 +185,6 @@ const SCAN_FINISHED_MS = 1200;
  */
 const RELINK_MESSAGE_MS = 8000;
 
-type Grouping = "flat" | "album" | "folder" | "label";
 
 export default function LibraryView({
   settings,
@@ -221,7 +223,7 @@ export default function LibraryView({
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [filter, setFilter] = useState<TrackFilter>(EMPTY_FILTER);
   const [search, setSearch] = useState("");
-  const [grouping, setGrouping] = useState<Grouping>("album");
+  const [grouping, setGrouping] = useState<Grouping>(DEFAULT_GROUPING);
   const [expandedAlbums, setExpandedAlbums] = useState<Set<string>>(new Set());
   const [expandedFolders, setExpandedFolders] = useState<Set<string>>(new Set());
   // Label view: holds both label and album node ids (see lib/labelTree).
@@ -1716,14 +1718,7 @@ export default function LibraryView({
         >
           {/* Left: how the list is grouped, then how much of it is showing. */}
           <div className="flex shrink-0 items-center rounded-full ring-1 ring-border-strong">
-            {(
-              [
-                ["album", "Album"],
-                ["label", "Label"],
-                ["folder", "Folder"],
-                ["flat", "Flat"],
-              ] as [Grouping, string][]
-            ).map(([key, label]) => (
+            {GROUPINGS.map(([key, label]) => (
               <button
                 key={key}
                 onClick={() => setGrouping(key)}
