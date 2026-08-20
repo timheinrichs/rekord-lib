@@ -757,6 +757,63 @@ pub fn decode_fingerprint(bytes: &[u8]) -> Option<Vec<u32>> {
 /// library-sized run meant thousands of lock cycles for data that fits in one
 /// statement. Validation of mtime/size happens in memory against `identities`,
 /// so a stale entry is dropped here rather than by the query.
+/// Stored waveforms for the given files, keyed by path.
+///
+/// Only entries whose file is unchanged and whose `algo_version` matches come
+/// back: a waveform drawn from a file that has since been re-encoded would be a
+/// picture of audio that is no longer there.
+pub fn waveforms_load(
+    conn: &Connection,
+    identities: &HashMap<String, FsIdentity>,
+    algo_version: i64,
+) -> DbResult<HashMap<String, Vec<u8>>> {
+    if identities.is_empty() {
+        return Ok(HashMap::new());
+    }
+    let mut stmt = conn.prepare(
+        "SELECT path, mtime_ms, size_bytes, data FROM waveforms WHERE algo_version = ?1",
+    )?;
+    let rows = stmt.query_map(params![algo_version], |row| {
+        Ok((
+            row.get::<_, String>(0)?,
+            FsIdentity {
+                mtime_ms: row.get(1)?,
+                size_bytes: row.get(2)?,
+            },
+            row.get::<_, Vec<u8>>(3)?,
+        ))
+    })?;
+    let mut out = HashMap::new();
+    for row in rows {
+        let (path, stored, blob) = row?;
+        if identities.get(&path) == Some(&stored) {
+            out.insert(path, blob);
+        }
+    }
+    Ok(out)
+}
+
+/// Stores one waveform, replacing whatever was there for that path.
+pub fn waveform_save(
+    conn: &Connection,
+    path: &str,
+    fs: FsIdentity,
+    algo_version: i64,
+    data: &[u8],
+) -> DbResult<()> {
+    conn.execute(
+        "INSERT INTO waveforms (path, mtime_ms, size_bytes, algo_version, data)
+         VALUES (?1, ?2, ?3, ?4, ?5)
+         ON CONFLICT(path) DO UPDATE SET
+            mtime_ms = excluded.mtime_ms,
+            size_bytes = excluded.size_bytes,
+            algo_version = excluded.algo_version,
+            data = excluded.data",
+        params![path, fs.mtime_ms, fs.size_bytes, algo_version, data],
+    )?;
+    Ok(())
+}
+
 pub fn fingerprints_load(
     conn: &Connection,
     identities: &HashMap<String, FsIdentity>,
@@ -1783,6 +1840,80 @@ mod tests {
             meta_get(&conn, schema::KEY_SCHEMA_VERSION).unwrap(),
             Some(schema::SCHEMA_VERSION.to_string())
         );
+    }
+
+    #[test]
+    fn a_waveform_survives_only_while_the_file_and_the_algorithm_match() {
+        // The invalidation contract: a waveform drawn from audio that has since
+        // been re-encoded is a picture of something else, and one drawn under
+        // older rules does not match what the code now expects to unpack.
+        let db = Db::open_in_memory().unwrap();
+        let mut conn = db.0.lock().unwrap();
+        let fs = identity(1, 100);
+        upsert_tracks(&mut conn, "/lib", &[record("/lib/a.aiff", Some(fs))]).unwrap();
+        waveform_save(&conn, "/lib/a.aiff", fs, 1, &[7, 8, 9, 10]).unwrap();
+
+        let want = |id: FsIdentity| {
+            let mut m = HashMap::new();
+            m.insert("/lib/a.aiff".to_string(), id);
+            m
+        };
+        // Unchanged file, same algorithm: served.
+        assert_eq!(
+            waveforms_load(&conn, &want(fs), 1).unwrap().get("/lib/a.aiff"),
+            Some(&vec![7u8, 8, 9, 10])
+        );
+        // The file changed.
+        assert!(waveforms_load(&conn, &want(identity(2, 100)), 1)
+            .unwrap()
+            .is_empty());
+        assert!(waveforms_load(&conn, &want(identity(1, 999)), 1)
+            .unwrap()
+            .is_empty());
+        // The algorithm changed.
+        assert!(waveforms_load(&conn, &want(fs), 2).unwrap().is_empty());
+        // Nothing asked for, nothing returned — not "everything".
+        assert!(waveforms_load(&conn, &HashMap::new(), 1).unwrap().is_empty());
+    }
+
+    #[test]
+    fn saving_a_waveform_twice_replaces_it() {
+        // A re-analysis has to overwrite rather than fail on the primary key.
+        let db = Db::open_in_memory().unwrap();
+        let mut conn = db.0.lock().unwrap();
+        let fs = identity(1, 100);
+        upsert_tracks(&mut conn, "/lib", &[record("/lib/a.aiff", Some(fs))]).unwrap();
+        waveform_save(&conn, "/lib/a.aiff", fs, 1, &[1, 2]).unwrap();
+        let newer = identity(5, 500);
+        waveform_save(&conn, "/lib/a.aiff", newer, 1, &[3, 4]).unwrap();
+
+        let mut want = HashMap::new();
+        want.insert("/lib/a.aiff".to_string(), newer);
+        assert_eq!(
+            waveforms_load(&conn, &want, 1).unwrap().get("/lib/a.aiff"),
+            Some(&vec![3u8, 4])
+        );
+        let count: i64 = conn
+            .query_row("SELECT count(*) FROM waveforms", [], |r| r.get(0))
+            .unwrap();
+        assert_eq!(count, 1);
+    }
+
+    #[test]
+    fn forgetting_a_track_takes_its_waveform_with_it() {
+        // Same cascade the fingerprints rely on: 4.8 KB per track adds up, and a
+        // waveform for a path the library no longer knows can never be read.
+        let db = Db::open_in_memory().unwrap();
+        let mut conn = db.0.lock().unwrap();
+        let fs = identity(1, 100);
+        upsert_tracks(&mut conn, "/lib", &[record("/lib/a.aiff", Some(fs))]).unwrap();
+        waveform_save(&conn, "/lib/a.aiff", fs, 1, &[1, 2]).unwrap();
+
+        delete_tracks(&mut conn, &["/lib/a.aiff".to_string()]).unwrap();
+        let count: i64 = conn
+            .query_row("SELECT count(*) FROM waveforms", [], |r| r.get(0))
+            .unwrap();
+        assert_eq!(count, 0, "the waveform outlived its track");
     }
 
     #[test]

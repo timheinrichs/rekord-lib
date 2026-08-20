@@ -277,14 +277,29 @@ the RMS being the brighter of the two is what makes an intro distinguishable fro
 a drop at a glance. Normalised rather than absolute because the bar has a fixed
 height — a quiet master would otherwise draw as a flat line and look broken.
 
-**Deliberately not cached on disk**, against what the plan for this item said.
-The waveform is only ever needed for the track that is playing; the frontend
-keeps the last 24 in memory (`lib/waveformCache.ts`, promise-keyed so skipping
-between two tracks cannot start the same decode twice). A stored copy would be
-~19 KB per track — 40 MB for this collection — plus an invalidation contract to
-keep honest, in exchange for a sub-second saving on a replay. The dense per-track
-data that *does* need storing is the ANLZ waveform (H1), which is a different
-artifact at a different resolution.
+**Cached on disk after all** — the reasoning that follows held only while the
+player bar was the sole consumer, and a waveform *column* in a 2200-row list
+changes the premise: computing one per visible row means a full decode while
+scrolling, and twenty rows at 300 ms each is a list that fills in behind you.
+
+~~Deliberately not cached on disk. A stored copy would be ~19 KB per track —
+40 MB for this collection — plus an invalidation contract to keep honest, in
+exchange for a sub-second saving on a replay.~~ Both halves of that turned out to
+be beatable. The values quantise to a byte each — they are normalised to 0..1 and
+rounded to pixels when drawn — which is 4.8 KB a track and ~11 MB rather than 42;
+and the analysis pass already decodes the file, so the waveform costs the
+difference between decoding 120 s and the whole track rather than a decode of its
+own. Schema 7, table `waveforms`, invalidated like a fingerprint (mtime, size,
+`waveform::ALGO_VERSION`) with tests for each.
+
+Its own table rather than columns on `tracks`, because every query that lists the
+library would otherwise carry 11 MB of blobs it does not need; the list asks for
+the paths on screen. The frontend's in-memory cache
+(`lib/waveformCache.ts`, promise-keyed so skipping between two tracks cannot
+start the same work twice) stays useful for the player bar.
+
+The remaining case for a separate stored artifact is the ANLZ waveform (H1),
+which is denser and has its own format.
 
 **Still needed for H1** — the analysis-file waveform is denser and has its own
 format; this covers the UI half of that split, not the player-file half.

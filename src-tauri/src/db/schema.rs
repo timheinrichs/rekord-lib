@@ -17,13 +17,14 @@ use super::DbResult;
 /// start. Only changes that transform or drop existing data need a step in
 /// [`super::migrate`].
 ///
+/// - 7: `waveforms`
 /// - 6: `tracks.music_key`, `tracks.key_confidence`
 /// - 5: `tracks.bpm` became `REAL`, `tracks.bpm_confidence` added
 /// - 4: `events`
 /// - 3: `undo_entries`
 /// - 2: `dismissed_groups`
 /// - 1: initial
-pub const SCHEMA_VERSION: i64 = 6;
+pub const SCHEMA_VERSION: i64 = 7;
 
 /// Key under which the schema version lives in `schema_meta`.
 pub const KEY_SCHEMA_VERSION: &str = "schema_version";
@@ -97,6 +98,18 @@ CREATE TABLE IF NOT EXISTS tracks (
 CREATE INDEX IF NOT EXISTS tracks_library_dir ON tracks(library_dir);
 
 CREATE TABLE IF NOT EXISTS fingerprints (
+    path         TEXT PRIMARY KEY REFERENCES tracks(path) ON DELETE CASCADE,
+    mtime_ms     INTEGER NOT NULL,
+    size_bytes   INTEGER NOT NULL,
+    algo_version INTEGER NOT NULL,
+    data         BLOB NOT NULL
+);
+
+-- Waveform overviews, one row per track, ~4.8 KB each. Its own table rather
+-- than columns on `tracks`: every query that lists the library would otherwise
+-- carry 11 MB of blobs it does not need. Invalidated like a fingerprint —
+-- mtime + size + the algorithm version that produced it.
+CREATE TABLE IF NOT EXISTS waveforms (
     path         TEXT PRIMARY KEY REFERENCES tracks(path) ON DELETE CASCADE,
     mtime_ms     INTEGER NOT NULL,
     size_bytes   INTEGER NOT NULL,

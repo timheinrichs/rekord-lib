@@ -4,7 +4,7 @@ use base64::Engine;
 use tauri::{AppHandle, Emitter, Manager, State};
 
 use crate::audio::convert::ConvertProgress;
-use crate::audio::{bpm, compat, convert, dedupe, probe, waveform};
+use crate::audio::{analysis, bpm, compat, convert, dedupe, probe, waveform};
 use crate::bandcamp::session::BandcampState;
 use crate::bandcamp::{collection, download, session};
 use crate::db::{self, FsIdentity, TrackRecord};
@@ -42,14 +42,24 @@ const STAGE_ANALYZING: &str = "Analyzing";
 const STAGE_BPM: &str = "Detecting BPM";
 const STAGE_KEY: &str = "Detecting key";
 const STAGE_BPM_KEY: &str = "Detecting BPM & key";
+const STAGE_WAVEFORM: &str = "Drawing waveforms";
 
 /// The label for a pass over `todo`, whose entries carry what each track needs.
 fn analysis_stage(wants_tempo: bool, wants_key: bool) -> &'static str {
     match (wants_tempo, wants_key) {
         (true, true) => STAGE_BPM_KEY,
         (false, true) => STAGE_KEY,
-        _ => STAGE_BPM,
+        (true, false) => STAGE_BPM,
+        // Only waveforms left: the same decode, nothing detected from it.
+        (false, false) => STAGE_WAVEFORM,
     }
+}
+
+/// One track's share of an analysis pass.
+struct Todo {
+    index: usize,
+    path: String,
+    wanted: analysis::Wanted,
 }
 const STAGE_DUPLICATES: &str = "Finding duplicates";
 
@@ -299,20 +309,34 @@ async fn detect_bpm_pass(
     mut emit: impl FnMut(Vec<TrackAnalysis>),
     cancelled: impl Fn() -> bool,
 ) -> bool {
+    // Which files already have a usable waveform. Asked once for the whole
+    // batch rather than per track: it is one query either way, and a waveform is
+    // the only one of the three answers that lives outside the track row.
+    let identities: std::collections::HashMap<String, db::FsIdentity> = tracks
+        .iter()
+        .filter_map(|t| db::fs_identity(&t.path).map(|fs| (t.path.clone(), fs)))
+        .collect();
+    let have_waveform = if force {
+        std::collections::HashSet::new()
+    } else {
+        load_waveform_paths(app, &identities)
+    };
+
     // What each track still needs. A file may carry a tempo tag but no key,
     // which is the normal state of a library that another program has touched.
-    let todo: Vec<(usize, String, bool, bool)> = tracks
+    let todo: Vec<Todo> = tracks
         .iter()
         .enumerate()
-        .map(|(i, t)| {
-            (
-                i,
-                t.path.clone(),
-                force || t.metadata.bpm.is_none(),
-                force || t.key.is_none(),
-            )
+        .map(|(i, t)| Todo {
+            index: i,
+            path: t.path.clone(),
+            wanted: analysis::Wanted {
+                tempo: force || t.metadata.bpm.is_none(),
+                key: force || t.key.is_none(),
+                waveform: force || !have_waveform.contains(&t.path),
+            },
         })
-        .filter(|(_, _, tempo, key)| *tempo || *key)
+        .filter(|t| t.wanted.tempo || t.wanted.key || t.wanted.waveform)
         .collect();
     let total = todo.len();
     if total == 0 {
@@ -321,8 +345,8 @@ async fn detect_bpm_pass(
     // Announced once the work is known, not before: the caller cannot tell what
     // is missing without walking the same list.
     stage(analysis_stage(
-        todo.iter().any(|(_, _, tempo, _)| *tempo),
-        todo.iter().any(|(_, _, _, key)| *key),
+        todo.iter().any(|t| t.wanted.tempo),
+        todo.iter().any(|t| t.wanted.key),
     ));
 
     let mut done = 0;
@@ -334,14 +358,14 @@ async fn detect_bpm_pass(
         }
         let handles: Vec<(usize, _)> = chunk
             .iter()
-            .map(|(index, path, want_tempo, want_key)| {
+            .map(|item| {
                 let app = app.clone();
-                let path = path.clone();
-                let (want_tempo, want_key) = (*want_tempo, *want_key);
+                let path = item.path.clone();
+                let wanted = item.wanted;
                 (
-                    *index,
+                    item.index,
                     tauri::async_runtime::spawn(async move {
-                        bpm::analyze(&app, &path, config, want_tempo, want_key)
+                        analysis::analyze(&app, &path, config, wanted)
                             .await
                             .unwrap_or_default()
                     }),
@@ -377,6 +401,16 @@ async fn detect_bpm_pass(
                     tracks[index].bpm_confidence = Some(tempo.confidence);
                     changed = true;
                 }
+                if let Some(w) = analysis.waveform.as_ref() {
+                    // Saved with an identity taken *after* any tag write above:
+                    // that write changed the file, and a waveform stamped with
+                    // the old mtime would be discarded on the next read.
+                    if let Some(fs) = db::fs_identity(&tracks[index].path) {
+                        save_waveform(app, &tracks[index].path, fs, w);
+                    }
+                    // Not part of `changed`: the waveform lives in its own table,
+                    // so the track row has nothing new to persist for it.
+                }
                 if let Some(detected) = analysis.key {
                     // Database only, never the file — see `TrackAnalysis::key`.
                     tracks[index].key = Some(detected.key.name());
@@ -396,6 +430,71 @@ async fn detect_bpm_pass(
         emit(updated);
     }
     false
+}
+
+/// Paths whose stored waveform still matches the file on disk.
+fn load_waveform_paths(
+    app: &AppHandle,
+    identities: &std::collections::HashMap<String, db::FsIdentity>,
+) -> std::collections::HashSet<String> {
+    let state = app.state::<db::Db>();
+    let Ok(conn) = state.conn() else {
+        return std::collections::HashSet::new();
+    };
+    db::waveforms_load(&conn, identities, waveform::ALGO_VERSION)
+        .map(|m| m.into_keys().collect())
+        .unwrap_or_default()
+}
+
+/// Stores one waveform. A failure is not worth interrupting a scan for — the
+/// list simply shows no waveform for that track until the next run.
+fn save_waveform(
+    app: &AppHandle,
+    path: &str,
+    fs: db::FsIdentity,
+    w: &waveform::Waveform,
+) {
+    let state = app.state::<db::Db>();
+    let Ok(conn) = state.conn() else {
+        return;
+    };
+    if let Err(e) = db::waveform_save(
+        &conn,
+        path,
+        fs,
+        waveform::ALGO_VERSION,
+        &waveform::to_bytes(w),
+    ) {
+        events::warn(
+            app,
+            "waveform",
+            "Could not store a waveform",
+            Some(&format!("{path}: {e}")),
+        );
+    }
+}
+
+/// Stored waveforms for the given paths, keyed by path.
+///
+/// Takes a list rather than one path because the library view asks for whatever
+/// is on screen: one query for twenty rows instead of twenty round trips. Paths
+/// with no usable stored waveform are simply absent from the result — the row
+/// then draws nothing rather than the app inventing a shape.
+#[tauri::command]
+pub fn stored_waveforms(
+    app: AppHandle,
+    paths: Vec<String>,
+) -> AppResult<std::collections::HashMap<String, waveform::Waveform>> {
+    let identities: std::collections::HashMap<String, db::FsIdentity> = paths
+        .iter()
+        .filter_map(|p| db::fs_identity(p).map(|fs| (p.clone(), fs)))
+        .collect();
+    let state = app.state::<db::Db>();
+    let conn = state.conn()?;
+    Ok(db::waveforms_load(&conn, &identities, waveform::ALGO_VERSION)?
+        .into_iter()
+        .map(|(path, blob)| (path, waveform::from_bytes(&blob)))
+        .collect())
 }
 
 /// The waveform overview of one file, for the player bar.

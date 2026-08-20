@@ -11,10 +11,7 @@
 //! scan refuse to overwrite an existing tag with a weak guess.
 
 use rustfft::{num_complex::Complex32, FftPlanner};
-use tauri::AppHandle;
 
-use super::decode;
-use crate::error::{AppError, AppResult};
 
 /// Sample rate we decode to. Beat energy lives far below the 5.5 kHz Nyquist,
 /// and it matches the fingerprint pipeline (same decoder settings, same cost).
@@ -148,52 +145,6 @@ pub struct Tempo {
     /// Derived from how strongly the autocorrelation peaked and how far it stood
     /// out from the rest of the searched range.
     pub confidence: f32,
-}
-
-/// What one analysis pass over a file produced. Either half can be `None`: the
-/// signal may carry a tempo but no clear key, or the other way round.
-#[derive(Debug, Clone, Copy, Default)]
-pub struct Analysis {
-    pub tempo: Option<Tempo>,
-    pub key: Option<super::key::DetectedKey>,
-}
-
-/// Decodes one excerpt and runs both detectors over it.
-///
-/// One decode for both answers on purpose: decoding dominates the cost of the
-/// pass (≈150 ms against ≈30 ms of tempo detection), so analysing the key
-/// separately would have nearly doubled the time a scan takes for a second
-/// value from the same audio.
-///
-/// `want_tempo` / `want_key` skip work that is already known — a track with a
-/// tempo tag and no key needs only the key.
-pub async fn analyze(
-    app: &AppHandle,
-    path: &str,
-    config: TempoConfig,
-    want_tempo: bool,
-    want_key: bool,
-) -> AppResult<Analysis> {
-    if !want_tempo && !want_key {
-        return Ok(Analysis::default());
-    }
-    // Skip the intro; fall back to the start for tracks shorter than the offset.
-    let decode_at = |offset| decode::mono_pcm(app, path, SAMPLE_RATE, offset, EXCERPT_SECS);
-    let samples = match decode_at(EXCERPT_OFFSET_SECS).await {
-        Ok(s) if s.len() >= SAMPLE_RATE as usize * 10 => s,
-        Ok(_) | Err(_) => decode_at(0).await?,
-    };
-    // Detection is seconds of pure CPU work. Running it on an async worker
-    // thread would block the very runtime the concurrent decodes and the rest
-    // of the app share — with one task per core, throughput collapses.
-    tauri::async_runtime::spawn_blocking(move || Analysis {
-        tempo: want_tempo.then(|| detect_bpm_with(&samples, SAMPLE_RATE, config)).flatten(),
-        key: want_key
-            .then(|| super::key::detect_key(&samples, SAMPLE_RATE))
-            .flatten(),
-    })
-    .await
-    .map_err(|e| AppError::Probe(format!("Analysis task failed: {e}")))
 }
 
 /// Detects the tempo of mono PCM samples with the default configuration.

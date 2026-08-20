@@ -102,6 +102,40 @@ pub fn reduce(samples: &[i16], bins: usize) -> Waveform {
     Waveform { peak, rms }
 }
 
+/// Version of everything that shapes the stored bytes: [`BINS`], the reduction,
+/// and the quantisation below. A cached waveform carries this number, so
+/// changing any of the above invalidates it instead of drawing old data under
+/// new rules. **Bump this on every such change.**
+pub const ALGO_VERSION: i64 = 1;
+
+/// Packs a waveform for storage: one byte of peak and one of RMS per bin,
+/// interleaved.
+///
+/// `u8` rather than `f32`, which is a factor of four on a value that is
+/// normalised to 0..1 and gets rounded to pixels when drawn. 2400 bins is
+/// 4.8 KB a track — about 11 MB for a 2200-track library, where floats would
+/// have been 42 MB for no visible difference.
+pub fn to_bytes(w: &Waveform) -> Vec<u8> {
+    let quantise = |v: f32| (v.clamp(0.0, 1.0) * 255.0).round() as u8;
+    w.peak
+        .iter()
+        .zip(&w.rms)
+        .flat_map(|(p, r)| [quantise(*p), quantise(*r)])
+        .collect()
+}
+
+/// Unpacks what [`to_bytes`] wrote. A trailing odd byte is dropped rather than
+/// treated as a bin, so a truncated blob degrades instead of panicking.
+pub fn from_bytes(bytes: &[u8]) -> Waveform {
+    let mut peak = Vec::with_capacity(bytes.len() / 2);
+    let mut rms = Vec::with_capacity(bytes.len() / 2);
+    for pair in bytes.chunks_exact(2) {
+        peak.push(pair[0] as f32 / 255.0);
+        rms.push(pair[1] as f32 / 255.0);
+    }
+    Waveform { peak, rms }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -185,6 +219,46 @@ mod tests {
         let w = reduce(&ramp(10), 2400);
         assert_eq!(w.peak.len(), 10);
         assert_eq!(w.rms.len(), 10);
+    }
+
+    #[test]
+    fn packing_round_trips_within_a_byte() {
+        let w = reduce(&ramp(50_000), 300);
+        let back = from_bytes(&to_bytes(&w));
+        assert_eq!(back.peak.len(), w.peak.len());
+        for (a, b) in w.peak.iter().zip(&back.peak) {
+            assert!((a - b).abs() <= 1.0 / 255.0, "{a} vs {b}");
+        }
+        for (a, b) in w.rms.iter().zip(&back.rms) {
+            assert!((a - b).abs() <= 1.0 / 255.0, "{a} vs {b}");
+        }
+    }
+
+    #[test]
+    fn packed_size_is_two_bytes_a_bin() {
+        // The whole reason for u8: what this costs per track decides whether it
+        // can be stored for a whole library at all.
+        let w = reduce(&ramp(100_000), BINS);
+        assert_eq!(to_bytes(&w).len(), BINS * 2);
+    }
+
+    #[test]
+    fn a_truncated_blob_degrades_instead_of_panicking() {
+        // Rows survive a database that was interrupted mid-write.
+        let bytes = to_bytes(&reduce(&ramp(1000), 10));
+        let cut = from_bytes(&bytes[..bytes.len() - 1]);
+        assert_eq!(cut.peak.len(), 9);
+        assert_eq!(cut.rms.len(), 9);
+        assert_eq!(from_bytes(&[]), Waveform::empty());
+        assert_eq!(from_bytes(&[7]), Waveform::empty());
+    }
+
+    #[test]
+    fn extremes_survive_the_round_trip() {
+        let w = Waveform { peak: vec![0.0, 1.0], rms: vec![1.0, 0.0] };
+        let back = from_bytes(&to_bytes(&w));
+        assert_eq!(back.peak, vec![0.0, 1.0]);
+        assert_eq!(back.rms, vec![1.0, 0.0]);
     }
 
     #[test]

@@ -1,3 +1,4 @@
+pub mod analysis;
 pub mod beats;
 pub mod bpm;
 pub mod compat;

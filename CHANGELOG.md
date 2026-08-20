@@ -73,6 +73,11 @@ contain incompatible changes.
   shown as a number rather than hidden behind a threshold because it means
   something: agreement climbs from 32 % at the bottom of the range to 71 % at the
   top, and no cut-off is both reliable and covers a whole collection.
+- **Waveforms are computed once and kept.** The scan stores each track's
+  waveform, so it is there instantly wherever it is shown instead of being
+  recomputed. About 11 MB for a 2200-track library, and it costs the scan the
+  difference between reading two minutes of a file and reading all of it, because
+  the analysis was decoding it anyway.
 - **The player bar shows a waveform.** The progress line is now the track's
   shape, with the played part filled in — enough to see where the intro ends and
   the drop starts, and to click straight to it. It appears a moment after
