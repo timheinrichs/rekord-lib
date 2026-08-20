@@ -57,11 +57,14 @@ export function analyzeFiles(
   paths: string[],
   analyzeBpm = false,
   libraryDir?: string,
+  range?: { min: number; max: number },
 ): Promise<TrackAnalysis[]> {
   return invoke<TrackAnalysis[]>("analyze_files", {
     paths,
     analyzeBpm,
     libraryDir: libraryDir ?? null,
+    bpmMin: range?.min ?? null,
+    bpmMax: range?.max ?? null,
   });
 }
 
@@ -69,7 +72,12 @@ export function analyzeFiles(
  * Starts the scan job (background singleton). false = already running.
  * Without `paths` it sweeps the whole library; with `paths` it processes
  * exactly those files (new ones, or the backlog still missing a BPM).
- * `forceBpm` re-detects the tempo even where one is already set.
+ * `forceBpm` re-detects the tempo even where one is already set — which is what
+ * makes a changed `range` reach a library that is already tagged, since the tag
+ * itself is the cache.
+ *
+ * `range` is the tempo window the detector searches; omitted, the backend uses
+ * its own default.
  *
  * A sweep normally reuses the stored analysis of every file whose size and
  * modification time are unchanged, which is what makes a rescan cheap. `force`
@@ -81,6 +89,7 @@ export function startScan(
   paths?: string[],
   forceBpm = false,
   force = false,
+  range?: { min: number; max: number },
 ): Promise<boolean> {
   return invoke<boolean>("start_scan", {
     dir,
@@ -88,6 +97,8 @@ export function startScan(
     paths: paths ?? null,
     forceBpm,
     force,
+    bpmMin: range?.min ?? null,
+    bpmMax: range?.max ?? null,
   });
 }
 

@@ -13,8 +13,10 @@ vi.mock("@tauri-apps/plugin-store", () => ({
 }));
 
 import {
+  BPM_RANGE_PRESETS,
   DEFAULT_SETTINGS,
   bandcampFormatKey,
+  bpmRangeLabel,
   loadSettings,
   saveSettings,
 } from "./settings";
@@ -72,5 +74,47 @@ describe("saveSettings", () => {
       expect.objectContaining({ format: "wav" }),
     );
     expect(saveMock).toHaveBeenCalled();
+  });
+});
+
+describe("BPM_RANGE_PRESETS", () => {
+  it("offers ranges that span exactly one octave, plus the wide default", () => {
+    // The octave property is the whole reason these are presets and not two
+    // free number fields: within one octave every tempo has one representative.
+    const octaves = BPM_RANGE_PRESETS.filter((p) => p.max === p.min * 2);
+    expect(octaves.length).toBe(BPM_RANGE_PRESETS.length - 1);
+    const wide = BPM_RANGE_PRESETS.filter((p) => p.max !== p.min * 2);
+    expect(wide).toEqual([{ min: 60, max: 200, label: "60–200 (wide)" }]);
+  });
+
+  it("keeps the default as today's behaviour", () => {
+    // A narrower default would silently change what a scan produces on update.
+    expect(DEFAULT_SETTINGS.bpm_min).toBe(60);
+    expect(DEFAULT_SETTINGS.bpm_max).toBe(200);
+    expect(
+      BPM_RANGE_PRESETS.some(
+        (p) => p.min === DEFAULT_SETTINGS.bpm_min && p.max === DEFAULT_SETTINGS.bpm_max,
+      ),
+    ).toBe(true);
+  });
+
+  it("has every range ordered and sane", () => {
+    for (const p of BPM_RANGE_PRESETS) {
+      expect(p.min).toBeGreaterThan(0);
+      expect(p.max).toBeGreaterThan(p.min);
+      expect(p.label).toContain(String(p.min));
+    }
+  });
+});
+
+describe("bpmRangeLabel", () => {
+  it("names a known range", () => {
+    expect(bpmRangeLabel(90, 180)).toBe("90–180 (one octave)");
+    expect(bpmRangeLabel(60, 200)).toBe("60–200 (wide)");
+  });
+
+  it("still describes a range that matches no preset", () => {
+    // A hand-edited store, or a preset list that has since changed.
+    expect(bpmRangeLabel(75, 155)).toBe("75–155");
   });
 });

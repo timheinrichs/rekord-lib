@@ -264,16 +264,22 @@ export default function LibraryView({
     // scratch rather than adding to the last run's.
     setSkipped([]);
     setLoading(true);
-    void startScan(libraryDir, settings.analyze_bpm);
-  }, [libraryDir, settings.analyze_bpm]);
+    void startScan(libraryDir, settings.analyze_bpm, undefined, false, false, {
+      min: settings.bpm_min,
+      max: settings.bpm_max,
+    });
+  }, [libraryDir, settings.analyze_bpm, settings.bpm_min, settings.bpm_max]);
 
   // Incremental sync: analyze only new files, drop deleted ones. Cheap enough to
   // run automatically on folder changes. Single-flight with a dirty re-run.
-  const incrementalSync = useCallback(async () => {
-    if (!libraryDir || loadingRef.current) return;
+  // Returns the track list it ended up with, so a caller can act on it without
+  // waiting for a render: `tracksRef` is assigned during render, so reading it
+  // straight after this resolves gives the list from *before* the sync.
+  const incrementalSync = useCallback(async (): Promise<TrackAnalysis[]> => {
+    if (!libraryDir || loadingRef.current) return tracksRef.current;
     if (syncingRef.current) {
       dirtyRef.current = true;
-      return;
+      return tracksRef.current;
     }
     syncingRef.current = true;
     setSyncing(true);
@@ -305,8 +311,12 @@ export default function LibraryView({
         current = [...keptTracks, ...analyzed];
         setTracks(current);
       } while (dirtyRef.current);
+      return current;
     } catch (e) {
       setError(`Sync failed: ${e}`);
+      // Whatever the sync had managed before it failed — the caller's fallback
+      // is the pre-sync list either way.
+      return tracksRef.current;
     } finally {
       syncingRef.current = false;
       setSyncing(false);
@@ -321,18 +331,29 @@ export default function LibraryView({
   // Hands whatever still lacks a BPM to the scan job, in the background. Cheap
   // to call: it is a no-op when nothing is missing or a job is already running,
   // which is what lets it be triggered from every place the library changes.
-  const startBpmBacklog = useCallback(() => {
-    if (!libraryDir || !settings.analyze_bpm) return;
-    const paths = pathsMissingBpm(tracksRef.current).filter(
-      (p) => !bpmAttemptedRef.current.has(p),
-    );
-    if (!paths.length) return;
-    void startScan(libraryDir, true, paths).then((started) => {
-      // Only mark them once the job actually took them, otherwise a run that
-      // lost the single-flight race would never be retried.
-      if (started) paths.forEach((p) => bpmAttemptedRef.current.add(p));
-    });
-  }, [libraryDir, settings.analyze_bpm]);
+  //
+  // `from` exists because of a race that cost a fresh library its tempos: called
+  // straight after a sync, `tracksRef` still held the pre-sync list, so nothing
+  // looked to be missing a BPM and no job started — detection only began on the
+  // next launch. Callers that have just produced a list pass it in.
+  const startBpmBacklog = useCallback(
+    (from?: TrackAnalysis[]) => {
+      if (!libraryDir || !settings.analyze_bpm) return;
+      const paths = pathsMissingBpm(from ?? tracksRef.current).filter(
+        (p) => !bpmAttemptedRef.current.has(p),
+      );
+      if (!paths.length) return;
+      void startScan(libraryDir, true, paths, false, false, {
+        min: settings.bpm_min,
+        max: settings.bpm_max,
+      }).then((started) => {
+        // Only mark them once the job actually took them, otherwise a run that
+        // lost the single-flight race would never be retried.
+        if (started) paths.forEach((p) => bpmAttemptedRef.current.add(p));
+      });
+    },
+    [libraryDir, settings.analyze_bpm, settings.bpm_min, settings.bpm_max],
+  );
 
   // The scan-done listener is registered once, so it reaches the current
   // callback through a ref instead of capturing a stale one.
@@ -502,9 +523,9 @@ export default function LibraryView({
       } else {
         // Otherwise just reconcile incrementally against what's on disk, then
         // start chewing through whatever still has no tempo.
-        await incrementalSync();
+        const synced = await incrementalSync();
         if (!active) return;
-        backlogRef.current();
+        backlogRef.current(synced);
       }
     })();
     return () => {
@@ -542,7 +563,7 @@ export default function LibraryView({
     const group = listenerGroup();
     // New files on disk get analyzed, then queued for their tempo.
     void onLibraryChanged(() => {
-      void incrementalSync().then(() => backlogRef.current());
+      void incrementalSync().then((synced) => backlogRef.current(synced));
     }).then((off) => group.add(off));
     return () => {
       group.dispose();

@@ -13,6 +13,7 @@ import { relocateMessage, shouldRelocate } from "../lib/relocate";
 import { checkForUpdate, installUpdate, type UpdateInfo } from "../lib/updater";
 import { HeartIcon } from "./icons";
 import {
+  BPM_RANGE_PRESETS,
   DOWNLOAD_FORMAT_LABELS,
   type DownloadFormat,
   type Settings,
@@ -318,6 +319,30 @@ export default function SettingsView({
             className="h-4 w-4 rounded border-border-strong bg-surface-2"
           />
           <span>Detect BPM and write it into the files</span>
+        </label>
+        <label className="mt-4 flex flex-col gap-1 text-sm">
+          <span className="text-fg-muted">Tempo range</span>
+          <select
+            value={`${settings.bpm_min}-${settings.bpm_max}`}
+            onChange={(e) => {
+              const [min, max] = e.target.value.split("-").map(Number);
+              onSettingsChange({ bpm_min: min, bpm_max: max });
+            }}
+            className="w-64 rounded-md border border-border-strong bg-surface-2 px-2 py-1.5 text-fg outline-none focus:border-accent-500"
+          >
+            {BPM_RANGE_PRESETS.map((p) => (
+              <option key={p.label} value={`${p.min}-${p.max}`}>
+                {p.label}
+              </option>
+            ))}
+          </select>
+          <span className="font-sans text-xs text-fg-subtle">
+            A range spanning one octave gives every tempo a single
+            representative, which removes a class of half/double-time errors —
+            worth narrowing if your library sits in one genre. Tracks that
+            already carry a BPM keep it, so use "Re-detect BPM" below to apply a
+            change to what is already tagged.
+          </span>
         </label>
         {onRedetectBpm && (
           <div className="mt-4 border-t border-border pt-4">

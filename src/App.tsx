@@ -161,8 +161,11 @@ export default function App() {
   const redetectBpm = useCallback(() => {
     const dir = settings.library_dir;
     if (!dir || !libraryTracks.length) return;
-    void startScan(dir, true, libraryTracks.map((t) => t.path), true);
-  }, [settings.library_dir, libraryTracks]);
+    void startScan(dir, true, libraryTracks.map((t) => t.path), true, false, {
+      min: settings.bpm_min,
+      max: settings.bpm_max,
+    });
+  }, [settings.library_dir, settings.bpm_min, settings.bpm_max, libraryTracks]);
 
   const refreshEvents = useCallback(() => {
     void loadEvents()

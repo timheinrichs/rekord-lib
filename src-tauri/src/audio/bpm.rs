@@ -32,9 +32,16 @@ const EXCERPT_OFFSET_SECS: u32 = 30;
 const FRAME: usize = 512;
 const HOP: usize = 64;
 
-/// Tempo search range before octave correction.
-const MIN_BPM: f32 = 60.0;
-const MAX_BPM: f32 = 200.0;
+/// Default tempo search range before octave correction. Overridable per run —
+/// see [`TempoConfig`] — because a range that spans exactly one octave removes
+/// octave ambiguity outright, and which one fits depends on the collection.
+const DEFAULT_MIN_BPM: f32 = 60.0;
+const DEFAULT_MAX_BPM: f32 = 200.0;
+
+/// One excerpt is all we analyse. Several were measured against the reference
+/// set (roadmap item B4) and changed the outcome by a single track out of 2175
+/// at nearly three times the decode cost — including on the tracks whose grid
+/// wanders, which is what the idea was for. See `docs/DSP_BENCHMARK.md`.
 
 /// Tempo preference curve: centre and width (in octaves) of a log-normal prior
 /// over plausible tempos. An autocorrelation peak cannot distinguish a tempo
@@ -91,6 +98,37 @@ const STRONG_PEAK_RATIO: f32 = 3.00;
 /// Minimum envelope length relative to the longest lag examined.
 const MIN_PERIODS: usize = 4;
 
+/// What a caller may vary about detection: the search range, which is a user
+/// setting (Settings → Analysis).
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct TempoConfig {
+    pub min_bpm: f32,
+    pub max_bpm: f32,
+}
+
+impl Default for TempoConfig {
+    fn default() -> Self {
+        Self {
+            min_bpm: DEFAULT_MIN_BPM,
+            max_bpm: DEFAULT_MAX_BPM,
+        }
+    }
+}
+
+impl TempoConfig {
+    /// A range the search can actually work with: ordered, positive, and at
+    /// least a little wider than a point. A bad range from the settings store
+    /// falls back to the default rather than returning nothing for every file.
+    fn sanitised(self) -> Self {
+        let (min, max) = (self.min_bpm, self.max_bpm);
+        let usable = min.is_finite() && max.is_finite() && min >= 20.0 && max > min * 1.05;
+        Self {
+            min_bpm: if usable { min } else { DEFAULT_MIN_BPM },
+            max_bpm: if usable { max } else { DEFAULT_MAX_BPM },
+        }
+    }
+}
+
 /// A tempo estimate and how strongly the signal supported it.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Tempo {
@@ -104,7 +142,11 @@ pub struct Tempo {
 
 /// Decodes an excerpt of a file to mono PCM via the ffmpeg sidecar and detects
 /// its tempo. `Ok(None)` means "decoded fine, but no convincing tempo".
-pub async fn analyze_bpm(app: &AppHandle, path: &str) -> AppResult<Option<Tempo>> {
+pub async fn analyze_bpm(
+    app: &AppHandle,
+    path: &str,
+    config: TempoConfig,
+) -> AppResult<Option<Tempo>> {
     // Skip the intro; fall back to the start for tracks shorter than the offset.
     let decode_at = |offset| decode::mono_pcm(app, path, SAMPLE_RATE, offset, EXCERPT_SECS);
     let samples = match decode_at(EXCERPT_OFFSET_SECS).await {
@@ -114,21 +156,31 @@ pub async fn analyze_bpm(app: &AppHandle, path: &str) -> AppResult<Option<Tempo>
     // Detection is seconds of pure CPU work. Running it on an async worker
     // thread would block the very runtime the concurrent decodes and the rest
     // of the app share — with one task per core, throughput collapses.
-    tauri::async_runtime::spawn_blocking(move || detect_bpm(&samples, SAMPLE_RATE))
+    tauri::async_runtime::spawn_blocking(move || detect_bpm_with(&samples, SAMPLE_RATE, config))
         .await
         .map_err(|e| AppError::Probe(format!("BPM task failed: {e}")))
 }
 
+/// Detects the tempo of mono PCM samples with the default configuration.
+pub fn detect_bpm(samples: &[i16], sample_rate: u32) -> Option<Tempo> {
+    detect_bpm_with(samples, sample_rate, TempoConfig::default())
+}
+
 /// Detects the tempo of mono PCM samples, or `None` when the signal carries no
 /// convincing periodic pulse (silence, noise, spoken word, too short). Pure.
-pub fn detect_bpm(samples: &[i16], sample_rate: u32) -> Option<Tempo> {
+pub fn detect_bpm_with(
+    samples: &[i16],
+    sample_rate: u32,
+    config: TempoConfig,
+) -> Option<Tempo> {
+    let config = config.sanitised();
     let (envelope, env_rate) = onset_envelope(samples, sample_rate)?;
     let envelope = subtract_moving_mean(&envelope, (ENVELOPE_SMOOTH_SECS * env_rate) as usize);
 
     // Lag (in envelope frames) of a given tempo, and back.
     let lag_of = |bpm: f32| env_rate * 60.0 / bpm;
-    let min_lag = lag_of(MAX_BPM).floor().max(2.0) as usize;
-    let max_lag = lag_of(MIN_BPM).ceil() as usize;
+    let min_lag = lag_of(config.max_bpm).floor().max(2.0) as usize;
+    let max_lag = lag_of(config.min_bpm).ceil() as usize;
     if envelope.len() < max_lag * MIN_PERIODS {
         return None;
     }
@@ -154,7 +206,7 @@ pub fn detect_bpm(samples: &[i16], sample_rate: u32) -> Option<Tempo> {
     let bpm = 60.0 * env_rate / refined;
 
     Some(Tempo {
-        bpm: fold_to_preferred(bpm, &acf, env_rate),
+        bpm: fold_to_preferred(bpm, &acf, env_rate, config),
         confidence: confidence(acf[best], mean),
     })
 }
@@ -301,7 +353,7 @@ fn refine_peak(acf: &[f32], peak: usize) -> f32 {
 ///
 /// Candidates outside the searched range are dropped — there is no measurement
 /// to judge them by.
-fn fold_to_preferred(bpm: f32, acf: &[f32], env_rate: f32) -> f32 {
+fn fold_to_preferred(bpm: f32, acf: &[f32], env_rate: f32, config: TempoConfig) -> f32 {
     let score = |c: f32| {
         let lag = (env_rate * 60.0 / c).round() as usize;
         // Negative correlation means "no events at this rate"; clamping keeps
@@ -311,7 +363,7 @@ fn fold_to_preferred(bpm: f32, acf: &[f32], env_rate: f32) -> f32 {
     OCTAVE_FACTORS
         .iter()
         .map(|f| bpm * f)
-        .filter(|c| *c >= MIN_BPM && *c <= MAX_BPM)
+        .filter(|c| *c >= config.min_bpm && *c <= config.max_bpm)
         .fold((bpm, f32::MIN), |best, c| {
             let s = score(c);
             if s > best.1 {
@@ -535,6 +587,52 @@ mod tests {
         let strong = confidence(0.45, 0.05);
         assert!(weak < mid && mid < strong, "{weak} {mid} {strong}");
     }
+
+    #[test]
+    fn a_narrow_range_decides_the_octave() {
+        // The point of B5. A 160 BPM track has no representative in 70–140, so
+        // the only answer inside that window is its half — and a range that
+        // spans exactly one octave leaves exactly one candidate.
+        let samples = click_track(160.0, 40.0, 1.0);
+        let wide = detect_bpm_with(&samples, SR, TempoConfig::default()).expect("wide");
+        assert!((wide.bpm - 160.0).abs() <= 1.5, "wide got {}", wide.bpm);
+
+        let narrow = detect_bpm_with(
+            &samples,
+            SR,
+            TempoConfig { min_bpm: 70.0, max_bpm: 140.0, ..Default::default() },
+        )
+        .expect("narrow");
+        assert!((narrow.bpm - 80.0).abs() <= 1.0, "narrow got {}", narrow.bpm);
+    }
+
+    #[test]
+    fn an_impossible_range_falls_back_instead_of_finding_nothing() {
+        // A reversed or absurd range out of the settings store must not turn
+        // every file into "no tempo" — that would look like a broken detector.
+        let samples = click_track(128.0, 40.0, 1.0);
+        for bad in [
+            TempoConfig { min_bpm: 200.0, max_bpm: 60.0, ..Default::default() },
+            TempoConfig { min_bpm: 0.0, max_bpm: 0.0, ..Default::default() },
+            TempoConfig { min_bpm: f32::NAN, max_bpm: 180.0, ..Default::default() },
+            TempoConfig { min_bpm: 128.0, max_bpm: 128.0, ..Default::default() },
+        ] {
+            let got = detect_bpm_with(&samples, SR, bad)
+                .unwrap_or_else(|| panic!("no tempo for {bad:?}"));
+            assert!((got.bpm - 128.0).abs() <= 1.0, "{bad:?} gave {}", got.bpm);
+        }
+    }
+
+
+
+
+
+
+
+
+
+
+
 
     #[test]
     fn envelope_has_the_expected_rate_and_length() {

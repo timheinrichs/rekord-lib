@@ -174,39 +174,58 @@ the player bar on its own.
 
 *Size: M · prerequisite for H1*
 
-### B4 · Analyse more than one window
+### B4 · Analyse more than one window — **measured and rejected**
 
-**What** — two or three excerpts instead of the single 120 s window at 0:30,
-with agreement between them feeding the confidence value from B2.
+**What was tried** — three 120 s excerpts spread over the track instead of the
+single one at 0:30, reconciled by clustering: the largest group of agreeing
+windows wins, and its share scales the confidence.
 
-**Why** — one window is fast but blind to tempo changes and can be dominated by
-an atypical section (a long breakdown, a half-time intro). The reference
-project decodes the whole track; several windows get most of that robustness at
-a fraction of the cost.
+**Why it is not shipping** — it changed the outcome by **one track out of 2175**
+at 2.9× the decode cost, and the tier it existed for did not move at all: the 568
+tracks whose Rekordbox grid wanders scored 73.1 % within ±2 BPM either way. The
+premise does not hold on a real collection — where a track has one tempo, one
+window finds it, and where it has none, no single number is right. Numbers in
+[`DSP_BENCHMARK.md`](DSP_BENCHMARK.md).
 
-B7 gives this a second argument: on the 568 tracks whose Rekordbox grid wanders,
-both engines drop to ~73 % within ±2 BPM, against 87 % on steady material. That
-is where a single window hurts, and agreement between several windows is what
-would expose it rather than guess at it.
+**Worth keeping in mind** — the one real effect was on the *confidence*, not the
+tempo: agreement between windows separates correct from wrong answers noticeably
+better than a single peak does (mean gap 0.16 → 0.25). Too small to justify three
+decodes per track, but the right place to look if the write gate from B2 ever
+needs to be sharper. The mechanism was removed rather than left in unused.
 
-*Size: S · pairs with B2*
+*Size: S · done, negative*
 
-### B5 · Configurable BPM range
+### B5 · Configurable BPM range — **done**
 
 **What** — expose min/max BPM as a setting. Ours is hardcoded 60–200; theirs
 defaults to 70–180 and comes from settings.
 
-**Why** — a narrower range removes a whole class of octave errors for anyone
-whose library sits in one genre. B7 puts a number on it: **101** of our and the
-crate's octave errors answer outside the 70–180 BPM range the reference was
-analysed with, so they cannot be judged against it at all. A range that spans
-exactly one octave (`max = 2 × min`) makes the octave decision deterministic;
-ours is 3.3:1 today. Presets rather than free min/max fields, and the default
-stays 60–200 so an update does not silently move everyone's results — then
-measure 60–200 against 70–180 against 90–180 with `dsp_bench` and let that pick
-the recommended one.
+**What shipped** — a *Tempo range* dropdown under Settings → Analysis, six
+presets: the historical `60–200 (wide)` as the default plus five that span
+exactly one octave (`max = 2 × min`), from `60–120` to `100–200`. Stored as the
+two numbers rather than a preset name, threaded through `analyze_files` and
+`start_scan` into `TempoConfig`, and sanitised there so a reversed or absurd
+range falls back to the default instead of turning every file into "no tempo".
+Presets rather than free number fields: within one octave every tempo has a
+single representative, which is the whole reason a narrower range could help.
 
-*Size: S*
+**Why the default did not change** — because it was measured, and narrowing does
+not help. 70–180 is indistinguishable from the wide range (+8 tracks out of 2175,
+p = 0.45), and 90–180 is significantly *worse* (−26, p = 0.03) while leaving 22
+tracks with no tempo at all. The presets stay as an option for a library that
+really does sit in one genre; this collection, spread over 70–185 BPM, cannot
+test that case. See [`DSP_BENCHMARK.md`](DSP_BENCHMARK.md).
+
+**What that also refuted** — B7's own write-up called the 101 octave errors
+answering outside the reference's range "the concrete argument for B5". Running
+our detector at 70–180 removes that class by construction and gains nothing, so
+those are genuine detector errors, not artefacts of the mismatch.
+
+Nothing new was needed to make a range change reach a tagged library: the
+existing "Re-detect BPM" action in Settings already does exactly that, which the
+dropdown's help text points at.
+
+*Size: S · done*
 
 ### B6 · Waveform preview in the player bar
 

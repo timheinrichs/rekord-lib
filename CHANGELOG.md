@@ -9,6 +9,13 @@ contain incompatible changes.
 
 ## [Unreleased]
 
+### Fixed
+- **A brand-new library gets its tempos on the first run.** Detection is handed
+  the list of files a sync just produced instead of reading a list that React
+  had not re-rendered yet, which on a fresh library meant nothing looked to be
+  missing a tempo and no detection started at all — it only began on the second
+  launch. Timing-dependent, so it did not fail every time.
+
 ### Changed
 - **Tempos keep their decimals.** Detection used to round to a whole number and
   throw the rest away — on a real collection nearly half of all tempos are not
@@ -29,6 +36,13 @@ contain incompatible changes.
   tempo in it.
 
 ### Added
+- **The tempo range is selectable** (Settings → Analysis). Six presets: the
+  familiar wide 60–200 stays the default, plus five that span exactly one octave
+  — within one octave every tempo has a single representative, so half/double
+  time has one answer instead of two. Worth trying if your library sits in one
+  genre; measured on a broad one it makes no difference, and a range that
+  excludes a track's real tempo leaves it with none at all. "Re-detect BPM" is
+  what applies a change to files that already carry a tempo.
 - `docs/DSP_BENCHMARK.md` — the tempo and key detection of `stratum-dsp` measured
   against ours over 2176 tracks with Rekordbox reference values, with the
   decision it produced: ours stays. It is right within ±2 BPM on 87.1 % of

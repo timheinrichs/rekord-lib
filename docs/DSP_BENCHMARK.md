@@ -126,9 +126,9 @@ Stated plainly, because these bound every number above.
   whose real tempo is 185 cannot appear in the reference at 185 — Rekordbox
   folded it into range. **101 octave errors** across both tiers (ours 42, the
   crate's 59) answer outside 70–180 and therefore cannot be confirmed or refuted
-  by this reference at all. That is the concrete argument for **B5**: narrowing
-  our range to match would remove a class of disagreement outright, and the
-  harness can now measure whether it does.
+  by this reference at all. This was written up as "the concrete argument for
+  B5" — it was not. The sweep below ran our detector at 70–180, which removes the
+  whole class by construction and gained nothing.
 - **Rekordbox' answer depends on its settings.** Re-analysing the same
   collection after switching from *dynamic* to *automatic, high-precision grid*
   moved 1205 of 2180 tempo values, 90 of them by an exact octave. The reference
@@ -137,6 +137,63 @@ Stated plainly, because these bound every number above.
 - **Grid accuracy was never measured**, only tempo and key. The `<TEMPO>` nodes
   in the export would support that, and it is what B3 would need before adopting
   anyone's beat grid.
+
+## The range and the window count — B5 and B4
+
+Two follow-up experiments on the same 2176 tracks, both against the run above as
+a baseline. Because the runs cover the *same* files, they are judged by counting
+the tracks whose verdict changed rather than by comparing two percentages: a sign
+test over the discordant pairs.
+
+| configuration | ±0.5 BPM | ±2 BPM | wrong | no result | decode | fixed | broke | net | p |
+|---|---|---|---|---|---|---|---|---|---|
+| **60–200, one window** (baseline) | 85.0 % | 87.1 % | 68 | 8 | 137 ms | — | — | — | — |
+| 70–180, one window | 84.3 % | 87.5 % | 59 | 10 | 149 ms | 46 | 38 | +8 | 0.45 |
+| 90–180, one window | 82.5 % | 86.0 % | 77 | 22 | 138 ms | 50 | 76 | **−26** | **0.03** |
+| 60–200, three windows | 85.2 % | 87.2 % | 66 | 7 | **432 ms** | 34 | 33 | +1 | 1.00 |
+
+Percentages are the steady-grid tier; the paired counts cover all 2175 tracks
+present in both runs.
+
+The baseline row is a **re-run** of the wide range after the B2 work, not the run
+at the top of this document — same configuration, so its numbers differ only by
+which of two runs it was (85.0 % vs 84.5 % at ±0.5). The comparisons use the
+re-run, because a paired test needs both sides measured by the same build.
+
+### B5 — the range is a setting, not an improvement
+
+Narrowing to 70–180 is indistinguishable from the wide range (+8 tracks out of
+2175, p = 0.45). Narrowing further to 90–180 is **significantly worse**
+(−26, p = 0.03) and leaves 22 tracks with no tempo at all, because their real one
+has no representative inside the window.
+
+The wide 60–200 default therefore stays — now for a measured reason rather than
+caution — and the octave-wide presets ship as an option for a collection that
+really does sit in one genre, which this one, spread over 70–185 BPM, cannot
+test. Worth knowing before narrowing: the cost of a range that excludes a track's
+real tempo is not a slightly worse answer, it is no answer.
+
+**The sweep also refutes the reasoning this document offered.** Running at
+70–180 removes the "unjudgeable octave error" class by construction — 42 of ours
+become 0 — and the accuracy does not move. Those octave errors are genuine
+detector mistakes that happen to land outside the window, not artefacts of the
+range mismatch.
+
+### B4 — several windows buy nothing
+
+Three excerpts per track instead of one changed the outcome by **one track out of
+2175**, at 2.9× the decode cost. The tier the idea existed for — the 568 tracks
+whose Rekordbox grid wanders — did not move at all (73.1 % either way). The
+premise, that a single window can be dominated by an atypical section, does not
+hold here: where a track has one tempo, one window finds it, and where it has
+none, no single number is right.
+
+One real effect, too small to buy the cost: agreement between windows is a better
+uncertainty signal than a single peak. The gap between the mean confidence of
+correct and of wrong answers widens from 0.16 to 0.25, and the best achievable
+write gate improves from 18 to 22 prevented wrong tags out of 337. The mechanism
+was removed again rather than left in unused — this paragraph is what remains of
+it, in case a future detector makes the idea worth re-measuring.
 
 ## Reproducing it
 
@@ -178,7 +235,6 @@ constants have to follow, or the report will excuse the wrong tracks.
   real information.
 - **B3 (beat grid)** stays where it was, minus the assumption that a crate would
   provide it.
-- **B4 (several windows)** is back on the table. It was going to be redundant if
-  a full-track engine won; no full-track engine won.
-- **B5 (BPM range)** is promoted from convenience to a measurable fix, with 101
-  affected tracks as the baseline.
+- **B4 (several windows) — measured and rejected**, see above.
+- **B5 (BPM range) — shipped as a setting**, with the wide default kept because
+  narrowing measured as no gain and one preset as a loss.

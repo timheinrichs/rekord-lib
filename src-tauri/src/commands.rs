@@ -73,6 +73,19 @@ const BPM_CONCURRENCY: usize = 8;
 /// (which returns nothing at all rather than a guess) and undo.
 const MIN_WRITE_CONFIDENCE: f32 = 0.30;
 
+/// The detector's configuration from what the frontend passed. `None` means the
+/// caller has no opinion — an older frontend, or an internal call — and the
+/// detector's own defaults apply. Out-of-order or absurd values are corrected
+/// inside `TempoConfig`, not here, so every entry point behaves the same.
+fn tempo_config(bpm_min: Option<f32>, bpm_max: Option<f32>) -> bpm::TempoConfig {
+    let default = bpm::TempoConfig::default();
+    bpm::TempoConfig {
+        min_bpm: bpm_min.unwrap_or(default.min_bpm),
+        max_bpm: bpm_max.unwrap_or(default.max_bpm),
+        ..default
+    }
+}
+
 /// Concurrent ffprobe processes in the analysis pass. One probe is short
 /// (~100 ms, dominated by process startup rather than CPU), so the pass is
 /// bound by how many can be in flight at once, not by cores.
@@ -187,6 +200,8 @@ pub async fn analyze_files(
     paths: Vec<String>,
     analyze_bpm: bool,
     library_dir: Option<String>,
+    bpm_min: Option<f32>,
+    bpm_max: Option<f32>,
 ) -> AppResult<Vec<TrackAnalysis>> {
     // Stat before probing (see the scan loop for why that order matters).
     let mut ids: Vec<Option<FsIdentity>> = Vec::with_capacity(paths.len());
@@ -204,7 +219,16 @@ pub async fn analyze_files(
     if analyze_bpm {
         // Synchronous path: the caller gets the finished tracks as the return
         // value, so there is nothing to stream and nothing to cancel.
-        detect_bpm_pass(&app, &mut out, false, |_, _| {}, |_| {}, || false).await;
+        detect_bpm_pass(
+            &app,
+            &mut out,
+            false,
+            tempo_config(bpm_min, bpm_max),
+            |_, _| {},
+            |_| {},
+            || false,
+        )
+        .await;
         // The tempo write changed every touched file, so the identities taken
         // above are stale — take them again.
         ids = out.iter().map(|t| db::fs_identity(&t.path)).collect();
@@ -251,6 +275,7 @@ async fn detect_bpm_pass(
     app: &AppHandle,
     tracks: &mut [TrackAnalysis],
     force: bool,
+    config: bpm::TempoConfig,
     mut progress: impl FnMut(usize, usize),
     mut emit: impl FnMut(Vec<TrackAnalysis>),
     cancelled: impl Fn() -> bool,
@@ -281,7 +306,7 @@ async fn detect_bpm_pass(
                 (
                     *index,
                     tauri::async_runtime::spawn(async move {
-                        bpm::analyze_bpm(&app, &path).await.ok().flatten()
+                        bpm::analyze_bpm(&app, &path, config).await.ok().flatten()
                     }),
                 )
             })
@@ -363,6 +388,8 @@ pub fn start_scan(
     paths: Option<Vec<String>>,
     force_bpm: bool,
     force: bool,
+    bpm_min: Option<f32>,
+    bpm_max: Option<f32>,
 ) -> bool {
     // Single-flight: only start if a scan is not already running.
     if state.running.swap(true, Ordering::SeqCst) {
@@ -532,6 +559,7 @@ pub fn start_scan(
                 &app,
                 &mut out,
                 force_bpm,
+                tempo_config(bpm_min, bpm_max),
                 |done, total| {
                     let state = progress_app.state::<ScanState>();
                     state.done.store(done, Ordering::SeqCst);

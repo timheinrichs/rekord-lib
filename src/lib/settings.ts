@@ -33,6 +33,36 @@ export function bandcampFormatKey(f: DownloadFormat): string {
   }
 }
 
+/**
+ * Ranges offered for tempo detection.
+ *
+ * All but the last span exactly one octave (`max = 2 × min`), which is the point
+ * of them: within one octave every tempo has a single representative, so the
+ * octave decision has one answer instead of two. The wide range is 3.3:1 and
+ * leaves 65 and 130 both in play — it stays the default because changing what a
+ * scan produces on an update would be worse than leaving a suboptimal default.
+ *
+ * Measured against the reference set in `docs/DSP_BENCHMARK.md`.
+ */
+export const BPM_RANGE_PRESETS: { min: number; max: number; label: string }[] = [
+  { min: 60, max: 200, label: "60–200 (wide)" },
+  { min: 60, max: 120, label: "60–120 (one octave)" },
+  { min: 70, max: 140, label: "70–140 (one octave)" },
+  { min: 80, max: 160, label: "80–160 (one octave)" },
+  { min: 90, max: 180, label: "90–180 (one octave)" },
+  { min: 100, max: 200, label: "100–200 (one octave)" },
+];
+
+/**
+ * The label for a stored range. A pair that matches no preset — from a hand
+ * edited store, or a preset list that has since changed — is still described
+ * rather than shown as nothing.
+ */
+export function bpmRangeLabel(min: number, max: number): string {
+  const preset = BPM_RANGE_PRESETS.find((p) => p.min === min && p.max === max);
+  return preset ? preset.label : `${min}–${max}`;
+}
+
 /** Default settings persisted in the app. */
 export interface Settings {
   /** Central library folder (collection). */
@@ -50,6 +80,14 @@ export interface Settings {
    * file's tag. Off means the scan stays read-only.
    */
   analyze_bpm: boolean;
+  /**
+   * Tempo range the detector searches, before octave correction.
+   *
+   * Stored as the two numbers rather than a preset name, so the value keeps
+   * meaning something if the preset list ever changes.
+   */
+  bpm_min: number;
+  bpm_max: number;
   /** Discogs app credentials for metadata suggestions (stored locally only). */
   discogs_key: string | null;
   discogs_secret: string | null;
@@ -62,6 +100,10 @@ export const DEFAULT_SETTINGS: Settings = {
   sanitize_filenames: false,
   download_format: "aiff",
   analyze_bpm: true,
+  // The historical range. Deliberately not one of the octave-wide presets: a
+  // narrower default would silently move every user's results on update.
+  bpm_min: 60,
+  bpm_max: 200,
   discogs_key: null,
   discogs_secret: null,
 };
