@@ -10,3 +10,4 @@ pub mod key;
 pub mod probe;
 pub mod sidecar;
 pub mod waveform;
+pub mod workers;

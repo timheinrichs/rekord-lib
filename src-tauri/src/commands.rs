@@ -4,7 +4,7 @@ use base64::Engine;
 use tauri::{AppHandle, Emitter, Manager, State};
 
 use crate::audio::convert::ConvertProgress;
-use crate::audio::{analysis, bpm, compat, convert, dedupe, probe, waveform};
+use crate::audio::{analysis, bpm, compat, convert, dedupe, probe, waveform, workers};
 use crate::bandcamp::session::BandcampState;
 use crate::bandcamp::{collection, download, session};
 use crate::db::{self, FsIdentity, TrackRecord};
@@ -63,9 +63,19 @@ struct Todo {
 }
 const STAGE_DUPLICATES: &str = "Finding duplicates";
 
-/// Concurrent ffmpeg processes in the BPM pass — same budget as the duplicate
+/// Most concurrent ffmpeg processes in the BPM pass — the measured value, which
+/// [`workers::budget`] may lower but never raises. Same ceiling as the duplicate
 /// search's fingerprint pass.
 const BPM_CONCURRENCY: usize = 8;
+
+/// Memory to reserve per worker in the BPM pass. The pass is the one place that
+/// decodes a **whole** file: mono `i16` at 11025 Hz, held in the raw byte buffer
+/// and in the sample vector at once (`audio::decode::mono_pcm`), so about
+/// 44 kB per second of audio — ~26 MB for a 10-minute track, ~160 MB for a
+/// one-hour set. 96 MB covers a long track with room for ffmpeg's own footprint;
+/// a machine that cannot afford that many gets fewer workers instead of an
+/// allocation failure halfway through the batch.
+const BPM_WORKER_BYTES: u64 = 96 * 1024 * 1024;
 
 /// Below this confidence a detected tempo is kept but **not** written into the
 /// file. The value still reaches the library, so the UI can show it as
@@ -113,6 +123,11 @@ fn tempo_config(bpm_min: Option<f32>, bpm_max: Option<f32>) -> bpm::TempoConfig 
 /// Concurrent ffprobe processes in the analysis pass. One probe is short
 /// (~100 ms, dominated by process startup rather than CPU), so the pass is
 /// bound by how many can be in flight at once, not by cores.
+///
+/// Deliberately outside [`workers::budget`] for the same reason: ffprobe reads
+/// headers rather than audio, so it holds nothing worth budgeting, and the
+/// measurement above says cores are not what limits this pass. Lowering it with
+/// the others would cost scan time to solve a problem it does not have.
 const PROBE_CONCURRENCY: usize = 8;
 
 /// Completion event of the scan. The tracks arrive over `scan://tracks` while
@@ -349,8 +364,18 @@ async fn detect_bpm_pass(
         todo.iter().any(|t| t.wanted.key),
     ));
 
+    // Asked once per pass rather than once per process: the free memory of a
+    // machine changes over a session, so a scan started while another app held
+    // 8 GB should not keep that width for the rest of the run.
+    let width = workers::budget(
+        workers::Host::detect(),
+        BPM_WORKER_BYTES,
+        BPM_CONCURRENCY,
+        workers::override_jobs(),
+    );
+
     let mut done = 0;
-    for chunk in todo.chunks(BPM_CONCURRENCY) {
+    for chunk in todo.chunks(width) {
         // await_resume returns at once unless a scan is paused, so the
         // synchronous path through analyze_files is unaffected.
         if cancelled() || await_resume(app).await {

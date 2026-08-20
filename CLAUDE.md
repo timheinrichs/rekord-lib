@@ -110,6 +110,7 @@ against a real collection:
 npm run tauri dev                      # generated library, own app data directory
 REKORD_DEV_FRESH=1 npm run tauri dev   # rebuild it and wipe the devtest database
 REKORD_DEV_REAL=1 npm run tauri dev    # deliberately, against your real data
+REKORD_JOBS=2 npm run tauri dev         # force the analysis width (see audio::workers)
 ```
 
 There is nothing to remember: the `tauri` npm script is

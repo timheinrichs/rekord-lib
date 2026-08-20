@@ -599,15 +599,33 @@ that embeds them verbatim rather than a second trip through the encoder.
 
 ## D — Performance
 
-### D1 · Core- and memory-aware worker budget
+### D1 · Core- and memory-aware worker budget — **done**
 
-**What** — bound analysis concurrency explicitly by host parallelism *and*
-available RAM, keeping roughly two cores free for the OS and the UI thread, with
-an env-var override for debugging.
+**What shipped** — `audio::workers::budget` takes the smaller of two budgets —
+cores minus two, and how many workers of a given size fit in the free memory
+(`sysinfo::System::available_memory`) — and clamps it into `1..=cap`. It is asked
+once at the start of each pass rather than once at startup, because the free
+memory of a machine changes over a session. `REKORD_JOBS` overrides both terms
+for debugging, clamped to 64 so a typo cannot fork-bomb the machine.
 
-**Why** — that is exactly what the reference project does, and their stated
-reason is sound: a high-core, low-RAM machine otherwise either pegs every core
-and makes the app unresponsive, or runs out of memory mid-batch.
+**`cap` is the value the pass was measured at, so the budget can only lower the
+width, never raise it.** Both passes keep their 8. On an 8-core Mac that now
+means 6, and a 16-core machine still gets 8 — going above a measured number on
+the strength of a heuristic would be a guess in better clothing.
+
+Only the passes that actually decode are bounded, and only one of them is really
+memory-bound:
+
+| Pass | Per worker | What binds it |
+| --- | --- | --- |
+| BPM/key/waveform | 96 MB | Decodes the **whole** file (mono `i16` @ 11025 Hz, held in the byte buffer and the sample vector at once — ~44 kB per second of audio, so ~26 MB for 10 minutes and ~160 MB for a one-hour set). Memory binds first on a high-core, low-RAM machine. |
+| Fingerprint | 8 MB | A fixed 120 s window, ~5 MB. Memory never binds; this is core-awareness only. |
+
+**`PROBE_CONCURRENCY` deliberately stays outside the budget.** ffprobe reads
+headers, not audio, so it holds nothing worth budgeting, and the measurement
+already recorded next to the constant says the pass is bound by process startup
+rather than by cores. Lowering it with the others would cost scan time to solve a
+problem it does not have.
 
 *Size: S*
 

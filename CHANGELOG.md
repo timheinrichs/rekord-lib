@@ -9,6 +9,16 @@ contain incompatible changes.
 
 ## [Unreleased]
 
+### Changed
+- **The scan takes the machine it runs on into account.** How many files are
+  analysed at once was three hard-wired eights. It is now the smaller of "cores
+  minus two, so the interface stays responsive" and "how many whole-file decodes
+  fit in the memory that is actually free" — asked at the start of each pass,
+  because free memory changes while the app is open. A high-core, low-RAM machine
+  no longer risks running out of memory halfway through a batch. The measured
+  ceiling of 8 still stands; the budget can only go below it. `REKORD_JOBS=<n>`
+  overrides it for debugging.
+
 ## [0.6.0] - 2026-08-20
 
 ### Fixed

@@ -5,7 +5,7 @@ use rusty_chromaprint::{match_fingerprints, Configuration};
 use serde::Serialize;
 use tauri::{AppHandle, Emitter, Manager};
 
-use crate::audio::fingerprint;
+use crate::audio::{fingerprint, workers};
 use crate::db::{self, FsIdentity};
 use crate::jobs::DedupeState;
 use crate::models::{DupCandidate, DuplicateFile, DuplicateGroup};
@@ -38,8 +38,15 @@ const DURATION_TOLERANCE: f64 = 1.0;
 /// Looser tolerance for the metadata tier: a foreign convert may shift the
 /// length a bit more, but artist + normalized title must match exactly.
 const METADATA_DURATION_TOLERANCE: f64 = 4.0;
-/// How many files are fingerprinted in parallel (one ffmpeg process each).
+/// Most files fingerprinted in parallel (one ffmpeg process each) — the
+/// measured value, which [`workers::budget`] may lower but never raises.
 const FP_CONCURRENCY: usize = 8;
+
+/// Memory to reserve per fingerprint worker. Unlike the BPM pass this decodes a
+/// fixed 120 s window (`fingerprint::FINGERPRINT_SECS`) — about 5 MB of
+/// samples — so memory practically never binds here and the budget comes down
+/// to leaving cores free.
+const FP_WORKER_BYTES: u64 = 8 * 1024 * 1024;
 
 /// Progress of the duplicate search (streamed to the frontend).
 #[derive(Clone, Serialize)]
@@ -419,7 +426,13 @@ pub async fn find_duplicates(
     let total = to_fp.len();
     let mut done = 0usize;
     emit(app, generation, 0, total, "Analyzing", true);
-    for chunk in to_fp.chunks(FP_CONCURRENCY) {
+    let width = workers::budget(
+        workers::Host::detect(),
+        FP_WORKER_BYTES,
+        FP_CONCURRENCY,
+        workers::override_jobs(),
+    );
+    for chunk in to_fp.chunks(width) {
         // Fingerprinting is the expensive half of the search, so it is held by
         // a pause like the other phases — between chunks, never inside one.
         if app.state::<DedupeState>().cancel.load(Ordering::SeqCst)
