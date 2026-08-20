@@ -9,6 +9,8 @@ contain incompatible changes.
 
 ## [Unreleased]
 
+## [0.7.1] - 2026-08-21
+
 ### Added
 - **How the app works is documented, per feature area.** Four documents under
   `docs/` — the scan and what invalidates each of its three caches, duplicate
@@ -575,7 +577,8 @@ tool for a CDJ/XDJ- and Rekordbox-compatible library.
 - Project scaffold: Tauri 2 + React 19 + Tailwind v4, bundled
   ffmpeg/ffprobe sidecar, first analysis/conversion pipeline.
 
-[Unreleased]: https://github.com/timheinrichs/rekord-lib/compare/v0.7.0...HEAD
+[Unreleased]: https://github.com/timheinrichs/rekord-lib/compare/v0.7.1...HEAD
+[0.7.1]: https://github.com/timheinrichs/rekord-lib/compare/v0.7.0...v0.7.1
 [0.7.0]: https://github.com/timheinrichs/rekord-lib/compare/v0.6.0...v0.7.0
 [0.6.0]: https://github.com/timheinrichs/rekord-lib/compare/v0.5.0...v0.6.0
 [0.5.0]: https://github.com/timheinrichs/rekord-lib/compare/v0.4.9...v0.5.0
