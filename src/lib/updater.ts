@@ -46,6 +46,29 @@ export async function checkForUpdate(): Promise<UpdateInfo | null> {
 }
 
 /**
+ * The update the start-up prompt should be showing, or null for no prompt.
+ *
+ * Returns the update rather than a boolean so the caller has something
+ * non-nullable to hand the dialog.
+ *
+ * Four conditions, and each one is a bug someone would otherwise report: there
+ * has to be an update; the prompt must not come back after it was answered (per
+ * session — the next launch is the next chance to notice, which is the whole
+ * point of prompting); it waits for the splash, or it lands on the launch
+ * animation instead of the app; and it stays out of the way while settings are
+ * open, where the same update is already offered.
+ */
+export function promptedUpdate(
+  update: UpdateInfo | null,
+  answered: boolean,
+  splashGone: boolean,
+  settingsOpen: boolean,
+): UpdateInfo | null {
+  if (answered || !splashGone || settingsOpen) return null;
+  return update;
+}
+
+/**
  * Downloads and installs the last found update, reporting byte progress, then
  * relaunches the app. Throws if no update is pending.
  */

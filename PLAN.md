@@ -35,6 +35,10 @@ commit apiece.
   for a marker to travel in. `scripts/release-notes.mjs` cuts the section for the
   tag out of `CHANGELOG.md`.
 
+- **Follow-up to F5 · the start-up prompt.** `UpdateModal`: title, close icon,
+  release notes, a link to the release on GitHub, and Cancel / Update aligned
+  right. Dismissal is per session, not persisted.
+
 Plus two documentation passes: the skills (`/design`, `/design-system`,
 `/code-review`, `/simplify`, `/run`, `/security-review`) anchored where the rule
 they serve already lives, and this plan-and-version convention itself.

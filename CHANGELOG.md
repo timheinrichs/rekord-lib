@@ -14,6 +14,10 @@ contain incompatible changes.
   `**Severity:** critical` line in this file turns the gear's dot red and states
   the update as a banner rather than a quiet pill, so a security or data-loss fix
   does not look like a nice-to-have.
+- **A waiting update says so when the app starts.** A dialog with the release
+  notes, a link to the release on GitHub, and the choice between installing now
+  and carrying on. It appears once per launch until it is installed — the gear's
+  dot is easy to miss, and an update nobody notices is an update nobody installs.
 - **The update dialog shows what changed.** Release notes now come from this
   changelog: the release workflow cuts out the section for the tag it is
   building, so the GitHub release, the updater and this file cannot drift apart.

@@ -842,6 +842,15 @@ worse than a quiet one.
 The notes are now shown for **every** update, not only critical ones — deciding
 whether to restart is easier when you can see what you get.
 
+**And the app asks at start-up**, rather than waiting to be found: `UpdateModal`
+shows the notes, a link to the release on GitHub, and Cancel next to Update. It
+is dismissible and the dismissal is *not* persisted — the next launch is the next
+chance to notice, which is the entire reason for prompting; and forcing a restart
+at launch would be worse than the version gap. It waits for the splash and stays
+out of the way while settings are open, where the same update is already offered.
+The condition lives in `promptedUpdate` so those four cases are tested rather than
+buried in JSX.
+
 **What is left** — the end-to-end path only becomes visible on the next real
 release; `tauri dev` has no endpoint to check against, so the UI is covered by
 component tests instead.

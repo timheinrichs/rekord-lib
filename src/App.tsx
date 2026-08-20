@@ -5,6 +5,7 @@ import BandcampView from "./components/BandcampView";
 import SettingsView from "./components/SettingsView";
 import HeaderNav from "./components/HeaderNav";
 import EventLogModal from "./components/EventLogModal";
+import UpdateModal from "./components/UpdateModal";
 import PlayerBar from "./components/PlayerBar";
 import { ArrowUpIcon } from "./components/icons";
 import { useScrolled } from "./lib/useScrolled";
@@ -26,7 +27,11 @@ import {
   saveSettings,
   type Settings,
 } from "./lib/settings";
-import { checkForUpdate, type UpdateInfo } from "./lib/updater";
+import {
+  checkForUpdate,
+  promptedUpdate,
+  type UpdateInfo,
+} from "./lib/updater";
 import AppSplash from "./components/AppSplash";
 import { useReplayAnimation } from "./lib/useReplayAnimation";
 import type { BootPhase } from "./lib/boot";
@@ -94,6 +99,10 @@ export default function App() {
   const [events, setEvents] = useState<AppEvent[]>([]);
   const [eventsSeen, setEventsSeen] = useState(0);
   const [logOpen, setLogOpen] = useState(false);
+  // Whether the start-up update prompt has been answered. Per session, not
+  // persisted: the next launch is the next chance to notice, which is the whole
+  // reason the prompt exists.
+  const [updatePromptSeen, setUpdatePromptSeen] = useState(false);
 
   const bc = useBandcamp(settings, account);
 
@@ -123,6 +132,14 @@ export default function App() {
   }, []);
 
   const splashLeaving = boot.phase === "ready" && minSplashOver;
+
+  // The update the start-up prompt should show, if any.
+  const prompted = promptedUpdate(
+    update,
+    updatePromptSeen,
+    splashGone,
+    settingsOpen,
+  );
 
   // Drop the splash once it has faded, so it stops covering the app.
   useEffect(() => {
@@ -301,6 +318,15 @@ export default function App() {
               onOpenEventLog={openEventLog}
             />
           </div>
+
+          {/* Held back until the splash is gone, so the prompt lands on the
+              app rather than over the launch animation. */}
+          {prompted && (
+            <UpdateModal
+              update={prompted}
+              onClose={() => setUpdatePromptSeen(true)}
+            />
+          )}
 
           {logOpen && (
             <EventLogModal

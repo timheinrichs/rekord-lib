@@ -8,7 +8,11 @@ const { checkMock, relaunchMock } = vi.hoisted(() => ({
 vi.mock("@tauri-apps/plugin-updater", () => ({ check: checkMock }));
 vi.mock("@tauri-apps/plugin-process", () => ({ relaunch: relaunchMock }));
 
-import { checkForUpdate, installUpdate } from "./updater";
+import {
+  checkForUpdate,
+  installUpdate,
+  promptedUpdate,
+} from "./updater";
 
 afterEach(() => vi.clearAllMocks());
 
@@ -96,5 +100,33 @@ describe("installUpdate", () => {
     await checkForUpdate(); // clears the pending update
     await expect(installUpdate()).rejects.toThrow();
     expect(relaunchMock).not.toHaveBeenCalled();
+  });
+});
+
+describe("promptedUpdate", () => {
+  const pending = {
+    version: "0.7.0",
+    currentVersion: "0.6.0",
+    severity: null,
+  };
+
+  it("prompts once the splash is gone and there is something to install", () => {
+    expect(promptedUpdate(pending, false, true, false)).toBe(pending);
+  });
+
+  it("stays away when there is nothing to install", () => {
+    expect(promptedUpdate(null, false, true, false)).toBeNull();
+  });
+
+  it("does not come back once it was answered", () => {
+    expect(promptedUpdate(pending, true, true, false)).toBeNull();
+  });
+
+  it("waits for the splash rather than landing on the launch animation", () => {
+    expect(promptedUpdate(pending, false, false, false)).toBeNull();
+  });
+
+  it("keeps out of settings, where the same update is already offered", () => {
+    expect(promptedUpdate(pending, false, true, true)).toBeNull();
   });
 });
