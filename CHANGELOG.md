@@ -9,7 +9,14 @@ contain incompatible changes.
 
 ## [Unreleased]
 
+## [0.6.0] - 2026-08-20
+
 ### Fixed
+- **Every track in the list gets its waveform, not just the ones in an album.**
+  A row asks for its waveform once, when it appears. Rows that were already on
+  screen while the scan ran asked before there was anything to get and never
+  asked again, so waveforms showed up only under an album that was expanded
+  afterwards. A finished scan now tells the rows on screen to ask again.
 - **The expand chevron is back.** Moving it into a column of its own left it in a
   cell whose padding used up the entire width, so it rendered into nothing.
 - **The checkboxes line up in every view.** In the folder and label views a
@@ -34,6 +41,10 @@ contain incompatible changes.
   launch. Timing-dependent, so it did not fail every time.
 
 ### Changed
+- **The library opens on the flat list**, and the grouping switch reads
+  Flat · Album · Label · Folder. Flat is the only one that shows every track as
+  its own row; folding them into albums, labels or folders is a choice rather
+  than the state the app starts in.
 - **The library columns are in a more useful order** and the expand arrow has a
   column of its own, so the title column shows nesting on its own and the rows
   line up with the group headers above them in every view.
@@ -96,10 +107,10 @@ contain incompatible changes.
   the drop starts, and to click straight to it. It appears a moment after
   playback begins, because it is computed from the whole file rather than
   guessed, and the plain line stands in until then.
-- `scripts/dev-library.py` and `scripts/dev-app.sh` — a generated audio library
-  for development plus a one-command way to run the app against it in its own
-  app data directory. Development no longer touches a real collection, and each
-  generated file covers one case the app has to get right, with the expected
+- `scripts/dev-library.py` and `scripts/dev-tauri.mjs` — a generated audio
+  library for development, which `npm run tauri dev` now uses on its own, in its
+  own app data directory. Development no longer touches a real collection, and
+  each generated file covers one case the app has to get right, with the expected
   result known by construction.
 - **The tempo range is selectable** (Settings → Analysis). Six presets: the
   familiar wide 60–200 stays the default, plus five that span exactly one octave
@@ -512,7 +523,8 @@ tool for a CDJ/XDJ- and Rekordbox-compatible library.
 - Project scaffold: Tauri 2 + React 19 + Tailwind v4, bundled
   ffmpeg/ffprobe sidecar, first analysis/conversion pipeline.
 
-[Unreleased]: https://github.com/timheinrichs/rekord-lib/compare/v0.5.0...HEAD
+[Unreleased]: https://github.com/timheinrichs/rekord-lib/compare/v0.6.0...HEAD
+[0.6.0]: https://github.com/timheinrichs/rekord-lib/compare/v0.5.0...v0.6.0
 [0.5.0]: https://github.com/timheinrichs/rekord-lib/compare/v0.4.9...v0.5.0
 [0.4.9]: https://github.com/timheinrichs/rekord-lib/compare/v0.4.8...v0.4.9
 [0.4.8]: https://github.com/timheinrichs/rekord-lib/compare/v0.4.7...v0.4.8
