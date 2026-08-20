@@ -1,6 +1,7 @@
 # Documentation
 
-Eight documents, each with one job. Nothing here ships with the app.
+Every document under `docs/`, plus the ones at the repo root that belong with
+them. One job each; nothing here ships with the app.
 
 ## Start here
 
