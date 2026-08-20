@@ -12,6 +12,17 @@ mod models;
 
 use tauri::Manager;
 
+// The wdio plugin runs a W3C WebDriver server over HTTP inside the app, which is
+// remote control of everything the frontend can do. `tauri build` compiles with
+// `--release`, so this turns "must never ship" from a sentence in a document
+// into a build that does not exist: `cargo build --release --features wdio`
+// fails here. Only `scripts/e2e-app.mjs` switches the feature on, and it builds
+// a debug bundle.
+#[cfg(all(feature = "wdio", not(debug_assertions)))]
+compile_error!(
+    "the `wdio` feature exposes an HTTP automation server and must never be built into a release"
+);
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     #[allow(unused_mut)]
@@ -26,6 +37,13 @@ pub fn run() {
     #[cfg(desktop)]
     {
         builder = builder.plugin(tauri_plugin_window_state::Builder::default().build());
+    }
+
+    // Drive the real app from `e2e/*.spec.ts` — see docs/TESTING.md. Compiled in
+    // only under the `wdio` feature, which a release build cannot switch on.
+    #[cfg(feature = "wdio")]
+    {
+        builder = builder.plugin(tauri_plugin_wdio_webdriver::init());
     }
 
     builder

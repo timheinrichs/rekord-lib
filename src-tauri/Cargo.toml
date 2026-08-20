@@ -50,6 +50,25 @@ rusqlite = { version = "0.40.2", features = ["bundled"] }
 # would break the self-contained-binaries rule.
 sysinfo = { version = "0.39", default-features = false, features = ["system"] }
 
+# Test-only, and off unless the `wdio` feature is on. The embedded WebDriver
+# server that lets `@wdio/tauri-service` drive the real app: `tauri-driver`
+# cannot, because macOS has no WKWebView driver tool, and macOS is the only
+# target we ship. It exposes automation over HTTP, which is why it is optional
+# and why a release build with the feature on refuses to compile — see the
+# `compile_error!` next to the registration in `lib.rs`.
+#
+# Its companion `tauri-plugin-wdio`, which backs `browser.tauri.execute` and
+# command mocking, is deliberately *not* here: it evaluates its scripts with
+# `eval` inside the page, which our CSP forbids, and buying it would mean adding
+# `'unsafe-eval'` to the app under test. Plain WebDriver reaches everything the
+# specs need. See docs/TESTING.md.
+tauri-plugin-wdio-webdriver = { version = "1.3", optional = true }
+
+[features]
+# Never enabled by a release build. `scripts/e2e-app.mjs` passes it, nothing else
+# does; `release.yml` does not.
+wdio = ["dep:tauri-plugin-wdio-webdriver"]
+
 [dev-dependencies]
 tempfile = "3"
 # Only for the DSP benchmark (tests/dsp_bench.rs). stratum-dsp is deliberately a

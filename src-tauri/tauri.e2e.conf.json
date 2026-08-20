@@ -1,0 +1,8 @@
+{
+  "$schema": "../node_modules/@tauri-apps/cli/config.schema.json",
+  "identifier": "com.timheinrichs.rekord-lib-e2e",
+  "productName": "rekord-lib (e2e)",
+  "bundle": {
+    "createUpdaterArtifacts": false
+  }
+}
