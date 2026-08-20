@@ -39,10 +39,17 @@ jobs:
       # empty notes is worse than a failed one, because nobody notices it.
       - name: Release notes from the changelog
         id: notes
+        # The tag reaches the shell through the environment, not through
+        # `${{ }}` interpolation into the script. Git allows `$`, backticks and
+        # `;` in a refname, so an interpolated tag is source text rather than
+        # data — pushing one needs write access anyway, but the primitive is
+        # free to remove.
+        env:
+          TAG: ${{ github.ref_name }}
         run: |
           {
             echo 'body<<RELEASE_NOTES_EOF'
-            node scripts/release-notes.mjs "${{ github.ref_name }}"
+            node scripts/release-notes.mjs "$TAG"
             echo RELEASE_NOTES_EOF
           } >> "$GITHUB_OUTPUT"
 
