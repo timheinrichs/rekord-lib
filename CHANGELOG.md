@@ -9,6 +9,35 @@ contain incompatible changes.
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-08-20
+
+### Added
+- **A scan can be paused.** The scan button doubles as the control: while a run
+  is on it shows what the run is doing, and offers "Pause scan" when you point
+  at it; held, it reads "Paused" and offers "Resume scan". Whatever is being
+  analysed at that moment still finishes, so pausing never costs a file its
+  analysis, and the run picks up where it left off. Useful when the machine is
+  needed for something else — a full library takes minutes.
+- **Files the analysis could not use are named.** A broken or unreadable file
+  was always skipped rather than aborting the run, but it disappeared without a
+  word. A count in the header now opens the list, with the full path and the
+  reason each file gave, and the list copies as text.
+- **An event log**, behind a button in the header. It collects the problems the
+  app worked around and used to keep to itself: a cache it could not read, rows
+  it could not store, an undo entry it could not write, a tempo it detected but
+  could not save. It survives a restart, marks unread warnings and errors with a
+  dot, and copies as text — which is the form a bug report needs.
+- **The bundled audio tools are checked at startup.** If ffmpeg or ffprobe
+  cannot run on your machine, the app says so in one banner instead of letting
+  every analysis and conversion fail for reasons you cannot see.
+- `docs/CDJ_TEST_MATRIX.md` — where hardware-validated CDJ compatibility results
+  go, with the scenarios to cover and what a row has to record. AIFF 16- and
+  24-bit are recorded as playing on a CDJ-2000nexus, a CDJ-3000 and an XDJ-700
+  with covers and tags intact; the resampling and AIFF-C cases the app exists
+  for are still untested on hardware, and the file says which.
+- `docs/FUTURE_CONSIDERATIONS.md` — the roadmap, from the comparison with
+  dj-usb-tkit.
+
 ### Changed
 - **Undo survives a restart.** The undo history for tag writes moved into the
   database, and the snapshot is taken from what is really in the files rather
@@ -20,15 +49,25 @@ contain incompatible changes.
   cover it.
 - **Converting with "replace original" moves the original to the trash** instead
   of deleting it outright. Every other delete in the app already did.
+- **A library folder that is gone is treated as gone, not as empty.** Renaming
+  it, moving it or unmounting the drive used to look like a mass deletion: the
+  next scan quietly forgot every track, and the edits and analysis attached to
+  them went too. Now nothing is dropped, and the library view offers to point
+  the app at the folder's new location — every track that is really there keeps
+  its identity, its pending edits and its fingerprint. Choosing a different
+  folder in the settings does the same.
 
-### Added
-- `docs/CDJ_TEST_MATRIX.md` — where hardware-validated CDJ compatibility results
-  go, with the scenarios to cover and what a row has to record. AIFF 16- and
-  24-bit are recorded as playing on a CDJ-2000nexus, a CDJ-3000 and an XDJ-700
-  with covers and tags intact; the resampling and AIFF-C cases the app exists
-  for are still untested on hardware, and the file says which.
-- `docs/FUTURE_CONSIDERATIONS.md` — the roadmap, from the comparison with
-  dj-usb-tkit.
+### Fixed
+- **"No cover" now actually removes the artwork.** Choosing it and confirming
+  left the picture in the file untouched, so the change looked like it had not
+  been saved.
+- **Files that are not really audio stay out of the library.** ffprobe
+  recognises a file by its extension as readily as by its contents, so a
+  damaged file could come back as a track with no sample rate and no channels —
+  one that could never be played or converted. It is skipped and named now.
+- **The reason a file was skipped is readable.** It used to be an exit code and
+  an empty line; it is what the tool actually reported, e.g. "Invalid data found
+  when processing input".
 
 ## [0.4.9] - 2026-08-19
 
