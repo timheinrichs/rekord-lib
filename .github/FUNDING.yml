@@ -1,0 +1,11 @@
+# Renders the "Sponsor" button on the repository page. GitHub only reads this
+# file from the default branch:
+# https://docs.github.com/en/repositories/managing-your-repositorys-settings-and-features/customizing-your-repository/displaying-a-sponsor-button-in-your-repository
+#
+# PayPal has no dedicated key, so it goes under `custom`. Same link the app
+# offers under Settings → About — if one changes, change the other
+# (`DONATE_URL` in src/components/SettingsView.tsx).
+custom: ["https://www.paypal.com/donate/?hosted_button_id=UJGTJEK598ZFS"]
+# Uncomment once GitHub Sponsors is enabled for the account; until then the
+# button would point at a profile that cannot take sponsorships.
+# github: [timheinrichs]
