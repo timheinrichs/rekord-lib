@@ -8,7 +8,7 @@
  * the release notes cannot drift from it, and a `**Severity:** critical` line
  * under the heading reaches the app without a second place to maintain.
  *
- * Usage: node scripts/release-notes.mjs 0.6.1 [path/to/CHANGELOG.md]
+ * Usage: node scripts/release-notes.mjs 0.7.0 [path/to/CHANGELOG.md]
  * Exits non-zero when there is no section for that version — a release with
  * empty notes is worse than a failed build, because nobody notices it.
  */

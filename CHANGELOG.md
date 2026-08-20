@@ -7,7 +7,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/)
 (`MAJOR.MINOR.PATCH`). As long as the version is at `0.x`, MINOR bumps may
 contain incompatible changes.
 
-## [Unreleased]
+## [Unreleased] — 0.7.0
 
 ### Added
 - **A release can say that it is critical, and the app says so too.** A

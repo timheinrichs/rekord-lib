@@ -51,6 +51,20 @@ stay the binding source.
 
 ## Workflow
 
+**Every session starts with a plan, and the plan cuts the next version.** Write
+it to a temporary `PLAN.md` in the repo root and commit it, so what a session set
+out to do is in the history next to what it changed. Analyse which part of
+`MAJOR.MINOR.PATCH` moves — at `0.x`, a bug fix or an internal improvement is a
+**PATCH** (`0.6.0` → `0.6.1`), anything user-facing that is *new* is a **MINOR**
+(`0.6.0` → `0.7.0`), and MINOR is also where a breaking change goes as long as
+the version is below 1.0. Name the number in the plan and say why. The file is
+deleted again in the release commit that performs the bump — it describes work in
+flight, and once the version is cut the CHANGELOG entry says the same thing
+better.
+
+The plan proposes the version; it does not bump it. See **Releasing &
+auto-update** — that still needs the maintainer's explicit go.
+
 - After non-trivial changes: `npx tsc --noEmit` (frontend) and
   `cd src-tauri && cargo check` (backend) must be green — **including
   warnings**. Dead constants left behind by a refactor only show up as
@@ -226,10 +240,18 @@ deliberate step that only happens when the maintainer says so.
   secret (`TAURI_SIGNING_PRIVATE_KEY`, empty password), never committed.
 - **Cutting a release** (only on go): bump the version in **three** places —
   `package.json`, `src-tauri/tauri.conf.json`, `src-tauri/Cargo.toml` — run
-  `cargo check` to sync `Cargo.lock`, add a `CHANGELOG.md` entry, commit, then
-  `git tag -a vX.Y.Z -m vX.Y.Z && git push origin vX.Y.Z`.
+  `cargo check` to sync `Cargo.lock`, turn the `CHANGELOG.md` entry into a
+  dated version heading, delete the session's `PLAN.md`, commit, then
+  `git tag -a vX.Y.Z -m vX.Y.Z && git push origin vX.Y.Z`. Run
+  `/security-review` first (see above).
   `.github/workflows/release.yml` (tauri-action on `macos-14`) builds the dmg +
   updater artifacts + `latest.json` and publishes the GitHub Release.
+- **The release notes are the changelog.** `scripts/release-notes.mjs` cuts the
+  section for the tag out of `CHANGELOG.md` and the workflow passes it as the
+  release body, which is also what lands in `latest.json`'s `notes` and what the
+  updater shows. So a tag with no changelog section **fails the build** on
+  purpose, and a `**Severity:** critical` line under the version heading is what
+  turns the in-app update banner red.
 - **Immutable releases must stay OFF** (repo *Settings → General*) for the
   fully automatic publish (`releaseDraft: false`). If turned on, a published
   release rejects asset uploads — then use `releaseDraft: true` and publish the
