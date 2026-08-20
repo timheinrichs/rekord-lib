@@ -57,6 +57,14 @@ describe("UpdateModal", () => {
     );
   });
 
+  it("tags an important release in warning, and says nothing more about it", () => {
+    // `important` makes no claim about what is at risk, so there is nothing for
+    // a sentence to add that the tag has not already said.
+    render(<UpdateModal update={update({ severity: "important" })} onClose={() => {}} />);
+    expect(screen.getByText("important")).toHaveClass("text-warning-500");
+    expect(screen.queryByText(/security or data-loss/)).toBeNull();
+  });
+
   it("closes from the close icon and from Cancel", async () => {
     const onClose = vi.fn();
     render(<UpdateModal update={update()} onClose={onClose} />);

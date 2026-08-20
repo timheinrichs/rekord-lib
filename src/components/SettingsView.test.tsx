@@ -58,6 +58,17 @@ describe("SettingsView · About", () => {
     expect(container.querySelector(".border-danger-500\\/40")).toBeNull();
   });
 
+  it("keeps an important update a pill, but a yellow one", () => {
+    // Loud enough to notice, quiet enough not to take the banner: nothing is at
+    // risk while it waits.
+    const { container } = renderSettings(update({ severity: "important" }));
+    expect(
+      screen.getByText(/Important update available/),
+    ).toBeInTheDocument();
+    expect(container.querySelector(".border-danger-500\\/40")).toBeNull();
+    expect(container.querySelector(".text-warning-500")).not.toBeNull();
+  });
+
   it("states a critical update as a banner, in danger", () => {
     // A security or data-loss fix has to look different from a nice-to-have,
     // in the same shape the library view states a broken sidecar.

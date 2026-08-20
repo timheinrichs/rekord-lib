@@ -1,4 +1,5 @@
 import type { UpdateInfo } from "./updater";
+import { severityOf } from "./changelog";
 
 /**
  * A fake pending update, for looking at the update dialog in `tauri dev`.
@@ -6,7 +7,8 @@ import type { UpdateInfo } from "./updater";
  * There is no updater endpoint in a dev run, so the real check always answers
  * "up to date" and the dialog cannot be reached — which is exactly the piece of
  * UI that only becomes visible on a real release otherwise. Set
- * `REKORD_DEV_UPDATE=1` (or `=critical`) and the check answers with this instead.
+ * `REKORD_DEV_UPDATE=1` and the check answers with this instead; `=critical` or
+ * `=important` fakes that level, so both markers can be looked at.
  *
  * Guarded by `import.meta.env.DEV`, so the whole thing is dead code in a release
  * build even if the variable were somehow set.
@@ -33,7 +35,9 @@ export function devUpdate(): UpdateInfo | null {
     version: "0.99.0",
     currentVersion: "0.7.0",
     notes: NOTES,
-    severity: flag === "critical" ? "critical" : null,
+    // The flag doubles as the level, so `=1` is the ordinary case and anything
+    // the parser does not know is ordinary too — same rule as a real release.
+    severity: severityOf(`**Severity:** ${flag}`),
   };
 }
 

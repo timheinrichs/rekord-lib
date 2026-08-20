@@ -2,8 +2,15 @@ import { useState } from "react";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import Overlay from "./Overlay";
 import { installUpdate, type UpdateInfo } from "../lib/updater";
+import type { Severity } from "../lib/changelog";
 
 const RELEASES_URL = "https://github.com/timheinrichs/rekord-lib/releases/tag/v";
+
+/** Tag colour per level, in the shape the collection view uses for status. */
+const TAG_CLASS: Record<Severity, string> = {
+  critical: "bg-danger-500/15 text-danger-500 ring-danger-500/30",
+  important: "bg-warning-500/15 text-warning-500 ring-warning-500/30",
+};
 
 interface Props {
   update: UpdateInfo;
@@ -22,7 +29,8 @@ export default function UpdateModal({ update, onClose }: Props) {
   const [installing, setInstalling] = useState(false);
   const [pct, setPct] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const critical = update.severity === "critical";
+  const severity = update.severity;
+  const critical = severity === "critical";
 
   const install = async () => {
     setInstalling(true);
@@ -53,9 +61,11 @@ export default function UpdateModal({ update, onClose }: Props) {
               {/* The severity as a tag beside the version rather than in the
                   title: the heading says what the dialog is, the tag says what
                   kind of release it is about. */}
-              {critical && (
-                <span className="shrink-0 rounded-full bg-danger-500/15 px-2 py-0.5 text-xs text-danger-500 ring-1 ring-danger-500/30">
-                  critical
+              {severity && (
+                <span
+                  className={`shrink-0 rounded-full px-2 py-0.5 text-xs ring-1 ${TAG_CLASS[severity]}`}
+                >
+                  {severity}
                 </span>
               )}
             </div>
@@ -71,10 +81,10 @@ export default function UpdateModal({ update, onClose }: Props) {
         </header>
 
         <div className="flex-1 overflow-y-auto px-5 py-4">
-          {/* Only said for a critical release: on an ordinary one it would be
-              noise, and the styleguide keeps status colour for state. Colour
-              alone carries it — the tag above is already the marker, and a
-              second panel around the same fact would say it twice. */}
+          {/* Only for a critical release, because it is a specific claim about
+              what is at risk and `important` makes no such claim — its tag says
+              everything there is to say. Colour alone carries it: the tag above
+              is already the marker, and a panel repeating it says it twice. */}
           {critical && (
             <p className="mb-3 font-sans text-sm text-danger-500">
               This release fixes a security or data-loss problem.

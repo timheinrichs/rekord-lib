@@ -21,9 +21,11 @@ describe("devUpdate", () => {
     expect(u?.currentVersion).toBeTruthy();
   });
 
-  it("fakes a critical one on request, so that banner is reachable too", () => {
+  it("fakes either level on request, so both markers are reachable", () => {
     vi.stubEnv("VITE_DEV_UPDATE", "critical");
     expect(devUpdate()?.severity).toBe("critical");
+    vi.stubEnv("VITE_DEV_UPDATE", "important");
+    expect(devUpdate()?.severity).toBe("important");
   });
 
   it("says in its own notes that it is a mock", () => {

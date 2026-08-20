@@ -482,9 +482,27 @@ export default function SettingsView({
               </div>
             ) : (
               <div className="mt-3 flex flex-wrap items-center gap-3">
-                <span className="inline-flex items-center gap-2 rounded-full bg-accent-500/15 px-3 py-1 text-sm text-accent-300 ring-1 ring-accent-500/30">
-                  <span className="h-1.5 w-1.5 rounded-full bg-accent-500" />
-                  Update available: v{update.version}
+                {/* `important` stays a pill and only changes colour: it is worth
+                    noticing, but nothing is at risk while it waits, and a
+                    banner would spend the loud shape on the quieter case. */}
+                <span
+                  className={`inline-flex items-center gap-2 rounded-full px-3 py-1 text-sm ring-1 ${
+                    update.severity === "important"
+                      ? "bg-warning-500/15 text-warning-500 ring-warning-500/30"
+                      : "bg-accent-500/15 text-accent-300 ring-accent-500/30"
+                  }`}
+                >
+                  <span
+                    className={`h-1.5 w-1.5 rounded-full ${
+                      update.severity === "important"
+                        ? "bg-warning-500"
+                        : "bg-accent-500"
+                    }`}
+                  />
+                  {update.severity === "important"
+                    ? "Important update available"
+                    : "Update available"}
+                  : v{update.version}
                 </span>
                 <button
                   onClick={runUpdate}

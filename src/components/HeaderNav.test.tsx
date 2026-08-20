@@ -56,6 +56,21 @@ describe("HeaderNav update badge", () => {
     ).toBeInTheDocument();
   });
 
+  it("marks an important update in warning, between the other two", () => {
+    // Worth noticing, but nothing is at risk while it waits — so not the red
+    // the event log keeps for errors, and not the accent of an ordinary update.
+    const { container } = renderNav({
+      updateAvailable: true,
+      updateSeverity: "important",
+    });
+    const dot = gearDot(container);
+    expect(dot).toHaveClass("bg-warning-500");
+    expect(dot).not.toHaveClass("bg-danger-500");
+    expect(
+      screen.getByRole("button", { name: "Settings, important update available" }),
+    ).toBeInTheDocument();
+  });
+
   it("says nothing about severity when no update is waiting", () => {
     // A stale severity from a previous check must not colour a dot that is not
     // there, nor rename the button.

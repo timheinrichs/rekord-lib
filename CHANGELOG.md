@@ -10,10 +10,12 @@ contain incompatible changes.
 ## [Unreleased] — 0.7.0
 
 ### Added
-- **A release can say that it is critical, and the app says so too.** A
-  `**Severity:** critical` line in this file turns the gear's dot red and states
-  the update as a banner rather than a quiet pill, so a security or data-loss fix
-  does not look like a nice-to-have.
+- **A release can say how urgent it is, and the app says so too.** A
+  `**Severity:**` line in this file marks a release `critical` — a security or
+  data-loss fix, which turns the gear's dot red and states the update as a banner
+  instead of a quiet pill — or `important`, which is worth noticing but nothing is
+  at risk while it waits, so it stays a pill and turns yellow. Unmarked releases
+  look exactly as they did.
 - **A waiting update says so when the app starts.** A dialog with the release
   notes, a link to the release on GitHub, and the choice between installing now
   and carrying on. It appears once per launch until it is installed — the gear's

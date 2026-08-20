@@ -20,9 +20,20 @@ describe("severityOf", () => {
     expect(severityOf(null)).toBeNull();
   });
 
+  it("reads the quieter level too", () => {
+    expect(severityOf("**Severity:** important\n\n### Fixed\n- A thing.")).toBe(
+      "important",
+    );
+    expect(severityOf("Severity: IMPORTANT")).toBe("important");
+  });
+
   it("treats a word it does not know as ordinary", () => {
     // A banner nobody meant to trigger is worse than a quiet update.
     expect(severityOf("**Severity:** spicy")).toBeNull();
+    // Including a near-miss of a level we do have: a typo must not invent a
+    // banner, and it must not silently pick the louder neighbour either.
+    expect(severityOf("**Severity:** critcal")).toBeNull();
+    expect(severityOf("**Severity:** importantish")).toBeNull();
   });
 
   it("does not fire on the word appearing in prose", () => {

@@ -136,7 +136,7 @@ npm run tauri dev                      # generated library, own app data directo
 REKORD_DEV_FRESH=1 npm run tauri dev   # rebuild it and wipe the devtest database
 REKORD_DEV_REAL=1 npm run tauri dev    # deliberately, against your real data
 REKORD_JOBS=2 npm run tauri dev        # force the analysis width (see audio::workers)
-REKORD_DEV_UPDATE=1 npm run tauri dev  # fake a pending update (=critical for the banner)
+REKORD_DEV_UPDATE=1 npm run tauri dev  # fake a pending update (=critical / =important)
 ```
 
 `REKORD_DEV_UPDATE` exists because a dev run has no updater endpoint, so the real
@@ -257,8 +257,9 @@ deliberate step that only happens when the maintainer says so.
   section for the tag out of `CHANGELOG.md` and the workflow passes it as the
   release body, which is also what lands in `latest.json`'s `notes` and what the
   updater shows. So a tag with no changelog section **fails the build** on
-  purpose, and a `**Severity:** critical` line under the version heading is what
-  turns the in-app update banner red.
+  purpose. A `**Severity:** critical` line under the version heading turns the
+  in-app update banner red; `**Severity:** important` marks it yellow without the
+  banner. Anything else, including a typo, ships as an ordinary release.
 - **Immutable releases must stay OFF** (repo *Settings → General*) for the
   fully automatic publish (`releaseDraft: false`). If turned on, a published
   release rejects asset uploads — then use `releaseDraft: true` and publish the

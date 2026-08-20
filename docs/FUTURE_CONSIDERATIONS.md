@@ -812,10 +812,22 @@ caused by unaligned UTF-16 string slots that no test suite would have caught.
 
 ### F5 · Severity marking in the changelog — **done**
 
-**What shipped** — a `**Severity:** critical` line under a version heading in
-`CHANGELOG.md`. The gear badge turns from accent to `danger`, and the About
-section states it as a banner in the shape the library view uses for a broken
-sidecar, instead of the quiet pill.
+**What shipped** — a `**Severity:**` line under a version heading in
+`CHANGELOG.md`, with **two** levels:
+
+| Level | Means | Gear dot | Settings | Start-up dialog |
+| --- | --- | --- | --- | --- |
+| `critical` | A security or data-loss fix. Install now. | `danger` | banner, in the shape the library view uses for a broken sidecar | tag + the sentence naming what is at risk |
+| `important` | Worth having soon; nothing is at risk while it waits. | `warning` | the pill, in `warning` | tag only |
+| *unmarked* | An ordinary release, which is most of them. | `accent` | the pill, in `accent` | no tag |
+
+Two levels rather than three: `critical` is a yes-or-no question about a release,
+`important` is the one useful step below it, and a longer scale would demand a
+judgement at every release without changing what anyone does about it. The banner
+stays with `critical` alone — spending the loud shape on the quieter case is how
+a loud shape stops working. `important` gets no explanatory sentence either,
+because unlike `critical` it makes no claim about what is at risk, so there is
+nothing for a sentence to add that the tag has not said.
 
 **It needed a producer as well as a consumer, which the entry did not say.**
 `release.yml` set no `releaseBody` and never read the changelog, so
@@ -837,7 +849,8 @@ this).
 `latest.json`, so adding a key would mean post-processing the artefact; reading
 the marker out of the notes keeps the changelog the only place it is written.
 An unknown word is treated as ordinary: a banner nobody meant to trigger is
-worse than a quiet one.
+worse than a quiet one, so `critcal` ships as a normal release rather than as
+either level.
 
 The notes are now shown for **every** update, not only critical ones — deciding
 whether to restart is easier when you can see what you get.
@@ -854,8 +867,9 @@ buried in JSX.
 **The dialog is reachable in a dev run.** `tauri dev` has no updater endpoint, so
 the real check can only ever answer "up to date" — which left the one piece of UI
 that matters here visible only on a real release.
-`REKORD_DEV_UPDATE=1 npm run tauri dev` (or `=critical`) makes the check answer
-with a mock instead. Its notes say so in their first line: a fake that looks real
+`REKORD_DEV_UPDATE=1 npm run tauri dev` makes the check answer with a mock
+instead, and `=critical` / `=important` fakes that level — the flag doubles as
+the marker, so an unknown value is ordinary there too. Its notes say so in their first line: a fake that looks real
 is a support question waiting to happen. Installing it ramps the progress and then
 fails on purpose, because there is no artifact and a silent success would relaunch
 into the same version.

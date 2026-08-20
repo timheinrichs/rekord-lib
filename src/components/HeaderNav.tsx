@@ -16,8 +16,9 @@ interface Props {
   onOpenSettings: () => void;
   updateAvailable?: boolean;
   /**
-   * How urgent it is. `critical` colours the dot like the event log's error
-   * badge — a security or data-loss fix should not look like a nice-to-have.
+   * How urgent it is. The dot borrows the event log's colours — `critical` its
+   * error red, `important` its warning yellow — because a security or data-loss
+   * fix should not look like a nice-to-have.
    */
   updateSeverity?: Severity | null;
   /** Loudest unread level in the event log, or null for nothing to flag. */
@@ -193,7 +194,7 @@ export default function HeaderNav({
         {updateAvailable && (
           <span
             className={`absolute -right-1 -top-1 h-2.5 w-2.5 rounded-full ring-2 ring-bg ${
-              updateSeverity === "critical" ? "bg-danger-500" : "bg-accent-500"
+              updateSeverity ? DOT_CLASS[updateSeverity] : "bg-accent-500"
             }`}
           />
         )}
@@ -202,12 +203,20 @@ export default function HeaderNav({
   );
 }
 
+/** Dot colour per level — the same two the event log's badge uses. */
+const DOT_CLASS: Record<Severity, string> = {
+  critical: "bg-danger-500",
+  important: "bg-warning-500",
+};
+
 /**
  * What the gear says when an update is waiting. Separated by `·` for the
- * tooltip and by `,` for the accessible name, which is read aloud.
+ * tooltip and by `,` for the accessible name, which is read aloud. The level is
+ * named, not only coloured — the dot is 10 px of colour and that is not a
+ * message.
  */
 function settingsHint(severity: Severity | null | undefined, sep: string) {
-  const what = severity === "critical" ? "critical update" : "update";
+  const what = severity ? `${severity} update` : "update";
   return `Settings${sep}${what} available`;
 }
 
