@@ -7,7 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/)
 (`MAJOR.MINOR.PATCH`). As long as the version is at `0.x`, MINOR bumps may
 contain incompatible changes.
 
-## [Unreleased] — 0.7.0
+## [Unreleased]
+
+## [0.7.0] - 2026-08-21
 
 ### Added
 - **A release can say how urgent it is, and the app says so too.** A
@@ -553,7 +555,8 @@ tool for a CDJ/XDJ- and Rekordbox-compatible library.
 - Project scaffold: Tauri 2 + React 19 + Tailwind v4, bundled
   ffmpeg/ffprobe sidecar, first analysis/conversion pipeline.
 
-[Unreleased]: https://github.com/timheinrichs/rekord-lib/compare/v0.6.0...HEAD
+[Unreleased]: https://github.com/timheinrichs/rekord-lib/compare/v0.7.0...HEAD
+[0.7.0]: https://github.com/timheinrichs/rekord-lib/compare/v0.6.0...v0.7.0
 [0.6.0]: https://github.com/timheinrichs/rekord-lib/compare/v0.5.0...v0.6.0
 [0.5.0]: https://github.com/timheinrichs/rekord-lib/compare/v0.4.9...v0.5.0
 [0.4.9]: https://github.com/timheinrichs/rekord-lib/compare/v0.4.8...v0.4.9
