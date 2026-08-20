@@ -101,11 +101,21 @@ wrong number. But it produces a single integer, and that is the gap.
 **What** — musical key, written as Camelot or Open Key.
 
 **Why** — the one piece of technical metadata DJs sort by that we do not
-produce. `stratum-dsp` returns it alongside BPM, so it can be bought rather
-than written. Feeds the metadata editor and the completeness rule in
-`TrackMetadata::is_complete` (`src-tauri/src/models.rs`).
+produce. Feeds the metadata editor and the library table.
 
-*Size: M*
+**Not buyable, measured** — this item used to read "`stratum-dsp` returns it
+alongside BPM, so it can be bought rather than written". B7 measured that crate
+at **29.6 % exact** against a 2180-track Rekordbox reference (its README claims
+72.1 %), with a further 12.4 % landing on the parallel key — right tonic, wrong
+mode. Half of all keys land somewhere mixable, a third are outright wrong. That
+is not a number to write into thousands of files, so this is chroma/HPCP plus
+Krumhansl templates written by hand, or it waits.
+
+It should *not* feed `TrackMetadata::is_complete` despite what this item
+originally said: BPM is deliberately optional there, and a required key would
+mark practically every library incomplete overnight.
+
+*Size: L (was M, before the crate was ruled out)*
 
 ### B2 · Fractional BPM and an exposed confidence value
 
@@ -139,6 +149,11 @@ an atypical section (a long breakdown, a half-time intro). The reference
 project decodes the whole track; several windows get most of that robustness at
 a fraction of the cost.
 
+B7 gives this a second argument: on the 568 tracks whose Rekordbox grid wanders,
+both engines drop to ~73 % within ±2 BPM, against 87 % on steady material. That
+is where a single window hurts, and agreement between several windows is what
+would expose it rather than guess at it.
+
 *Size: S · pairs with B2*
 
 ### B5 · Configurable BPM range
@@ -147,7 +162,14 @@ a fraction of the cost.
 defaults to 70–180 and comes from settings.
 
 **Why** — a narrower range removes a whole class of octave errors for anyone
-whose library sits in one genre.
+whose library sits in one genre. B7 puts a number on it: **101** of our and the
+crate's octave errors answer outside the 70–180 BPM range the reference was
+analysed with, so they cannot be judged against it at all. A range that spans
+exactly one octave (`max = 2 × min`) makes the octave decision deterministic;
+ours is 3.3:1 today. Presets rather than free min/max fields, and the default
+stays 60–200 so an update does not silently move everyone's results — then
+measure 60–200 against 70–180 against 90–180 with `dsp_bench` and let that pick
+the recommended one.
 
 *Size: S*
 
@@ -162,17 +184,33 @@ detail resolution for the player files; the same split would apply here.
 
 *Size: M · prerequisite for H1*
 
-### B7 · Benchmark `stratum-dsp` against our detector
+### B7 · Benchmark `stratum-dsp` against our detector — **done**
 
-**What** — run both over the 21-track set we already have Rekordbox reference
-values for (7/21 correct before the tempo prior, 15/21 after), and keep
-whichever wins.
+**What shipped** — the reference set turned out to be the larger half of the
+work. The 21 tracks this item assumed were a lost local measurement, so
+`scripts/rekordbox-reference.py` now reduces a Rekordbox XML export to
+`src-tauri/tests/data/bpm_reference.csv`: **2180 tracks** with tempo, grid drift
+and key, filenames hashed so the file says nothing about the collection it came
+from. `src-tauri/tests/dsp_bench.rs` scores both engines against it, with the
+scoring logic covered by ordinary unit tests that need no audio.
 
-**Why** — if an off-the-shelf crate beats hand-written DSP, that is a win; if it
-does not, we have documented evidence for keeping ours. Either way the DSP tests
-in `audio/bpm.rs` stay — they test behaviour, not an implementation.
+**The result** — we keep ours. On the identical 120 s window our detector is
+right within ±2 BPM on 87.1 % of steady-grid tracks against the crate's 83.1 %,
+and costs 30 ms of analysis against 2087 ms. Given the whole track it is designed
+for, the crate gets *worse* (81.8 %) and 3.6× slower. Key detection reaches
+29.6 % exact against Rekordbox where its README claims 72.1 %, so **B1 loses its
+cheap path**. Full numbers, limits and reproduction:
+[`DSP_BENCHMARK.md`](DSP_BENCHMARK.md).
 
-*Size: S · informs B1, B3*
+**What it changed elsewhere** — B1 is now "write it or defer it", not "buy it".
+B4 is back on the table, since it was only redundant if a full-track engine had
+won. B5 has a measured baseline: 101 octave errors answer outside the reference's
+own 70–180 BPM range and cannot be judged against it at all. `stratum-dsp` stays
+a `[dev-dependency]` so the comparison can be re-run against a future version.
+
+**What the benchmark cannot say** — our tempo prior was fitted against 21 tracks
+of this same library, so part of the margin is home advantage; and grid accuracy
+was never measured, which is what B3 would need.
 
 ---
 

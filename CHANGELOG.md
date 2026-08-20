@@ -9,6 +9,21 @@ contain incompatible changes.
 
 ## [Unreleased]
 
+### Added
+- `docs/DSP_BENCHMARK.md` — the tempo and key detection of `stratum-dsp` measured
+  against ours over 2176 tracks with Rekordbox reference values, with the
+  decision it produced: ours stays. It is right within ±2 BPM on 87.1 % of
+  tracks with a steady reference grid against the crate's 83.1 %, at 30 ms of
+  analysis against 2087 ms — and the crate gets worse, not better, when given
+  the whole track it is designed for. Its key detection reaches 29.6 % exact
+  where its own README claims 72.1 %, so buying key detection is off the table.
+- `scripts/rekordbox-reference.py` plus `src-tauri/tests/data/bpm_reference.csv`
+  — a Rekordbox XML export reduced to 2180 reference tempos, grid drift values
+  and keys. Filenames are hashed, so the committed file says nothing about which
+  music the collection holds, and the benchmark matches by hashing what it finds
+  on disk. `src-tauri/tests/dsp_bench.rs` runs the comparison; its scoring logic
+  is covered by unit tests that need no audio, so CI checks it on every push.
+
 ## [0.5.0] - 2026-08-20
 
 ### Added

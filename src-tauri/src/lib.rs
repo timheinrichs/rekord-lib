@@ -1,4 +1,6 @@
-mod audio;
+// Public so the DSP benchmark (tests/dsp_bench.rs) can drive the detector
+// directly, without a Tauri app around it.
+pub mod audio;
 mod bandcamp;
 mod commands;
 mod db;
