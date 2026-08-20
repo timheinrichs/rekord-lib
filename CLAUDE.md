@@ -245,12 +245,40 @@ deliberate step that only happens when the maintainer says so.
   `src/lib/updater.ts`, UI in `SettingsView` (About) + gear badge. The updater
   minisign keypair is separate from Apple signing; the private key is a GitHub
   secret (`TAURI_SIGNING_PRIVATE_KEY`, empty password), never committed.
+- **The docs are checked and brought up to date before every bump** — not
+  after, and not "next time". The bump is the last moment at which the
+  documentation and the code are cheap to reconcile, because a released version
+  is what someone will read the docs against. Walk the diff since the last tag
+  and ask, per document, whether it still tells the truth:
+  - **`docs/SCANNING.md`, `DUPLICATES.md`, `CONVERSION.md`, `METADATA.md`** —
+    do the *Implementation anchors* still exist under those names, and does
+    every *Verification links* row still name a test that exists? A renamed
+    symbol or a deleted test makes the document wrong in exactly the way those
+    sections exist to expose.
+  - **`docs/COMMANDS.md`** — a new or changed command, argument or event.
+  - **`docs/COMPARISON.md`** — a shipped feature means the *What we do not do*
+    list gets shorter in the same release. A stale "we do not" is worse than no
+    comparison at all.
+  - **`TODO.md`** — an entry that is done leaves the file; a feature that
+    shipped without part of itself creates one, with an id and a condition.
+  - **`docs/FUTURE_CONSIDERATIONS.md`** — the item that just shipped gets its
+    **done** marker and a *What shipped* paragraph.
+  - **`docs/README.md`** — a new document gets its row; **`README.md`** and
+    **`docs/CDJ_TEST_MATRIX.md`** if the feature set or a hardware claim moved.
+  - **`CLAUDE.md`** itself, when the rule it states is no longer how the repo
+    works.
+
+  Only a genuinely unchanged document needs no edit, and saying which ones you
+  checked is part of the release report. Numbers stay in the one document that
+  measured them ([`docs/DSP_BENCHMARK.md`](docs/DSP_BENCHMARK.md),
+  [`docs/CDJ_TEST_MATRIX.md`](docs/CDJ_TEST_MATRIX.md)) and are linked from
+  anywhere else, so there is never a second copy to update.
 - **Cutting a release** (only on go): bump the version in **three** places —
   `package.json`, `src-tauri/tauri.conf.json`, `src-tauri/Cargo.toml` — run
   `cargo check` to sync `Cargo.lock`, turn the `CHANGELOG.md` entry into a
   dated version heading, delete the session's `PLAN.md`, commit, then
   `git tag -a vX.Y.Z -m vX.Y.Z && git push origin vX.Y.Z`. Run
-  `/security-review` first (see above).
+  `/security-review` first (see above), and the docs pass above before that.
   `.github/workflows/release.yml` (tauri-action on `macos-14`) builds the dmg +
   updater artifacts + `latest.json` and publishes the GitHub Release.
 - **The release notes are the changelog.** `scripts/release-notes.mjs` cuts the
