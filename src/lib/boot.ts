@@ -1,4 +1,10 @@
-import { STAGE_BPM, STAGE_DUPLICATES, type ScanProgress } from "../types";
+import {
+  STAGE_BPM,
+  STAGE_BPM_KEY,
+  STAGE_DUPLICATES,
+  STAGE_KEY,
+  type ScanProgress,
+} from "../types";
 
 /**
  * How far the app is into starting up. The splash is shown for everything but
@@ -29,8 +35,8 @@ export function bootLabel(
 }
 
 /**
- * The running scan in one line. The BPM pass decodes every file and runs for
- * minutes, so it reports its counters rather than a generic "scanning".
+ * The running scan in one line. The analysis pass decodes every file and runs
+ * for minutes, so it reports its counters rather than a generic "scanning".
  * Also used by the rescan button, which is why it lives here.
  */
 export function scanLabel(progress?: ScanProgress | null): string {
@@ -44,8 +50,16 @@ export function scanLabel(progress?: ScanProgress | null): string {
 
 function stageLabel(progress?: ScanProgress | null): string {
   if (!progress) return "Scanning…";
-  if (progress.stage === STAGE_BPM) {
-    return `BPM ${progress.done}/${progress.total}`;
+  // The analysis pass reports what it is actually doing: a fresh library needs
+  // both values, one another program has tagged needs only the key.
+  const analysis: Record<string, string> = {
+    [STAGE_BPM]: "BPM",
+    [STAGE_KEY]: "Key",
+    [STAGE_BPM_KEY]: "BPM/Key",
+  };
+  const what = analysis[progress.stage];
+  if (what) {
+    return `${what} ${progress.done}/${progress.total}`;
   }
   // The duplicate phase counts the files it has to fingerprint, which is a
   // subset of the library and often zero once the cache is warm — so it only

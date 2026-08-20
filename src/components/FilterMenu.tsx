@@ -14,6 +14,8 @@ interface Props {
   onChange: (next: TrackFilter) => void;
   /** Genres present in the library (the only ones worth offering). */
   genres: string[];
+  /** Detected keys present in the library, already in Camelot order. */
+  keys: string[];
   counts: FilterCounts;
 }
 
@@ -21,7 +23,13 @@ interface Props {
  * Filter popover next to the grouping switch: BPM and year ranges, genre,
  * status and origin. Fully controlled — it owns nothing but its open state.
  */
-export default function FilterMenu({ filter, onChange, genres, counts }: Props) {
+export default function FilterMenu({
+  filter,
+  onChange,
+  genres,
+  keys,
+  counts,
+}: Props) {
   const [open, setOpen] = useState(false);
   // Wraps the button too, so the press that closes the popover is not read as
   // a press on the button (which would reopen it).
@@ -35,6 +43,13 @@ export default function FilterMenu({ filter, onChange, genres, counts }: Props) 
       genres: filter.genres.includes(genre)
         ? filter.genres.filter((g) => g !== genre)
         : [...filter.genres, genre],
+    });
+
+  const toggleKey = (key: string) =>
+    patch({
+      keys: filter.keys.includes(key)
+        ? filter.keys.filter((k) => k !== key)
+        : [...filter.keys, key],
     });
 
   const toggleSource = (source: TrackSource) =>
@@ -80,6 +95,24 @@ export default function FilterMenu({ filter, onChange, genres, counts }: Props) 
               />
             </Section>
 
+            <Section label="Key">
+              {keys.length === 0 ? (
+                <p className="font-sans text-xs text-fg-subtle">
+                  No keys detected yet — the scan fills these in.
+                </p>
+              ) : (
+                <div className="max-h-40 overflow-y-auto rounded-md border border-border">
+                  {keys.map((k) => (
+                    <Check
+                      key={k}
+                      label={k}
+                      checked={filter.keys.includes(k)}
+                      onChange={() => toggleKey(k)}
+                    />
+                  ))}
+                </div>
+              )}
+            </Section>
             <Section label="Year">
               <RangeInputs
                 min={filter.yearMin}

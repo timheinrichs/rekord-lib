@@ -36,7 +36,21 @@ struct ScanProgress {
 
 /// Scan stage labels (also shown verbatim in the UI).
 const STAGE_ANALYZING: &str = "Analyzing";
+/// What the analysis pass is doing, which depends on what the tracks are
+/// missing: a fresh library needs both, a library another program has tagged
+/// needs only keys. Reported so the scan button says which.
 const STAGE_BPM: &str = "Detecting BPM";
+const STAGE_KEY: &str = "Detecting key";
+const STAGE_BPM_KEY: &str = "Detecting BPM & key";
+
+/// The label for a pass over `todo`, whose entries carry what each track needs.
+fn analysis_stage(wants_tempo: bool, wants_key: bool) -> &'static str {
+    match (wants_tempo, wants_key) {
+        (true, true) => STAGE_BPM_KEY,
+        (false, true) => STAGE_KEY,
+        _ => STAGE_BPM,
+    }
+}
 const STAGE_DUPLICATES: &str = "Finding duplicates";
 
 /// Concurrent ffmpeg processes in the BPM pass — same budget as the duplicate
@@ -227,6 +241,7 @@ pub async fn analyze_files(
             &mut out,
             false,
             tempo_config(bpm_min, bpm_max),
+            |_| {},
             |_, _| {},
             |_| {},
             || false,
@@ -279,6 +294,7 @@ async fn detect_bpm_pass(
     tracks: &mut [TrackAnalysis],
     force: bool,
     config: bpm::TempoConfig,
+    mut stage: impl FnMut(&'static str),
     mut progress: impl FnMut(usize, usize),
     mut emit: impl FnMut(Vec<TrackAnalysis>),
     cancelled: impl Fn() -> bool,
@@ -302,6 +318,12 @@ async fn detect_bpm_pass(
     if total == 0 {
         return false;
     }
+    // Announced once the work is known, not before: the caller cannot tell what
+    // is missing without walking the same list.
+    stage(analysis_stage(
+        todo.iter().any(|(_, _, tempo, _)| *tempo),
+        todo.iter().any(|(_, _, _, key)| *key),
+    ));
 
     let mut done = 0;
     for chunk in todo.chunks(BPM_CONCURRENCY) {
@@ -591,8 +613,8 @@ pub fn start_scan(
         // per-chunk streaming.
         if !cancelled && analyze_bpm {
             let state = app.state::<ScanState>();
-            set_scan_stage(&state, STAGE_BPM);
             state.done.store(0, Ordering::SeqCst);
+            let stage_app = app.clone();
             let progress_app = app.clone();
             let emit_app = app.clone();
             let bpm_dir = dir.clone();
@@ -601,11 +623,17 @@ pub fn start_scan(
                 &mut out,
                 force_bpm,
                 tempo_config(bpm_min, bpm_max),
+                move |label| {
+                    set_scan_stage(&stage_app.state::<ScanState>(), label);
+                },
                 |done, total| {
                     let state = progress_app.state::<ScanState>();
                     state.done.store(done, Ordering::SeqCst);
                     state.total.store(total, Ordering::SeqCst);
-                    emit_progress(&progress_app, generation, done, total, true, STAGE_BPM);
+                    // Read back rather than hardcoded: the pass decides whether
+                    // it is doing tempo, key, or both, and the button says so.
+                    let stage = scan_stage(&state);
+                    emit_progress(&progress_app, generation, done, total, true, &stage);
                 },
                 |updated| {
                     // Writing the tempo tag rewrote the file, so its identity

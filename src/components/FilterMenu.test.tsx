@@ -13,13 +13,18 @@ const COUNTS: FilterCounts = {
   local: 6,
 };
 
-function setup(filter: TrackFilter = EMPTY_FILTER, genres = ["House", "Techno"]) {
+function setup(
+  filter: TrackFilter = EMPTY_FILTER,
+  genres = ["House", "Techno"],
+  keys = ["8A", "5A"],
+) {
   const onChange = vi.fn();
   render(
     <FilterMenu
       filter={filter}
       onChange={onChange}
       genres={genres}
+      keys={keys}
       counts={COUNTS}
     />,
   );
@@ -39,6 +44,7 @@ function Harness({ initial = EMPTY_FILTER }: { initial?: TrackFilter }) {
         filter={filter}
         onChange={setFilter}
         genres={["House", "Techno"]}
+        keys={["8A", "5A"]}
         counts={COUNTS}
       />
       <output data-testid="state">{JSON.stringify(filter)}</output>
@@ -169,6 +175,7 @@ describe("FilterMenu", () => {
         filter={EMPTY_FILTER}
         onChange={() => {}}
         genres={[]}
+        keys={[]}
         counts={COUNTS}
       />,
     );
@@ -180,6 +187,7 @@ describe("FilterMenu", () => {
         filter={{ ...EMPTY_FILTER, needsConvert: true }}
         onChange={() => {}}
         genres={[]}
+        keys={[]}
         counts={COUNTS}
       />,
     );

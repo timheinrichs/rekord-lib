@@ -1,12 +1,14 @@
 import { describe, expect, it } from "vitest";
 import {
+  EMPTY_FILTER,
   activeFilterChips,
   clearFacet,
   collectGenres,
-  EMPTY_FILTER,
+  collectKeys,
   filterCounts,
   filterTracks,
   isFilterActive,
+  matchesFilter,
   matchesSearch,
   parseYear,
   type FilterContext,
@@ -376,5 +378,89 @@ describe("filterCounts", () => {
       bandcamp: 0,
       local: 0,
     });
+  });
+});
+
+describe("collectKeys", () => {
+  const keyed = (id: string, key: string | null, camelot: string | null) =>
+    makeTrack({ id, path: `/lib/${id}.aiff`, key, key_camelot: camelot });
+
+  it("lists keys in Camelot order, not alphabetically", () => {
+    // The whole point: neighbours on the wheel are neighbours in the menu, so
+    // picking two mixable keys means picking two adjacent entries. Alphabetical
+    // would put A#m beside Am and eleven steps from what it mixes with.
+    const tracks = [
+      keyed("a", "Am", "8A"),
+      keyed("b", "Em", "9A"),
+      keyed("c", "C", "8B"),
+      keyed("d", "Abm", "1A"),
+    ];
+    expect(collectKeys(tracks)).toEqual(["Abm", "Am", "C", "Em"]);
+  });
+
+  it("collapses duplicates and skips tracks without a key", () => {
+    const tracks = [
+      keyed("a", "Am", "8A"),
+      keyed("b", "Am", "8A"),
+      keyed("c", null, null),
+      keyed("d", "  ", null),
+    ];
+    expect(collectKeys(tracks)).toEqual(["Am"]);
+  });
+
+  it("puts a key with no usable Camelot last rather than in the middle", () => {
+    // A row from an older database has no derived Camelot; it must not land at a
+    // random spot among the real keys.
+    const tracks = [
+      keyed("a", "Weird", null),
+      keyed("b", "Am", "8A"),
+      keyed("c", "Em", "9A"),
+    ];
+    expect(collectKeys(tracks)).toEqual(["Am", "Em", "Weird"]);
+  });
+
+  it("is empty for a library that has not been analysed", () => {
+    expect(collectKeys([])).toEqual([]);
+    expect(collectKeys([keyed("a", null, null)])).toEqual([]);
+  });
+});
+
+describe("the key facet", () => {
+  const ctx = {
+    edits: {},
+    isIncomplete: () => false,
+    isFromBandcamp: () => false,
+  };
+  const keyed = (key: string | null) => makeTrack({ key, key_camelot: null });
+
+  it("keeps only the selected keys", () => {
+    const filter = { ...EMPTY_FILTER, keys: ["Am", "C"] };
+    expect(matchesFilter(keyed("Am"), filter, ctx)).toBe(true);
+    expect(matchesFilter(keyed("C"), filter, ctx)).toBe(true);
+    expect(matchesFilter(keyed("Em"), filter, ctx)).toBe(false);
+  });
+
+  it("excludes tracks with no key, like the other facets do", () => {
+    // Leaving them in would make "Key: Am" show unanalysed files.
+    const filter = { ...EMPTY_FILTER, keys: ["Am"] };
+    expect(matchesFilter(keyed(null), filter, ctx)).toBe(false);
+  });
+
+  it("matches regardless of spelling case", () => {
+    const filter = { ...EMPTY_FILTER, keys: ["am"] };
+    expect(matchesFilter(keyed("Am"), filter, ctx)).toBe(true);
+  });
+
+  it("counts as active and clears on its own", () => {
+    const filter = { ...EMPTY_FILTER, keys: ["Am"], needsConvert: true };
+    expect(isFilterActive(filter)).toBe(true);
+    expect(activeFilterChips(filter).map((c) => c.facet)).toContain("keys");
+    expect(activeFilterChips(filter).find((c) => c.facet === "keys")?.label).toBe(
+      "Key: Am",
+    );
+    // Clearing the key must leave the other facet alone.
+    const cleared = clearFacet(filter, "keys");
+    expect(cleared.keys).toEqual([]);
+    expect(cleared.needsConvert).toBe(true);
   });
 });

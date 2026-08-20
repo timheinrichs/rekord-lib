@@ -132,8 +132,10 @@ difficulty of the task. See [`DSP_BENCHMARK.md`](DSP_BENCHMARK.md).
 
 It does *not* feed `TrackMetadata::is_complete`, despite what this item
 originally said: BPM is deliberately optional there, and a required key would
-mark practically every library incomplete overnight. A filter facet is the
-obvious follow-up and is not built yet.
+mark practically every library incomplete overnight. The filter menu lists the keys
+present in the library, in Camelot order — 1A, 1B, 2A … — so neighbours on the
+wheel are neighbours in the menu and two mixable keys are two adjacent entries.
+Alphabetical would put A#m beside Am and eleven steps from what it mixes with.
 
 *Size: L · done*
 

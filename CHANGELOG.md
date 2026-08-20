@@ -26,6 +26,10 @@ contain incompatible changes.
   launch. Timing-dependent, so it did not fail every time.
 
 ### Changed
+- **The scan button says what it is detecting.** A run over a fresh library reads
+  "BPM/Key", one that only needs keys reads "Key" — the analysis decodes each
+  file once and produces whichever of the two is missing, and the label now says
+  which.
 - **Tempos keep their decimals.** Detection used to round to a whole number and
   throw the rest away — on a real collection nearly half of all tempos are not
   integers, and Rekordbox stores them that way too. A detected tempo now travels
@@ -45,6 +49,9 @@ contain incompatible changes.
   tempo in it.
 
 ### Added
+- **Filter by key.** The filter menu lists the keys present in the library in
+  Camelot order — 1A, 1B, 2A … — so neighbours on the wheel are neighbours in
+  the menu and picking two mixable keys means picking two adjacent entries.
 - **Tracks get a musical key.** Detected during the scan and shown in the library
   table and the metadata editor, as both the name and its Camelot number
   ("Am · 8A"), with how sure the detector was next to it.

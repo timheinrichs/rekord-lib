@@ -14,6 +14,11 @@ export interface TrackFilter {
   bpmMax: number | null;
   /** Genre names as they appear in the tags; matched case-insensitively. */
   genres: string[];
+  /**
+   * Detected keys, by name ("Am"). Not edit-aware like the genre, because the
+   * key is analysis state on the track rather than a tag the editor can change.
+   */
+  keys: string[];
   yearMin: number | null;
   yearMax: number | null;
   needsConvert: boolean;
@@ -25,6 +30,7 @@ export const EMPTY_FILTER: TrackFilter = {
   bpmMin: null,
   bpmMax: null,
   genres: [],
+  keys: [],
   yearMin: null,
   yearMax: null,
   needsConvert: false,
@@ -36,6 +42,7 @@ export const EMPTY_FILTER: TrackFilter = {
 export type FilterFacet =
   | "bpm"
   | "genres"
+  | "keys"
   | "year"
   | "needsConvert"
   | "incompleteOnly"
@@ -95,11 +102,41 @@ export function collectGenres(
   );
 }
 
+/**
+ * Distinct detected keys in the library, in **Camelot order** rather than
+ * alphabetically.
+ *
+ * 1A, 1B, 2A … is the order a DJ reads a key list in: neighbours on the wheel
+ * are neighbours in the menu, so picking two mixable keys means picking two
+ * adjacent entries. Alphabetical would put A#m next to Am and eleven steps away
+ * from the keys it actually mixes with.
+ */
+export function collectKeys(tracks: readonly TrackAnalysis[]): string[] {
+  const seen = new Map<string, { name: string; camelot: string | null }>();
+  for (const t of tracks) {
+    const name = t.key?.trim();
+    if (name && !seen.has(name.toLowerCase())) {
+      seen.set(name.toLowerCase(), { name, camelot: t.key_camelot ?? null });
+    }
+  }
+  const rank = (camelot: string | null): number => {
+    // "8A" -> 8 * 2 + 0, "8B" -> 8 * 2 + 1. Anything unparseable sorts last
+    // rather than in a random position among real keys.
+    const m = camelot ? /^(\d{1,2})([AB])$/.exec(camelot.trim().toUpperCase()) : null;
+    if (!m) return Number.MAX_SAFE_INTEGER;
+    return Number(m[1]) * 2 + (m[2] === "B" ? 1 : 0);
+  };
+  return [...seen.values()]
+    .sort((a, b) => rank(a.camelot) - rank(b.camelot) || a.name.localeCompare(b.name))
+    .map((e) => e.name);
+}
+
 export function isFilterActive(filter: TrackFilter): boolean {
   return (
     filter.bpmMin != null ||
     filter.bpmMax != null ||
     filter.genres.length > 0 ||
+    filter.keys.length > 0 ||
     filter.yearMin != null ||
     filter.yearMax != null ||
     filter.needsConvert ||
@@ -126,6 +163,9 @@ export function activeFilterChips(filter: TrackFilter): FilterChipSpec[] {
   }
   if (filter.genres.length) {
     chips.push({ facet: "genres", label: `Genre: ${filter.genres.join(", ")}` });
+  }
+  if (filter.keys.length) {
+    chips.push({ facet: "keys", label: `Key: ${filter.keys.join(", ")}` });
   }
   if (filter.yearMin != null || filter.yearMax != null) {
     chips.push({
@@ -155,6 +195,8 @@ export function clearFacet(filter: TrackFilter, facet: FilterFacet): TrackFilter
       return { ...filter, bpmMin: null, bpmMax: null };
     case "genres":
       return { ...filter, genres: [] };
+    case "keys":
+      return { ...filter, keys: [] };
     case "year":
       return { ...filter, yearMin: null, yearMax: null };
     case "needsConvert":
@@ -194,6 +236,12 @@ export function matchesFilter(
   if (filter.genres.length) {
     const g = md.genre?.trim().toLowerCase();
     if (!g || !filter.genres.some((x) => x.trim().toLowerCase() === g)) {
+      return false;
+    }
+  }
+  if (filter.keys.length) {
+    const k = t.key?.trim().toLowerCase();
+    if (!k || !filter.keys.some((x) => x.trim().toLowerCase() === k)) {
       return false;
     }
   }

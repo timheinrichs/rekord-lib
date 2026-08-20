@@ -3,7 +3,9 @@ import { bootLabel, scanButtonState, scanLabel } from "./boot";
 import {
   STAGE_ANALYZING,
   STAGE_BPM,
+  STAGE_BPM_KEY,
   STAGE_DUPLICATES,
+  STAGE_KEY,
   type ScanProgress,
 } from "../types";
 
@@ -132,5 +134,34 @@ describe("scanButtonState", () => {
     // a green outline around a spinner.
     expect(scanButtonState(true, true)).toBe("busy");
     expect(scanButtonState(true, false)).toBe("busy");
+  });
+});
+
+describe("the analysis stage in the scan label", () => {
+  const at = (stage: string) => ({
+    generation: 1,
+    done: 412,
+    total: 2223,
+    running: true,
+    paused: false,
+    stage,
+  });
+
+  it("names both values when both are being detected", () => {
+    // The pass decodes once and answers twice, so a label saying only "BPM"
+    // understates what the run is doing — and what it is spending time on.
+    expect(scanLabel(at(STAGE_BPM_KEY))).toBe("BPM/Key 412/2223");
+  });
+
+  it("names only what is actually missing", () => {
+    // A library another program has tagged needs keys and nothing else.
+    expect(scanLabel(at(STAGE_KEY))).toBe("Key 412/2223");
+    expect(scanLabel(at(STAGE_BPM))).toBe("BPM 412/2223");
+  });
+
+  it("keeps the counters visible while paused", () => {
+    expect(scanLabel({ ...at(STAGE_BPM_KEY), paused: true })).toBe(
+      "Paused · BPM/Key 412/2223",
+    );
   });
 });

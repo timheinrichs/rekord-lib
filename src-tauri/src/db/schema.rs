@@ -229,7 +229,12 @@ fn widen_bpm_to_real(conn: &Connection) -> DbResult<()> {
     if !table_exists(conn, "tracks")? {
         return Ok(()); // nothing to migrate; SCHEMA_SQL will create it
     }
-    if column_exists(conn, "tracks", "bpm_confidence")? {
+    // Ask the question this step is about — the declared type of `bpm` — rather
+    // than whether a sibling column happens to exist. The first version of this
+    // guard checked for `bpm_confidence`, which conflates "already migrated"
+    // with "some later column is present": a database whose recorded version was
+    // rolled back for compatibility would then keep an INTEGER `bpm` forever.
+    if column_type(conn, "tracks", "bpm")?.as_deref() == Some("REAL") {
         return Ok(()); // already migrated
     }
 
@@ -318,13 +323,18 @@ fn table_exists(conn: &Connection, table: &str) -> DbResult<bool> {
 /// Does a table have this column? Used to make a migration idempotent without
 /// relying on the recorded version alone.
 fn column_exists(conn: &Connection, table: &str, column: &str) -> DbResult<bool> {
+    Ok(column_type(conn, table, column)?.is_some())
+}
+
+/// The declared type of a column, or `None` when there is no such column.
+fn column_type(conn: &Connection, table: &str, column: &str) -> DbResult<Option<String>> {
     let mut stmt = conn.prepare(&format!("PRAGMA table_info({table})"))?;
     let mut rows = stmt.query([])?;
     while let Some(row) = rows.next()? {
         let name: String = row.get(1)?;
         if name == column {
-            return Ok(true);
+            return Ok(Some(row.get::<_, String>(2)?.to_uppercase()));
         }
     }
-    Ok(false)
+    Ok(None)
 }

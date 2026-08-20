@@ -21,7 +21,6 @@ import {
 import {
   FORMAT_LABELS,
   NEWER_PLAYERS_ONLY,
-  STAGE_BPM,
   type BandcampAccount,
   type ScanProgress,
   type TargetFormat,
@@ -360,8 +359,8 @@ export default function SettingsView({
               className="mt-3 rounded-lg border border-border-strong px-3 py-2 text-sm enabled:hover:border-accent-500 disabled:border-border disabled:text-fg-disabled"
             >
               {scan
-                ? scan.stage === STAGE_BPM
-                  ? `Detecting BPM · ${scan.done}/${scan.total}`
+                ? scan.stage.startsWith("Detecting")
+                  ? `${scan.stage} · ${scan.done}/${scan.total}`
                   : `${scan.stage}… ${scan.done}/${scan.total}`
                 : starting
                   ? "Starting…"

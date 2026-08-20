@@ -1648,6 +1648,47 @@ mod tests {
     }
 
     #[test]
+    fn the_v5_migration_looks_at_the_column_it_changes() {
+        // The guard used to ask whether `bpm_confidence` existed, which is a
+        // different question. A database whose recorded version was rolled back
+        // for compatibility with an older build — leaving the later columns in
+        // place — would then never get its INTEGER `bpm` widened again.
+        let conn = Connection::open_in_memory().unwrap();
+        create_v4_tracks(&conn);
+        schema::init(&conn).unwrap();
+        // Roll the version back and keep every column, as a compatibility fix
+        // would, then put the old column type back.
+        conn.execute_batch(
+            "ALTER TABLE tracks RENAME TO tracks_old;
+             CREATE TABLE tracks (path TEXT PRIMARY KEY, library_dir TEXT NOT NULL,
+                file_name TEXT NOT NULL, mtime_ms INTEGER, size_bytes INTEGER,
+                download_date INTEGER, container TEXT NOT NULL, codec TEXT NOT NULL,
+                sample_rate INTEGER NOT NULL, bits_per_sample INTEGER NOT NULL,
+                channels INTEGER NOT NULL, duration_secs REAL NOT NULL,
+                lossless INTEGER NOT NULL, title TEXT, artist TEXT, album TEXT,
+                album_artist TEXT, genre TEXT, year TEXT, track_number INTEGER,
+                catalog_number TEXT, label TEXT, country TEXT, bpm INTEGER,
+                has_cover INTEGER NOT NULL, bpm_confidence REAL, music_key TEXT,
+                key_confidence REAL);
+             DROP TABLE tracks_old;",
+        )
+        .unwrap();
+        meta_set(&conn, schema::KEY_SCHEMA_VERSION, "4").unwrap();
+
+        schema::init(&conn).unwrap();
+
+        // The column was widened again, because the guard asks about the column.
+        let ty: String = conn
+            .query_row(
+                "SELECT type FROM pragma_table_info('tracks') WHERE name = 'bpm'",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(ty.to_uppercase(), "REAL");
+    }
+
+    #[test]
     fn the_v5_migration_runs_only_once() {
         let conn = Connection::open_in_memory().unwrap();
         create_v4_tracks(&conn);

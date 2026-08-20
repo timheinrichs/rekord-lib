@@ -133,6 +133,7 @@ import {
   activeFilterChips,
   clearFacet,
   collectGenres,
+  collectKeys,
   EMPTY_FILTER,
   filterCounts,
   filterTracks,
@@ -779,6 +780,9 @@ export default function LibraryView({
     () => collectGenres(tracks, edits),
     [tracks, edits],
   );
+  // Not edit-aware, unlike the genres: the key is analysis state, so no pending
+  // edit can change it.
+  const keyOptions = useMemo(() => collectKeys(tracks), [tracks]);
   const activeChips = useMemo(() => activeFilterChips(filter), [filter]);
   // Whether the list is narrowed at all — the search counts, the chips do not
   // cover it.
@@ -1742,6 +1746,7 @@ export default function LibraryView({
               filter={filter}
               onChange={setFilter}
               genres={genreOptions}
+              keys={keyOptions}
               counts={counts}
             />
             <input

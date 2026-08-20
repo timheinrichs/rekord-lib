@@ -174,6 +174,10 @@ export interface ConvertProgress {
 /** Scan stage labels, mirroring the constants in src-tauri/src/commands.rs. */
 export const STAGE_ANALYZING = "Analyzing";
 export const STAGE_BPM = "Detecting BPM";
+/** Only keys left to find — a library another program has already tagged. */
+export const STAGE_KEY = "Detecting key";
+/** The usual case on a fresh library: one decode, both answers. */
+export const STAGE_BPM_KEY = "Detecting BPM & key";
 export const STAGE_DUPLICATES = "Finding duplicates";
 
 export interface ScanProgress {
@@ -183,7 +187,7 @@ export interface ScanProgress {
   running: boolean;
   /** Held between units of work; the counters say where it will continue. */
   paused: boolean;
-  /** Which pass the counters refer to ("Analyzing" / "Detecting BPM"). */
+  /** Which pass the counters refer to (see the STAGE_* constants). */
   stage: string;
 }
 

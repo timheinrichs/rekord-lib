@@ -103,17 +103,28 @@ rewrites them, conversion and delete move files to the trash. So it never runs
 against a real collection:
 
 ```sh
-scripts/dev-app.sh            # generated library, separate app data directory
-scripts/dev-app.sh --fresh    # rebuild the library and wipe the devtest database
+npm run tauri dev                      # generated library, own app data directory
+REKORD_DEV_FRESH=1 npm run tauri dev   # rebuild it and wipe the devtest database
+REKORD_DEV_REAL=1 npm run tauri dev    # deliberately, against your real data
 ```
 
-That is the whole procedure. It generates `.dev/library` if needed
-(`scripts/dev-library.py`, gitignored), points the app's `library_dir` at it, and
-starts `tauri dev` with `--config src-tauri/tauri.devtest.conf.json` — which
-overlays a `-devtest` identifier, so the app gets its own database, settings and
-undo history and the installed app can keep running alongside. Nothing tracked
-is modified, so there is no "remember to change it back" step; the script also
-refuses to run against a folder outside `.dev/`.
+There is nothing to remember: the `tauri` npm script is
+`scripts/dev-tauri.mjs`, which intercepts **`dev` only**. It generates
+`.dev/library` if needed (`scripts/dev-library.py`, gitignored), points the app's
+`library_dir` at it, and adds `--config src-tauri/tauri.devtest.conf.json` — an
+overlay that changes the bundle identifier to `-devtest`, so the app gets its own
+database, settings and undo history and the installed app keeps working
+alongside. `build` and every other subcommand pass through untouched, and the
+release workflow uses tauri-action and never comes through here.
+
+**Kill stray dev processes before changing `tauri.conf.json`.** A `tauri dev`
+that outlives your terminal keeps watching the config and rebuilds on every
+change — including a change to the identifier, which silently moves it onto the
+real app data directory. That happened once: a leftover run migrated the
+maintainer's real database to a newer schema, and because the old build reads
+`bpm` as an integer where the new one stores a float, the installed app could no
+longer load its library. No audio file was touched, but `pkill -f "tauri dev"`
+does not always get the whole tree — check with `ps aux | grep tauri`.
 
 Why it is worth having:
 
@@ -121,8 +132,9 @@ Why it is worth having:
   original. This has already gone wrong once — a "Re-detect BPM" over a folder
   of symlinks rewrote the tempo tag in 42 files of the real library. Nothing was
   lost, because the detector produced the same values, but that was luck.
-- **Generated files are better test data, not just safer.** Each file in
-  `dev-library.py` exists for one case — a click track at a known tempo, a
+- **Generated files are better test data, not just safer.** They also make a
+  scan finish in seconds instead of minutes. Each file in `dev-library.py`
+  exists for one case — a click track at a known tempo, a
   fractional tempo, silence, a 3 s file, 96 kHz/24-bit, lossy, FLAC, an untagged
   file, a duplicate pair, non-ASCII and bracketed filenames — and the expected
   result is known by construction instead of measured. That set found a
