@@ -803,6 +803,14 @@ pub fn library_load(app: AppHandle, dir: String) -> AppResult<Vec<TrackAnalysis>
     Ok(db::load_tracks(&conn, &dir)?)
 }
 
+/// Why the bundled ffmpeg/ffprobe cannot be used here, or `None` when they
+/// work. Checked once at startup; the frontend asks for the verdict rather than
+/// running its own test.
+#[tauri::command]
+pub fn sidecar_error(state: State<'_, crate::audio::sidecar::SidecarState>) -> Option<String> {
+    state.0.lock().ok().and_then(|slot| slot.clone())
+}
+
 /// The event log, newest first, with how far the user has read.
 #[tauri::command]
 pub fn events_load(app: AppHandle) -> AppResult<EventLog> {

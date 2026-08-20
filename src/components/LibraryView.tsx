@@ -19,6 +19,7 @@ import {
   pruneEmptyDirs,
   scanStatus,
   setScanPaused,
+  sidecarError,
   startLibraryWatch,
   startScan,
   undoLast,
@@ -227,6 +228,9 @@ export default function LibraryView({
   // on a volume that is not mounted. Distinct from an empty library, which is
   // what it would otherwise look like here.
   const [dirMissing, setDirMissing] = useState(false);
+  // Why the bundled ffmpeg/ffprobe cannot be used here, if that is the case.
+  // Nothing the app does works without them, so it is said once and stays said.
+  const [sidecarBroken, setSidecarBroken] = useState<string | null>(null);
   // Files the analysis had to leave out, with the reason each one gave. A scan
   // over a mixed collection always meets a few; skipping them is right, doing
   // it silently was not.
@@ -352,6 +356,24 @@ export default function LibraryView({
 
   useEffect(checkLibraryDir, [checkLibraryDir]);
 
+  // The backend tests the sidecars at startup; this only reads the verdict.
+  // Retried once because the check runs off the launch path and may not have
+  // finished when the view first mounts.
+  useEffect(() => {
+    let active = true;
+    const read = () =>
+      void sidecarError()
+        .then((e) => {
+          if (active) setSidecarBroken(e);
+        })
+        .catch(() => {});
+    read();
+    const t = setTimeout(read, 3000);
+    return () => {
+      active = false;
+      clearTimeout(t);
+    };
+  }, []);
 
   useEffect(() => {
     if (!relocated) return;
@@ -1569,6 +1591,21 @@ export default function LibraryView({
       {error && (
         <div className="mb-4 rounded-lg border border-danger-500/30 bg-danger-500/10 px-4 py-2 text-sm text-danger-500">
           {error}
+        </div>
+      )}
+
+      {/* Without the sidecars nothing works: no analysis, no conversion, no
+          BPM. Stated as an error rather than a warning, and never dismissed,
+          because there is no partial mode to fall back to. */}
+      {sidecarBroken && (
+        <div className="mb-4 rounded-lg border border-danger-500/40 bg-danger-500/10 px-4 py-3 text-sm">
+          <p className="text-danger-500">
+            Audio tools unavailable — analysis and conversion cannot run
+          </p>
+          <p className="mt-0.5 break-all text-fg-muted">{sidecarBroken}</p>
+          <p className="mt-1 font-sans text-fg-subtle">
+            Re-installing the app usually fixes this.
+          </p>
         </div>
       )}
 

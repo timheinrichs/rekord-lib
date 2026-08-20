@@ -53,15 +53,14 @@ fn is_lossless_codec(codec: &str) -> bool {
 /// input"); the exit code is only useful when it says nothing at all — and a
 /// raw `Option<i32>` must never reach the UI as `Some(1)`.
 fn probe_error(path: &str, code: Option<i32>, stderr: &str) -> String {
-    // The last line carries the diagnosis: anything before it is context for a
-    // failure that ffprobe then summarises. The full text is one `Copy` away in
-    // the skipped-files list, so nothing is lost by keeping this to one line.
-    let last = stderr
-        .lines()
-        .map(str::trim)
-        .filter(|l| !l.is_empty())
-        .next_back();
-    if let Some(line) = last {
+    let lines: Vec<&str> = stderr.lines().map(str::trim).filter(|l| !l.is_empty()).collect();
+    // A loader failure says what is missing first and where it was referenced
+    // from afterwards, so the usual "last line wins" would report the useless
+    // half. ffprobe's own errors are the other way round: context first, the
+    // diagnosis last. The full text is one `Copy` away in the skipped-files
+    // list, so nothing is lost by keeping this to one line either way.
+    let dyld = lines.iter().find(|l| l.starts_with("dyld")).copied();
+    if let Some(line) = dyld.or_else(|| lines.last().copied()) {
         // ffprobe prefixes the file it was given; whatever shows this already
         // names the file.
         return line
@@ -216,6 +215,17 @@ mod tests {
         assert!(!is_playable(0, 0));
         assert!(!is_playable(44_100, 0));
         assert!(!is_playable(0, 2));
+    }
+
+    #[test]
+    fn probe_error_prefers_the_loader_error_over_its_own_context() {
+        // dyld reports the missing library first and "Referenced from" after,
+        // which is exactly the half that is no use on its own.
+        let stderr = "dyld[91]: Library not loaded: /opt/homebrew/lib/libx.dylib\n  Referenced from: ffprobe";
+        assert_eq!(
+            probe_error("/lib/a.aiff", None, stderr),
+            "dyld[91]: Library not loaded: /opt/homebrew/lib/libx.dylib"
+        );
     }
 
     #[test]

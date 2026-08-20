@@ -32,6 +32,7 @@ pub fn run() {
         .manage(jobs::DedupeState::default())
         .manage(jobs::WatchState::default())
         .manage(jobs::BandcampDownloadState::default())
+        .manage(audio::sidecar::SidecarState::default())
         .setup(|app| {
             // The self-updater only exists on desktop targets.
             #[cfg(desktop)]
@@ -74,6 +75,25 @@ pub fn run() {
                 Err(e) => eprintln!("Could not open the library database: {e}"),
             }
 
+            // Prove the bundled ffmpeg/ffprobe can actually run here. Off the
+            // launch path — a self-test must not delay the window — but early,
+            // because without them analysis and conversion fail at every turn,
+            // and they used to fail without ever saying why.
+            let handle = app.handle().clone();
+            tauri::async_runtime::spawn(async move {
+                if let Err(e) = audio::sidecar::self_test(&handle).await {
+                    events::error(
+                        &handle,
+                        "sidecar",
+                        "The bundled ffmpeg/ffprobe cannot be used on this machine",
+                        Some(&e),
+                    );
+                    if let Ok(mut slot) = handle.state::<audio::sidecar::SidecarState>().0.lock() {
+                        *slot = Some(e);
+                    }
+                }
+            });
+
             // Restore the saved Bandcamp session on startup.
             let state = app.state::<bandcamp::session::BandcampState>();
             bandcamp::session::restore(app.handle(), &state);
@@ -93,6 +113,7 @@ pub fn run() {
             commands::events_load,
             commands::events_mark_seen,
             commands::events_clear,
+            commands::sidecar_error,
             commands::edits_load,
             commands::edit_set,
             commands::edit_clear,

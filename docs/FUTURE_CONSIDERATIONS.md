@@ -353,14 +353,33 @@ swapped between status and action on hover in both directions.
 
 *Size: S*
 
-### C6 · Sidecar self-test at startup
+### C6 · Sidecar self-test at startup — **done**
 
-**What** — probe `ffmpeg`/`ffprobe` once at launch and report clearly if they
-are unusable.
+**What shipped** — `audio::sidecar::self_test` runs both binaries with
+`-version` once at startup, spawned off the launch path so it cannot delay the
+window. `-version` is enough: what goes wrong in the field is the binary not
+starting at all — a `dyld: Library not loaded` for a dependency that only
+existed on the build machine, a wrong architecture, a missing quarantine
+exemption — and that fails before any argument matters.
 
-**Why** — CI already enforces that the bundled binaries are self-contained
-(`audio::sidecar::sidecars_are_self_contained`), but if something does go wrong
-in the field the symptom today is analysis and conversion failing quietly.
+A failure is said twice, because it means nothing the app does will work: as an
+`error` in the event log (C3), and as a banner in the library view that names
+the loader's own message and suggests re-installing. The verdict is stored in a
+`SidecarState` the frontend reads through `sidecar_error`, rather than the UI
+running a test of its own.
+
+Verified by standing a failing binary in for `ffprobe` and starting the built
+app directly (a `tauri dev` run rebuilds and copies the real sidecar back over
+it): banner, log entry and the skipped-file report all named the dyld error.
+
+That test also turned up a mismatch worth fixing: `probe_error` took the *last*
+line of stderr, which for a loader failure is "Referenced from: ffprobe" rather
+than the diagnosis. It prefers the `dyld` line now, and keeps last-line
+behaviour for ffprobe's own errors, which are the other way round.
+
+**What is left** — the check does not re-run. A sidecar that breaks while the
+app is running (an update replacing the bundle underneath it) is still only
+visible through failing operations.
 
 *Size: S*
 

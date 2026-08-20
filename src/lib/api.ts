@@ -110,6 +110,15 @@ export function setScanPaused(paused: boolean): Promise<void> {
   return invoke("set_scan_paused", { paused });
 }
 
+/**
+ * Why the bundled ffmpeg/ffprobe cannot be used on this machine, or `null` when
+ * they work. Checked once in the backend at startup — without them nothing the
+ * app does works, and the symptom used to be every analysis failing quietly.
+ */
+export function sidecarError(): Promise<string | null> {
+  return invoke<string | null>("sidecar_error");
+}
+
 /** Lists audio files under a folder (recursive), without probing them. */
 export function listAudioFiles(dir: string): Promise<string[]> {
   return invoke<string[]>("list_audio_files", { dir });
