@@ -66,9 +66,17 @@ Three things worth knowing, all of them learned the hard way:
 The generated library is also better test data than a real one: every file in
 `scripts/dev-library.py` exists for a specific case — a click track at a known
 tempo, a fractional tempo, silence, a three-second file, 96 kHz/24-bit, lossy,
-FLAC, an untagged file, a duplicate pair, non-ASCII and bracketed filenames — so
-the expected result is known by construction rather than measured. That set
-found a confidently wrong tempo on steady tones within minutes of existing.
+FLAC, an untagged file, a duplicate pair, non-ASCII and bracketed filenames, and
+four I–IV–V–I cadences in named keys — so the expected result is known by
+construction rather than measured. That set found a confidently wrong tempo on
+steady tones within minutes of existing, and the cadences promptly did it again:
+held chords in D minor and E minor come back with a tempo nobody played.
+
+A cadence rather than a single triad, because C–E–G shares two notes with A
+minor and a detector given only that is being asked to guess. Everything else in
+the library is a sine at 440 or a click at 220 Hz — which is to say A, over and
+over — and a key column where every row agrees can show neither that grouping
+and filtering work nor that a wrong answer is wrong.
 
 ## Tests are part of the change, not a follow-up
 

@@ -197,7 +197,8 @@ Why it is worth having:
   scan finish in seconds instead of minutes. Each file in `dev-library.py`
   exists for one case — a click track at a known tempo, a
   fractional tempo, silence, a 3 s file, 96 kHz/24-bit, lossy, FLAC, an untagged
-  file, a duplicate pair, non-ASCII and bracketed filenames — and the expected
+  file, a duplicate pair, non-ASCII and bracketed filenames, and four cadences
+  in named keys (C, Dm, Em, F#) — and the expected
   result is known by construction instead of measured. That set found a
   confident false tempo on steady tones within minutes of existing.
 - **Real audio is for what only real audio can show:** actual tags, actual

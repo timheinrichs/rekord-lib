@@ -6,6 +6,7 @@ import {
   formatBpm,
   formatKey,
   keyConfidenceLabel,
+  keyDetail,
   parseBpmInput,
   formatBytes,
   formatDate,
@@ -220,22 +221,45 @@ describe("parseBpmInput", () => {
 });
 
 describe("formatKey", () => {
-  it("shows the name and the Camelot position", () => {
-    // Two spellings because they answer different questions: the name says what
-    // the track is, the number says what it mixes with.
-    expect(formatKey("Am", "8A")).toBe("Am · 8A");
-    expect(formatKey("F#m", "11A")).toBe("F#m · 11A");
-  });
-
-  it("falls back to the name alone", () => {
-    // Camelot is derived on read; a row from an older database may not have it.
-    expect(formatKey("Am", null)).toBe("Am");
+  it("shows the name a musician would use, and nothing else", () => {
+    // The Camelot position used to sit next to it ("Am · 8A"). It answers a
+    // different question — what mixes with this — and in a one-line cell it
+    // read as a competing value rather than as an aid.
+    expect(formatKey("Am")).toBe("Am");
+    expect(formatKey("A")).toBe("A");
+    expect(formatKey("F#m")).toBe("F#m");
   });
 
   it("shows a dash rather than an empty cell", () => {
-    expect(formatKey(null, null)).toBe("–");
-    expect(formatKey(null, "8A")).toBe("–");
-    expect(formatKey(undefined, undefined)).toBe("–");
+    expect(formatKey(null)).toBe("–");
+    expect(formatKey(undefined)).toBe("–");
+    expect(formatKey("")).toBe("–");
+  });
+});
+
+describe("keyDetail", () => {
+  it("spells out what the short name leaves implicit", () => {
+    // "Am" is only obvious once somebody has explained that the m is the mode
+    // and that its absence means major.
+    expect(keyDetail("Am", "8A")).toBe("A minor · 8A");
+    expect(keyDetail("A", "11B")).toBe("A major · 11B");
+    expect(keyDetail("F#m", "11A")).toBe("F# minor · 11A");
+    expect(keyDetail("Bbm", "3A")).toBe("Bb minor · 3A");
+  });
+
+  it("manages without the Camelot position", () => {
+    // Derived on read; a row from an older database may not carry one.
+    expect(keyDetail("Am", null)).toBe("A minor");
+  });
+
+  it("passes through a name it cannot parse", () => {
+    // Better an unusual spelling on screen than a tooltip that invents a mode.
+    expect(keyDetail("weird", "8A")).toBe("weird · 8A");
+  });
+
+  it("is null when there is no key", () => {
+    expect(keyDetail(null, "8A")).toBeNull();
+    expect(keyDetail(undefined, undefined)).toBeNull();
   });
 });
 

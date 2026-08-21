@@ -69,7 +69,9 @@ export const COLUMNS: ColumnDef[] = [
   { id: "album", label: "Album", width: "w-40", sortKey: "album" },
   { id: "length", label: "Length", width: "w-20", sortKey: "length" },
   { id: "bpm", label: "BPM", width: "w-20", sortKey: "bpm" },
-  { id: "key", label: "Key", width: "w-24" },
+  // Narrower than it was: the cell used to carry "Am · 8A" and now carries the
+  // name alone, which is never wider than "F#m".
+  { id: "key", label: "Key", width: "w-16" },
   { id: "format", label: "Format", width: "w-44" },
   { id: "downloaded", label: "Downloaded", width: "w-32", sortKey: "date" },
   { id: "status", label: "Status", width: "w-24" },

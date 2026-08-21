@@ -115,7 +115,9 @@ describe("MetadataEditor", () => {
   it("shows a detected key, and that it stayed out of the file", async () => {
     const track = makeTrack({ key: "Am", key_camelot: "8A", key_confidence: 0.42 });
     render(<MetadataEditor track={track} onClose={() => {}} onSave={() => {}} />);
-    expect(screen.getByText("Am · 8A")).toBeTruthy();
+    // The name as a musician writes it; the mode spelled out and the Camelot
+    // position on hover, where they inform without competing for the line.
+    expect(screen.getByText("Am")).toHaveAttribute("title", "A minor · 8A");
     const label = screen.getByText("42% sure");
     expect(label.getAttribute("title")).toMatch(/never written into the file/);
   });

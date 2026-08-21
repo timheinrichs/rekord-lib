@@ -9,6 +9,14 @@ contain incompatible changes.
 
 ## [Unreleased]
 
+### Changed
+- **The key column reads as a key.** It showed `A · 11B` — the name and its
+  Camelot position, side by side, where the second half means nothing unless you
+  have learned the wheel. The column now shows the name a musician would use
+  (`A`, `Am`, `F#m`), which is also what Rekordbox writes, and hovering it spells
+  the rest out: `A minor · 11B`. The filter menu still sorts by Camelot, which is
+  where that number earns its keep.
+
 ### Fixed
 - **The same files are no longer analysed on every start.** A library kept
   handing the tempo detector the same handful of tracks at every launch —

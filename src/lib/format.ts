@@ -73,18 +73,33 @@ export function parseBpmInput(raw: string): number | null {
 }
 
 /**
- * A detected key for display: `"Am · 8A"`, or a dash where there is none.
+ * A detected key for display: `"Am"`, `"A"`, or a dash where there is none.
  *
- * Both spellings, because they answer different questions — the name says what
- * the track is, the Camelot number says what it mixes with — and a DJ reading a
- * list wants the second one.
+ * The name a musician would use, and the one Rekordbox writes — nothing else.
+ * The Camelot position used to sit next to it (`"Am · 8A"`), which is the more
+ * useful number when you are picking the next record but reads as a second,
+ * competing value in a column that answers one question. It moved into the
+ * tooltip, spelled out, where it is available without being in the way.
  */
-export function formatKey(
+export function formatKey(key: string | null | undefined): string {
+  return key || "–";
+}
+
+/**
+ * The same key at length, for a tooltip: `"A minor · 8A"`.
+ *
+ * Spelled out because that is what the short form leaves implicit: `"Am"` is
+ * only obvious once somebody has told you that the `m` is the mode and its
+ * absence means major. Null when there is no key to describe.
+ */
+export function keyDetail(
   key: string | null | undefined,
   camelot: string | null | undefined,
-): string {
-  if (!key) return "–";
-  return camelot ? `${key} · ${camelot}` : key;
+): string | null {
+  if (!key) return null;
+  const parsed = /^([A-G][#b]?)(m)?$/.exec(key.trim());
+  const spelled = parsed ? `${parsed[1]} ${parsed[2] ? "minor" : "major"}` : key;
+  return camelot ? `${spelled} · ${camelot}` : spelled;
 }
 
 /**

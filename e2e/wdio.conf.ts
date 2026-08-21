@@ -61,7 +61,7 @@ export const config: WebdriverIO.Config = {
   framework: "mocha",
   reporters: ["spec"],
   logLevel: "warn",
-  // A first scan of the fixture library decodes 22 files and then fingerprints
+  // A first scan of the fixture library decodes 26 files and then fingerprints
   // them, and a debug build is not a fast one. The per-spec timeout has to sit
   // above the longest wait inside a spec, or mocha kills the test before its own
   // timeoutMsg can say what it was waiting for.

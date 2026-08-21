@@ -174,18 +174,20 @@ describe("the scan", () => {
         path: CLICK_090,
         bpm: null,
         bpm_confidence: null,
-        key: "A minor",
+        key: "Am",
         key_camelot: "8A",
         key_confidence: 0.7,
         waveform: false,
       },
     });
     await waitFor(() =>
-      // Key and camelot share one cell, as `formatKey` joins them.
-      expect(
-        row(container, CLICK_090).getByText("A minor · 8A"),
-      ).toBeInTheDocument(),
+      // The cell carries the name alone; the Camelot position and the spelled
+      // out mode are in its tooltip.
+      expect(row(container, CLICK_090).getByText("Am")).toBeInTheDocument(),
     );
+    expect(
+      row(container, CLICK_090).getByTitle(/A minor · 8A/),
+    ).toBeInTheDocument();
     expect(row(container, CLICK_090).getByText("90")).toBeInTheDocument();
   });
 

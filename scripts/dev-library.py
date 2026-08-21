@@ -48,6 +48,53 @@ def tone(freq: int, secs: int = SECS) -> str:
     return f"sine=frequency={freq}:duration={secs}:sample_rate=44100"
 
 
+# Semitones above the root for the two triad qualities.
+TRIADS = {"major": (0, 4, 7), "minor": (0, 3, 7)}
+# A4 = 440 Hz, and every note derived from it, so a key is exact by
+# construction rather than measured.
+NOTE_OFFSETS = {"C": -9, "C#": -8, "D": -7, "D#": -6, "E": -5, "F": -4,
+                "F#": -3, "G": -2, "G#": -1, "A": 0, "A#": 1, "B": 2}
+
+
+def _hz(note: str, octave_shift: int = -1) -> float:
+    """The frequency of `note` relative to A4, moved down an octave by default —
+    chords in the octave below A4 sit where real basslines and pads do, and the
+    chroma analysis folds octaves away anyway."""
+    return 440.0 * 2 ** ((NOTE_OFFSETS[note] + 12 * octave_shift) / 12)
+
+
+def progression(root, quality, bpm=None):
+    """A I–IV–V–I in the named key (all three triads diatonic, so a minor key
+    stays in natural minor and no leading tone muddies the profile).
+
+    A single triad would not do: C–E–G shares two of its three notes with A
+    minor, and a detector that has only that to go on is being asked to guess.
+    A cadence names the tonic — it is the difference between a fixture whose
+    expected key is *known* and one whose expected key is *hoped for*.
+
+    With `bpm`, the chords are struck on the beat instead of held, so the file
+    exercises tempo and key at once.
+    """
+    steps = TRIADS[quality]
+    # I, IV, V, I — the fifth and fourth above the root, same quality.
+    roots = [0, 5, 7, 0]
+    span = SECS / len(roots)
+    voices = []
+    for i, degree in enumerate(roots):
+        start, end = i * span, (i + 1) * span
+        for step in steps:
+            freq = _hz(root) * 2 ** ((degree + step) / 12)
+            voices.append(f"0.22*sin(2*PI*{freq:.3f}*t)")
+        gate = f"between(t,{start:.3f},{end:.3f})"
+        voices[-3:] = [f"({v})*{gate}" for v in voices[-3:]]
+    body = "+".join(voices)
+    if bpm is not None:
+        # A percussive envelope on every beat: the same decay the click track
+        # uses, so the tempo is exact by construction here too.
+        body = f"({body})*exp(-9*mod(t,60/{bpm}))"
+    return f"aevalsrc='{body}':d={SECS}:s=44100"
+
+
 def noise() -> str:
     # Deterministic: the same seed every run, so a failure is reproducible.
     return f"anoisesrc=duration={SECS}:sample_rate=44100:seed=1"
@@ -128,6 +175,30 @@ FILES = [
     ("Duplicates/twin-lossy.mp3", clicks(140),
      ["-c:a", "libmp3lame", "-b:a", "320k"], {"title": "Twin"},
      "0x8177E0", "same audio, lossy: the keep-the-best-quality suggestion"),
+
+    # --- key detection ----------------------------------------------------
+    # Everything else in this library is a sine at 440 or a click at 220 Hz,
+    # which is to say: A, over and over. A key column where every row agrees
+    # cannot show that grouping, filtering or the Camelot ordering work, and it
+    # cannot show a wrong answer either. These four name their own key.
+    # Verified against the detector when they were added: C, Dm, Em, F# come
+    # back exactly as named. The two minor files also come back with a *tempo*
+    # (around 151 and 170) although they are held chords — steady tones grow
+    # spurious peaks, which is the same trap the tone fixtures caught once
+    # before, and it is worth having in the library rather than out of it.
+    ("Keys/c-major.aiff", progression("C", "major", 124), [],
+     {"title": "C major", "artist": "Testverse"},
+     "0x22B27A", "tempo and key in one file: 124 BPM and C"),
+    ("Keys/d-minor.aiff", progression("D", "minor"), [],
+     {"title": "D minor", "artist": "Testverse"},
+     "0x6A5FD6", "a minor key, and a tempo nobody played: held chords still "
+                 "produce one"),
+    ("Keys/e-minor.aiff", progression("E", "minor"), [],
+     {"title": "E minor", "artist": "Testverse"},
+     None, "the third distinct key, and no cover"),
+    ("Keys/f-sharp-major.aiff", progression("F#", "major"), [],
+     {"title": "F# major", "artist": "Testverse"},
+     "0xF5A623", "a sharp in the name — the spelling the UI has to render"),
 
     # --- filenames --------------------------------------------------------
     ("Edge cases/Oaxaqueño señor.aiff", tone(523), [], {"title": "Oaxaqueño"},

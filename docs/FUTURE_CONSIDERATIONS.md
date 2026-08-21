@@ -118,6 +118,14 @@ detector exists — the reasoning that already keeps `compat` recomputed rather
 than stored. Shown in the library table and the metadata editor, read-only, with
 the percentage next to it.
 
+**As the name alone** — `Am`, `A`, `F#m`, the spelling a musician uses and the
+one Rekordbox writes. It used to read `Am · 8A`: the Camelot position is the more
+useful number when picking the next record, but in a one-line cell it competed
+with the name instead of helping it, and `8A` means nothing to somebody who has
+not learned the wheel. It moved into the cell's tooltip, spelled out — `A minor ·
+8A` — where it costs no width and explains itself. The filter menu still orders
+by Camelot, which is where that number actually does its work.
+
 **What that leaned on** — the reference project has had key detection longer than
 we have, which reads like an argument for shipping it into tags. Its own design
 says otherwise: analysis results go into its database and from there into the

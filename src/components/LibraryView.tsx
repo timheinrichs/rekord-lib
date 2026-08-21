@@ -53,6 +53,7 @@ import {
   editComplete,
   formatBpm,
   formatKey,
+  keyDetail,
   formatDate,
   formatDuration,
   formatLabel,
@@ -2082,15 +2083,15 @@ export default function LibraryView({
                           className={`whitespace-nowrap ${pad} text-fg-muted`}
                           title={
                             t.key
-                              ? `Detected, not written into the file${
+                              ? `${keyDetail(t.key, t.key_camelot)} — detected, not written into the file${
                                   t.key_confidence != null
-                                    ? ` — ${Math.round(t.key_confidence * 100)}% sure`
+                                    ? `, ${Math.round(t.key_confidence * 100)}% sure`
                                     : ""
                                 }`
                               : undefined
                           }
                         >
-                          {formatKey(t.key, t.key_camelot)}
+                          {formatKey(t.key)}
                         </td>
                       );
                     case "format":

@@ -11,6 +11,7 @@ import {
   formatBpm,
   formatDuration,
   formatKey,
+  keyDetail,
   keyConfidenceLabel,
   formatLabel,
   formatSampleRate,
@@ -468,8 +469,11 @@ export default function MetadataEditor({
               <div className="flex flex-col gap-0.5">
                 <span className="text-fg-muted">Key</span>
                 <span className="flex items-baseline gap-2">
-                  <span className="text-fg">
-                    {formatKey(track.key, track.key_camelot)}
+                  <span
+                    className="text-fg"
+                    title={keyDetail(track.key, track.key_camelot) ?? undefined}
+                  >
+                    {formatKey(track.key)}
                   </span>
                   {keyConfidenceLabel(track.key_confidence) && (
                     <span
