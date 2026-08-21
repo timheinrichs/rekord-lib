@@ -43,6 +43,9 @@ track of, without uploading anything anywhere.
 - **Metadata editor** with suggestions from the filename, MusicBrainz and —
   once an API key is configured (kept in the macOS Keychain) — Discogs,
   required-field checks, and bulk edit across a selection.
+- **Playlists** as an explicit order, and **"Export for Rekordbox"** — a
+  `rekordbox.xml` with the whole library, the playlists, and each track's tempo,
+  key and beat grid, imported in one step.
 - **Covers** — embedded artwork as thumbnails, falling back to a `cover.jpg`
   next to the audio, which conversion then embeds.
 - **Duplicate detection** across formats and filenames, by length, acoustic

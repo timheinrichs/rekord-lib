@@ -105,6 +105,21 @@ not, and it comes back exactly once. Rewriting dismissal keys inside
 **What would change that** — a group id that is not a path. See
 [docs/DUPLICATES.md](docs/DUPLICATES.md).
 
+### The beat grid is stored and exported, but not drawn
+
+**What** — `tracks.beat_offset_secs` plus the tempo is a full grid, and A2 writes
+it into the Rekordbox export as a `TEMPO` marker. Nothing draws it under the
+waveform in the app, which is what **B3** was originally for and what
+`COMPARISON.md` claimed for two releases before the claim was corrected.
+
+**Why not act** — the value only started being stored with A2, and the waveform
+row is 112 px wide for a whole track: at that scale the beats of a 128 BPM track
+are under a pixel apart, so "draw the grid" means deciding what to draw first.
+The player bar's larger waveform is where it would actually be legible.
+
+**What would change that** — a zoomed waveform, or a decision that the row
+should show the first beat alone rather than a grid.
+
 ### The legacy `library` key in `rekord-lib.json`
 
 **What** — the pre-SQLite library, imported once by `db::migrate` and then left

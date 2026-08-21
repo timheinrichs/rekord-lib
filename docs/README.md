@@ -24,6 +24,7 @@ document, and a claim with no test named next to it has nowhere to hide.
 | [DUPLICATES.md](DUPLICATES.md) | The three matching tiers, why only the third one decodes audio, and why dismissals live in their own table |
 | [CONVERSION.md](CONVERSION.md) | The five compatibility rules, what "compatible" actually claims, and what the conversion pipeline changes |
 | [METADATA.md](METADATA.md) | Reading and writing tags, covers, suggestions, and what undo captures |
+| [PLAYLISTS.md](PLAYLISTS.md) | Playlists as an explicit order, and the Rekordbox XML that carries them — plus the tempo, key and grid — out of the app |
 | [COMMANDS.md](COMMANDS.md) | Every Tauri command and every event: arguments, return, what it emits, which wrapper calls it |
 | [TESTING.md](TESTING.md) | The three test levels and where each one stops, why `tauri-driver` cannot be used here, and how the automation server is kept out of releases |
 

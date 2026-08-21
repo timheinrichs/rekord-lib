@@ -9,6 +9,20 @@ contain incompatible changes.
 
 ## [Unreleased]
 
+### Added
+- **Playlists.** A fifth way of looking at the library, next to Flat, Album,
+  Label and Folder: your own order, with the position in its own column, an
+  "Unsorted" bucket for everything not in a playlist yet, and drag — or ↑/↓ on
+  the row, because a drag stops working the moment the target scrolls off
+  screen. Put a selection into one with "Add to playlist"; renaming and deleting
+  live on the playlist's head, and deleting one keeps every file.
+- **"Export for Rekordbox".** Writes a `rekordbox.xml` holding the whole
+  library and every playlist, and per track the tempo, the key, a beat grid
+  marker and the tags — so everything the app worked out arrives in Rekordbox in
+  one import instead of being retyped. Cue points are deliberately not written:
+  the app has no concept of one, and inventing empty marks would put them in a
+  player where nobody set them.
+
 ## [0.7.5] - 2026-08-21
 
 ### Changed

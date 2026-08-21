@@ -29,6 +29,7 @@ week or more, **XL** ≈ open-ended.
 | [F](#f--documentation-and-process) | Documentation and process |
 | [G](#g--reach-and-test-depth) | Reach and test depth |
 | [H](#h--long-term-not-committed) | Long-term, not committed |
+| [I](#i--interface-and-playback) | Interface and playback — what the app looks like and how it plays |
 
 ---
 
@@ -38,35 +39,75 @@ The library is prepared inside rekord-lib and then has to leave it. Today that
 handoff is "the files are correct now, go import them in Rekordbox", which
 throws away everything the app knows beyond the tags.
 
-### A1 · Playlists in the app
+### A1 · Playlists in the app — **done**
 
-**What** — a playlist concept: container metadata (name, identity, timestamps)
-separate from ordered membership rows (`playlist_id`, `track_id`, position), so
-ordering is explicit and stable across add/remove instead of implied by a query.
-That is the model the reference project uses and it is the right one.
+**What shipped** — `playlists` and `playlist_items` (schema 9) with the position
+spelled out, the ordering rules pure in `src/lib/playlists.ts`, and a fifth
+grouping in the library table. Full description in
+[`PLAYLISTS.md`](PLAYLISTS.md).
 
-**Why** — we have no playlist concept at all. It is also the prerequisite for
-A2, which is the item that actually pays off.
+**A grouping, not a sidebar.** The entry did not say where playlists would live;
+a sidebar was the obvious answer and the wrong one. As a fifth mode next to
+Flat / Album / Label / Folder, the virtualised table, every column, the
+selection and the group heads carry over unchanged and the window keeps its
+shape. It is the one grouping whose rows are *not* sorted, because there the
+order is the content — which is also why the position gets the chevron's column,
+a cell that until now existed only to keep the others in line.
 
-New tables next to `tracks`/`edits` in `src-tauri/src/db/schema.rs`; the pure
-ordering and membership logic belongs in `src/lib/` so it is testable the way
-`src/lib/grouping.ts` is, not buried in a component.
+**The whole list, never a diff.** `playlist_set` replaces a playlist's contents
+with exactly the array it is handed. The order is the payload, a reorder rewrites
+most positions anyway, and a playlist is tens of rows — so the complexity a diff
+would buy is complexity for nothing, and exactly one place has to be right about
+what the new order is.
 
-*Size: M · prerequisite for A2, H1*
+**Two ways to reorder, one rule.** Drag, and ↑/↓ on the row — because a drag is
+unusable the moment the target is off screen, which on a real set is most of the
+time. `stepPlaylistItem` expresses a step as the drag's own move, and a test
+asserts they agree; the trap is direction, since a track is lifted out before it
+is put back and moving down has to aim one row further than it looks.
 
-### A2 · Rekordbox XML export
+*Size: M · done*
 
-**What** — write a `rekordbox.xml` collection (tracks, playlists, BPM, key, cue
-points) that Rekordbox imports in one step.
+### A2 · Rekordbox XML export — **done**
 
-**Why** — this is the highest-value item on the whole list. It covers the real
-user need — *get my prepared library into Rekordbox without re-tagging
-everything* — at roughly two orders of magnitude less effort than a PDB writer
-(H1), because the format is XML, documented, and forgiving.
+**What shipped** — `export::rekordbox` writes a `DJ_PLAYLISTS` document: the
+whole library as a `COLLECTION`, every playlist as a node, and per track the
+tags, `AverageBpm`, `Tonality`, `TotalTime`, `SampleRate`, `DateAdded`, a
+percent-encoded `Location` and one `<TEMPO>` marker. Behind a save dialog, which
+is why `dialog:allow-save` joined the capability.
 
-*Size: M · depends on A1*
+**It needed a third piece the entry did not know about.** The beat grid was
+computed on every analysis and *dropped* — no table, no reader, nothing drawn,
+despite `COMPARISON.md` claiming otherwise for two releases. A `<TEMPO>` marker
+needs exactly what the detector produces, so `tracks.beat_offset_secs` and
+`beat_confidence` came first, with the phase shifted onto the track's own clock:
+the detector counts from the start of its 120 s excerpt, so the raw number would
+have put every beat half a minute early in somebody's player.
+
+**Cue points are not written**, though the entry listed them. The app has no
+concept of one, and inventing empty marks would put them in a player where
+nobody set them. Same for `Size`, which a track row does not carry.
+
+**The format was not guessed, and the test proves it in the other side's
+language.** `scripts/rekordbox-reference.py` has read real Rekordbox exports
+since the tempo benchmark existed; the writer's output goes back through that
+reader and has to come out as the rows it went in as. It is the only check here
+that did not come out of the same head as the writer — and a filename with
+non-ASCII in it is the case that fails first when the `Location` encoding is
+wrong.
+
+**What is still only provable by hand:** that Rekordbox itself likes the file.
+The round trip says the document parses and carries the values, not that the
+program on the other side accepts it. Import it once before trusting a change.
+
+*Size: M · done*
 
 ### A3 · Read an existing `rekordbox.xml`
+
+**Now unblocked.** A2 shipped, and with it a writer whose field handling A3 can
+read back — plus `scripts/rekordbox-reference.py`, which already parses the half
+of the format that matters for a library import.
+
 
 **What** — the other direction: adopt an existing Rekordbox collection instead
 of asking the user to start from an empty library.
@@ -76,6 +117,32 @@ and it hands us a reference set of BPM and key values to measure our own
 detection against (see B7).
 
 *Size: M · depends on A2*
+
+### A4 · Cue points
+
+**What** — a cue point concept: a position on a track, named, with the app able
+to set and move it, and `export::rekordbox` writing it out as a
+`<POSITION_MARK>` per mark.
+
+**Why** — it is the one thing A2 deliberately left out, and A2 says why in its
+own entry: *"Cue points are not written, though the entry listed them. The app
+has no concept of one, and inventing empty marks would put them in a player
+where nobody set them."* The export half is therefore already built and already
+proven against real Rekordbox files; what is missing is upstream of it.
+
+Two things this needs beyond storage and UI. The round trip that keeps the
+writer honest reads `<TEMPO>` and nothing else —
+`scripts/rekordbox-reference.py` has no cue element in it — so closing the loop
+means teaching the reader about marks as well. That check is the only one in the
+export that did not come out of the same head as the writer, and a cue feature
+that skips it is a cue feature nobody can verify.
+
+And be clear about where a mark actually arrives. Through A2 it reaches
+Rekordbox, which is the realistic path; onto a CDJ without Rekordbox in between
+it would need ANLZ files, which is H1. Worth saying in the UI rather than
+letting someone assume the drive will carry them.
+
+*Size: L · completes A2 · full player support depends on H1*
 
 ---
 
@@ -196,6 +263,13 @@ silence gets no tempo at all.
 *Size: S — the DSP change was small; the persistence and display around it were not*
 
 ### B3 · Beat grid — **done, without the downbeat**
+
+**Since A2 it is also stored and exported.** For two releases the grid was
+computed on every analysis and thrown away — no table, no reader, nothing drawn,
+while this entry and `COMPARISON.md` both read as though it were in use. It now
+lives in `tracks.beat_offset_secs`/`beat_confidence` and becomes the `<TEMPO>`
+marker in the Rekordbox export. Drawing it under the waveform, which is what
+this entry was originally about, is still not done.
 
 **What shipped** — `audio/beats.rs` finds the beat *phase* for a known tempo by
 comb filtering the onset curve. Measured against Rekordbox' own grid markers, the
@@ -1224,6 +1298,86 @@ zero.
 
 [rc]: https://github.com/Holzhaus/rekordcrate
 [cd]: https://djl-analysis.deepsymmetry.org/
+
+---
+
+## I — Interface and playback
+
+What the app looks like while it is being used, and what it does while a track
+is playing. Everything here is small next to the tiers above and none of it is
+speculative — each entry is something a person using the app asked for after
+looking at it.
+
+### I1 · An expanded group has to look expanded
+
+**What** — an album, folder or playlist row that is open should differ in
+surface, not only in the direction of its chevron. A step lighter than the
+collapsed default.
+
+**Why** — the open/closed state is the thing a user scans a long list for, and
+right now it is carried by a 14 px glyph. Reported from a screenshot: the
+container reads as closed at a glance even when it is open.
+
+The styleguide constrains the answer, which is the useful part of this entry.
+Depth comes from surface levels rather than shadows, and there are three
+(`bg`, `surface`, `surface-2`) — so "lighter" means the next level up and a
+`border-border-strong` hairline, not a new colour. If three levels turn out not
+to be enough to say *contains the row below it*, that is a styleguide question
+and belongs in `docs/brand/STYLEGUIDE.md` before it belongs in a component.
+
+*Size: S*
+
+### I2 · Settings for playback
+
+**What** — a settings section for the player: how the waveform is shown (larger,
+and scrolling with the playhead rather than static), and a volume control.
+
+**Why** — B6 shipped a waveform *preview*, sized and shaped for a player bar.
+Reading a track while it plays is a different job, and volume does not exist at
+all today: the only way to change it is the system mixer.
+
+Two different costs hide in one item, and they should probably split. Volume is
+a property on the `<audio>` element plus a settings key — small. A waveform that
+follows the playhead is a per-frame redraw against the audio clock, where the
+row waveform is a static overview drawn once from a stored table; that is a new
+drawing path, not a bigger version of the existing one. The stored waveform's
+resolution also has to be enough for a larger view, and that is
+`waveform::ALGO_VERSION` territory — changing it invalidates every stored
+waveform, which the cache rules require to be deliberate.
+
+*Size: M · touches B6's stored waveform*
+
+### I3 · Edit a playlist in a dialog
+
+**What** — one overlay that reorders, renames and removes, instead of the
+per-action menu entries A1 shipped.
+
+**Why** — A1 built the right model for this: membership is explicit position
+rows rather than an implied query order, so reordering is a cheap write and not
+a rebuild. The UI is what has not caught up — `PlaylistMenu` and
+`AddToPlaylist` cover create, rename, delete and add, and there is nowhere to
+see a playlist as a list and move a track within it.
+
+Note what it must not become: a second place where playlist state lives. The
+dialog edits through the same commands, and the ordering logic stays in
+`src/lib/` where it is testable, as A1 specified.
+
+*Size: S · depends on A1, which shipped*
+
+### I4 · The player says which album
+
+**What** — album name in the player bar next to title and artist.
+
+**Why** — asked for directly. It is also the field that tells two versions of
+the same track apart, which is exactly what a library full of near-duplicates
+needs while one of them is playing.
+
+The work is not the field, it is the width. The bar already runs `MarqueeText`
+over the title because the space is not there, so adding a third value is a
+decision about what gets truncated first at a narrow window — and that decision
+is worth making once, in the styleguide's terms, rather than per field.
+
+*Size: S*
 
 ---
 

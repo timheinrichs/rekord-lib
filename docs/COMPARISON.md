@@ -24,23 +24,31 @@ Stated first, because it is the fastest way to find out this is the wrong tool.
   different jobs, and only the first one is ours today. Tracked as **H1**, and
   blocked on hardware rather than on effort: a database writer that has never
   been in a real player is a good way to ruin someone's set.
-- **We do not manage playlists.** There is no playlist concept in the app at all
-  (**A1**), and consequently no Rekordbox XML export yet (**A2**) — which is the
-  highest-value item on the roadmap precisely because it is the cheap way to get
-  everything the app knows into Rekordbox in one step.
 - **We do not write the musical key into your files.** It is detected and shown,
   and it lives in the database only. Our detector agrees with Rekordbox about a
   third of the time, and a wrong `TKEY` is read by every other program and
   outlives the guess that produced it. A database value is replaced the moment a
   better detector exists. Numbers in [DSP_BENCHMARK.md](DSP_BENCHMARK.md).
-- **We do not claim a beat grid you can perform on.** The beat phase is detected
-  and drawn under the waveform; the first downbeat is not detected at all
-  (**B3**), and variable-tempo tracks get one number like everywhere else.
+- **We do not claim a beat grid you can perform on.** The beat phase is
+  detected, stored, and written into the Rekordbox export as a single `TEMPO`
+  marker — it is *not* drawn under the waveform, which this document claimed for
+  two releases and which was never true. The first downbeat is not detected at
+  all (**B3**), so every marker says "beat 1" without knowing it, and a
+  variable-tempo track gets one number like everywhere else.
 - **We do not run on Windows or Linux**, and there is no plan to (**G2**). macOS
   on Apple Silicon, one target, because the bundled ffmpeg sidecars exist for
   exactly that one.
 - **We do not upload anything.** MusicBrainz, Discogs and Bandcamp are contacted
   when a feature asks for it; the library itself never leaves the machine.
+
+## What we do, that a tag editor does not
+
+- **Playlists, and a Rekordbox collection to take them out in.** Playlists live
+  in the app as an explicit order — the fifth grouping in the library table —
+  and "Export for Rekordbox" writes a `rekordbox.xml` holding the whole library,
+  every playlist, and per track the tempo, the key and a beat grid marker.
+  Everything the app worked out arrives on the other side in one import instead
+  of being retyped. See [PLAYLISTS.md](PLAYLISTS.md).
 
 ## Against Rekordbox
 
@@ -55,7 +63,7 @@ this one. The division of labour:
 | Duplicate detection across formats | yes — length, acoustic fingerprint, name | by file, not by audio |
 | Tempo and key | detected; tempo written into the tag when confident, key kept in the database | detected, and authoritative for the export |
 | Beat grid | phase only, for display | full, editable, exported |
-| Playlists | none yet (**A1**, **A2**) | the core of the program |
+| Playlists | an explicit order, exported as `rekordbox.xml` | the core of the program |
 | Cost and platform | free, MIT, macOS on Apple Silicon | free tier plus subscriptions, macOS and Windows |
 
 The honest summary: **we fix the files, Rekordbox performs with them.** Anything

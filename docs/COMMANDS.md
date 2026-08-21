@@ -91,6 +91,13 @@ reachable through this API and no view passes `true`. Only `forceBpm` is, from
 | `library_dir_available` | `dir` | `bool` |
 | `library_relocate` | `oldDir`, `newDir` | `AppResult<RelocateResult>` |
 | `allow_library_playback` | — | `()` |
+| `playlists_load` | — | `AppResult<Playlist[]>` |
+| `playlist_contents` | — | `AppResult<Record<number, string[]>>` |
+| `playlist_create` | `name` | `AppResult<number>` — the new id |
+| `playlist_rename` | `id`, `name` | `AppResult<()>` |
+| `playlist_delete` | `id` | `AppResult<()>` |
+| `playlist_set` | `id`, `paths` | `AppResult<()>` |
+| `export_rekordbox_xml` | `dir`, `dest` | `AppResult<number>` — tracks written |
 | `edits_load` | — | `AppResult<Record<string, TrackEdit>>` |
 | `edit_set` | `path`, `edit` | `AppResult<()>` |
 | `edit_clear` | `paths` | `AppResult<()>` |
@@ -98,6 +105,16 @@ reachable through this API and no view passes `true`. Only `forceBpm` is, from
 `library_delete` forgets rows; it does not touch files. Deleting a file is
 `delete_files`. `library_relocate` re-points stored paths at a moved folder and
 never deletes: what it cannot find under the new root is reported as skipped.
+
+`playlist_set` replaces a playlist's contents with exactly the list it is given,
+in that order — never a diff. The order is the payload, and `src/lib/playlists.ts`
+has already decided what it should be; see [PLAYLISTS.md](PLAYLISTS.md).
+`playlist_contents` answers for every playlist at once, because the library table
+groups by playlist and needs all of them to draw one screen.
+
+`export_rekordbox_xml` writes the whole library and its playlists to `dest`, a
+path the user named in a save dialog — the one file this app writes outside the
+library folder, and the reason `dialog:allow-save` is in the capability.
 
 `allow_library_playback` grants the webview read access to the **saved** library
 folder over the `asset:` protocol, for this run only — the static scope in

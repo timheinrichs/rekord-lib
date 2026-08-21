@@ -82,7 +82,7 @@ Two stores, with a clear dividing line — keep new state on the right side of i
 
 - **SQLite** (`src-tauri/src/db/`, `rekord-lib.sqlite3` in the app data dir) holds
   everything that grows with the collection: `tracks`, `edits`, `fingerprints`,
-  `duplicate_groups`. Written **from Rust**, incrementally — the scan persists
+  `duplicate_groups`, `playlists`, `playlist_items`. Written **from Rust**, incrementally — the scan persists
   each batch as it produces it, edits are written per row. Access it through the
   `db` module's functions, never with SQL from a command.
 - **The JSON store** (`tauri-plugin-store`, `rekord-lib.json`) keeps only small
