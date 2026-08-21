@@ -9,6 +9,8 @@ contain incompatible changes.
 
 ## [Unreleased]
 
+## [0.7.5] - 2026-08-21
+
 ### Changed
 - **The key column reads as a key.** It showed `A · 11B` — the name and its
   Camelot position, side by side, where the second half means nothing unless you
@@ -708,6 +710,7 @@ tool for a CDJ/XDJ- and Rekordbox-compatible library.
   ffmpeg/ffprobe sidecar, first analysis/conversion pipeline.
 
 [Unreleased]: https://github.com/timheinrichs/rekord-lib/compare/v0.7.2...HEAD
+[0.7.5]: https://github.com/timheinrichs/rekord-lib/compare/v0.7.4...v0.7.5
 [0.7.4]: https://github.com/timheinrichs/rekord-lib/compare/v0.7.3...v0.7.4
 [0.7.3]: https://github.com/timheinrichs/rekord-lib/compare/v0.7.2...v0.7.3
 [0.7.2]: https://github.com/timheinrichs/rekord-lib/compare/v0.7.1...v0.7.2
