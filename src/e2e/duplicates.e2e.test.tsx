@@ -11,11 +11,11 @@
  * result, because every new search overwrites the result and the "not a
  * duplicate" decision has to survive that.
  */
-import { cleanup, render, screen, waitFor, within } from "@testing-library/react";
+import { cleanup, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import App from "../App";
-import { libraryView } from "../test/appDom";
+import { libraryView, overlay } from "../test/appDom";
 import { makeMetadata, makeTrack } from "../test/factories";
 import { installFakeBackend, type FakeBackend } from "../test/fakeBackend";
 import type { DuplicateFile, DuplicateGroup } from "../types";
@@ -88,12 +88,10 @@ async function openModal(container: HTMLElement) {
     ),
   );
   await user.click(open);
-  // The modal portals into document.body, so it is not inside the render
-  // container and has to be reached through `screen`.
-  const dialog = await screen.findByText("Duplicates");
-  const panel = dialog.closest("div.flex.flex-col");
-  if (!panel) throw new Error("no duplicates panel");
-  return { user, panel: within(panel as HTMLElement) };
+  // The modal portals into `document.body`, so it is a sibling of the app and
+  // has to be reached through the overlay rather than the render container.
+  await screen.findByText("Duplicates");
+  return { user, panel: overlay() };
 }
 
 describe("duplicates", () => {

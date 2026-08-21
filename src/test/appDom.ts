@@ -52,3 +52,22 @@ export function isShown(container: HTMLElement, which: "library" | "bandcamp") {
   const found = view(container, which === "library" ? 0 : 1, which);
   return !found.classList.contains("hidden");
 }
+
+/**
+ * The dialog on top.
+ *
+ * `Overlay` portals into `document.body`, so a modal is a sibling of the app
+ * rather than part of it and cannot be reached through the render container.
+ * More than one element matches the overlay's own classes — the boot splash
+ * uses the same full-screen treatment — so this takes the last, which is what
+ * "on top" means for stacked overlays.
+ *
+ * Scoping to it is not tidiness: the library table has a "Title" column header,
+ * so an unscoped query for the editor's Title field finds two.
+ */
+export function overlay() {
+  const all = document.querySelectorAll<HTMLElement>("div.fixed.inset-0.z-50");
+  const top = all[all.length - 1];
+  if (!top) throw new Error("appDom: no overlay on screen");
+  return within(top);
+}

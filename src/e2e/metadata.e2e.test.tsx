@@ -1,0 +1,168 @@
+/**
+ * Editing a track's tags, from the row's pencil to the write.
+ *
+ * The shape worth pinning is that a save is two things at once. `saveEdit`
+ * records the edit — so it survives a quit while the tags are not yet on disk —
+ * *and* writes it, in that order. A test that only watched `write_metadata`
+ * would pass with the persistence gone, and a pending edit would then be lost
+ * on every failed write.
+ *
+ * `metadata::write::finalize` and its `clear_empty` flag are not reachable from
+ * here: the flag is chosen in `commands.rs` per caller and never crosses the
+ * boundary. That belongs to the Rust tests and to the wdio suite; `docs/METADATA.md`
+ * describes it.
+ */
+import { cleanup, render, screen, waitFor, within } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import App from "../App";
+import { libraryView, overlay } from "../test/appDom";
+import { makeMetadata, makeTrack } from "../test/factories";
+import { installFakeBackend, type FakeBackend } from "../test/fakeBackend";
+import type { WriteMetadataItem } from "../lib/api";
+
+const LIBRARY = "/fixture/library";
+const TRACK = `${LIBRARY}/no-tags.aiff`;
+
+let fake: FakeBackend;
+
+beforeEach(() => {
+  fake = installFakeBackend({
+    files: [TRACK],
+    tracks: [
+      makeTrack({
+        path: TRACK,
+        file_name: "no-tags.aiff",
+        metadata: makeMetadata({ title: "Before", artist: "Artist" }),
+        metadata_incomplete: true,
+      }),
+    ],
+    store: {
+      settings: {
+        library_dir: LIBRARY,
+        discogs_key: "key-123",
+        discogs_secret: "secret-456",
+      },
+    },
+  });
+});
+
+afterEach(() => {
+  cleanup();
+  fake.restore();
+});
+
+/** Open the editor for the one seeded row. */
+async function openEditor(container: HTMLElement) {
+  const user = userEvent.setup();
+  const cell = await waitFor(() => libraryView(container).getByTitle(TRACK));
+  const tr = cell.closest("tr");
+  if (!tr) throw new Error("no row");
+  await user.click(
+    within(tr).getByRole("button", { name: "Edit metadata" }),
+  );
+  await screen.findByRole("button", { name: /confirm/i });
+  return user;
+}
+
+/**
+ * The input for a field. Each one is wrapped in its own `<label>`, so the
+ * accessible name is the way in — and it has to tolerate the trailing `*`,
+ * which is how a required field marks itself.
+ */
+function field(label: string): HTMLElement {
+  return overlay().getByLabelText(new RegExp(`^${label}\\*?$`));
+}
+
+describe("editing metadata", () => {
+  it("asks for suggestions with the configured Discogs credentials", async () => {
+    const { container } = render(<App />);
+    await openEditor(container);
+
+    await waitFor(() => expect(fake.called("suggest_metadata")).toBe(true));
+    const [args] = fake.argsFor("suggest_metadata");
+    expect(args.path).toBe(TRACK);
+    // The credentials come from the settings rather than being re-read or
+    // dropped on the way. Absent they are `null`, never `undefined`.
+    expect(args.discogsKey).toBe("key-123");
+    expect(args.discogsSecret).toBe("secret-456");
+  });
+
+  it("records the edit and writes it, in that order", async () => {
+    const { container } = render(<App />);
+    const user = await openEditor(container);
+
+    await user.clear(field("Title"));
+    await user.type(field("Title"), "After");
+    await user.click(screen.getByRole("button", { name: /confirm/i }));
+
+    await waitFor(() => expect(fake.called("write_metadata")).toBe(true));
+
+    // Recorded, because the tags are not on disk yet and a quit must not lose
+    // the intent.
+    expect(fake.called("edit_set")).toBe(true);
+    expect(fake.argsFor("edit_set")[0].path).toBe(TRACK);
+
+    // And written, carrying the typed value.
+    const [args] = fake.argsFor("write_metadata");
+    const items = args.items as WriteMetadataItem[];
+    expect(items).toHaveLength(1);
+    expect(items[0].path).toBe(TRACK);
+    expect(items[0].metadata.title).toBe("After");
+
+    // Undo is recorded by default, and labelled with something a button can
+    // name back to the user.
+    expect(args.recordUndo).toBe(true);
+    expect(args.label).toBe("no-tags.aiff");
+  });
+
+  it("reports a per-file write failure without claiming success", async () => {
+    // `write_metadata` never rejects either: the failure is an `error` on the
+    // item, inside a successful return.
+    fake.failItem(TRACK, "lofty: unsupported tag for this container");
+
+    const { container } = render(<App />);
+    const user = await openEditor(container);
+    await user.clear(field("Title"));
+    await user.type(field("Title"), "After");
+    await user.click(screen.getByRole("button", { name: /confirm/i }));
+
+    expect(
+      await screen.findByText(/unsupported tag for this container/),
+    ).toBeInTheDocument();
+
+    // The row shows the new title even though the write failed — the edit is
+    // applied optimistically, on purpose. What must not happen is that it looks
+    // *written*: the pending-tags button is the standing signal that the value
+    // on screen is not the value on disk. Without it, an optimistic row and a
+    // saved row are indistinguishable.
+    await waitFor(() =>
+      expect(
+        libraryView(container).getByTitle(
+          "Write metadata changes made earlier (not yet saved to the files) into the files",
+        ),
+      ).toBeInTheDocument(),
+    );
+  });
+
+  it("keeps the pending edit when the write failed", async () => {
+    fake.failItem(TRACK, "lofty: unsupported tag");
+
+    const { container } = render(<App />);
+    const user = await openEditor(container);
+    await user.clear(field("Title"));
+    await user.type(field("Title"), "After");
+    await user.click(screen.getByRole("button", { name: /confirm/i }));
+
+    await waitFor(() => expect(fake.called("write_metadata")).toBe(true));
+
+    // The edit is still recorded and still offered for a retry. Clearing it
+    // would lose the user's intent with nothing on disk to show for it.
+    expect(fake.called("edit_clear")).toBe(false);
+    expect(
+      await screen.findByTitle(
+        "Write metadata changes made earlier (not yet saved to the files) into the files",
+      ),
+    ).toBeInTheDocument();
+  });
+});
