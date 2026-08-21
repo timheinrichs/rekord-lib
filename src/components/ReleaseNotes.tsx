@@ -50,6 +50,10 @@ function InlineRun({ run }: { run: Inline }) {
         <button
           type="button"
           onClick={() => void openUrl(run.href)}
+          // The `<pre>` this replaced showed every link's target. A label can
+          // say one thing and point at another, so the target stays reachable
+          // rather than being hidden behind the words.
+          title={run.href}
           className="text-accent-400 underline decoration-dotted underline-offset-2 hover:text-accent-300"
         >
           {run.text}

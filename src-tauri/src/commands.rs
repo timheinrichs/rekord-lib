@@ -375,11 +375,16 @@ pub async fn analyze_files(
 
 /// Opens the **saved** library folder for playback (`asset:`), and nothing else.
 ///
-/// Takes no folder, deliberately. The whole point of the empty static scope is
-/// that the window cannot read the disk; a command that grants whatever it is
-/// handed would let anything running in that window ask for `$HOME` back. So
-/// the folder comes from the saved settings — the one the user chose — and the
-/// frontend calls this after the save, not instead of it.
+/// Takes no folder, deliberately: the folder comes from the saved settings — the
+/// one the user chose — so the frontend calls this after the save rather than
+/// instead of it, and a stray call cannot name a folder of its own.
+///
+/// It is a narrowing, not a boundary, and the difference is worth being honest
+/// about. The window holds `store:default`, so code running there could write
+/// `settings.library_dir` itself and then ask for that. What is gone is the
+/// unconditional grant: `$HOME/**` and `/Volumes/**` were readable before
+/// anything asked, and now nothing is until a folder has been saved as the
+/// library. A hard boundary would mean the backend owning the setting.
 ///
 /// The scope is runtime state, so it has to be granted again after a change,
 /// and it is never revoked mid-run: a track playing when the folder changes

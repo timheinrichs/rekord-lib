@@ -29,6 +29,16 @@ describe("ReleaseNotes", () => {
     expect(mocks.openUrl).toHaveBeenCalledWith("https://rekord.dev/docs");
   });
 
+  it("shows where a link actually goes", () => {
+    // A label can say one thing and point at another, and the `<pre>` this
+    // replaced showed the target outright.
+    render(<ReleaseNotes notes="[the release](https://rekord.dev/v1)." />);
+    expect(screen.getByRole("button", { name: "the release" })).toHaveAttribute(
+      "title",
+      "https://rekord.dev/v1",
+    );
+  });
+
   it("refuses to hand any other scheme to the OS", () => {
     // Release notes arrive over the network. A link that is not http(s) stays
     // text — written out as it was, so the destination is visible rather than

@@ -749,9 +749,13 @@ from the saved settings, and by `allow_library_playback` whenever the folder
 changes. Nothing else is ever granted.
 
 **The command takes no folder**, which the first attempt got wrong and the
-review caught: a command that grants what it is handed lets anything running in
-the window ask for `$HOME` back, and the empty static scope would have bought
-nothing. It reads the folder the user saved, so the frontend calls it after the
+review caught: a command that grants what it is handed makes the empty static
+scope worth nothing, because a stray call can name any folder. Worth being
+precise about what that buys, though — the window holds `store:default` and
+could write `settings.library_dir` itself, so this is a narrowing rather than a
+boundary. What is gone is the *unconditional* grant: `$HOME/**` and
+`/Volumes/**` were readable before anything asked. A hard boundary would mean
+the backend owning the setting. It reads the folder the user saved, so the frontend calls it after the
 write rather than instead of it. The path is normalised first — left to the
 scope's globbing, `/Users/me/Music/../..` is `/Users` — and has to be at least
 two components deep, because every one-component path on macOS is a system

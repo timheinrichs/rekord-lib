@@ -102,9 +102,10 @@ never deletes: what it cannot find under the new root is reported as skipped.
 `allow_library_playback` grants the webview read access to the **saved** library
 folder over the `asset:` protocol, for this run only — the static scope in
 `tauri.conf.json` is empty, so until it is called `convertFileSrc` resolves to a
-URL the webview may not load. It takes no argument on purpose: a command that
-granted whatever it was handed would let anything running in the window ask for
-`$HOME` back, which is the scope this exists to remove. The folder therefore
+URL the webview may not load. It takes no argument on purpose, so a stray
+call cannot name a folder of its own — a narrowing rather than a boundary,
+since the window can write `settings.library_dir` itself; what is gone is the
+unconditional grant that needed no call at all. The folder therefore
 comes from the store, which means the frontend calls it **after** the settings
 are written; the backend grants the same folder at startup, so playback works
 before the first call arrives. A path that is relative, is the root, or resolves
