@@ -73,7 +73,11 @@ export const COLUMNS: ColumnDef[] = [
   // name alone, which is never wider than "F#m".
   { id: "key", label: "Key", width: "w-16" },
   { id: "format", label: "Format", width: "w-44" },
-  { id: "downloaded", label: "Downloaded", width: "w-32", sortKey: "date" },
+  // "Added", not "Downloaded": the value is the file's creation date, which is
+  // when it turned up in the library however it got there — a Bandcamp
+  // download, a copy from a USB drive, a conversion. The id stays as it is,
+  // because it is what a user's hidden-columns setting already names.
+  { id: "downloaded", label: "Added", width: "w-32", sortKey: "date" },
   { id: "status", label: "Status", width: "w-24" },
   { id: "actions", label: "", width: "w-16", fixed: true },
 ];

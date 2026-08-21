@@ -11,6 +11,7 @@ import {
   addToPlaylist,
   movePlaylistItems,
   removeFromPlaylist,
+  stepPlaylistItem,
   uniquePlaylistName,
 } from "./playlists";
 import type { Playlist } from "../types";
@@ -45,6 +46,8 @@ export interface Playlists {
   removeTracks: (id: number, paths: string[]) => Promise<void>;
   /** Moves `paths` in front of `before` (`null` = to the end). */
   move: (id: number, paths: string[], before: string | null) => Promise<void>;
+  /** Moves one track one place up (`-1`) or down (`1`). */
+  step: (id: number, path: string, step: -1 | 1) => Promise<void>;
   /** A name that is not taken yet, for the "new playlist" default. */
   suggestName: (base: string) => string;
   reload: () => Promise<void>;
@@ -149,6 +152,16 @@ export function usePlaylists(): Playlists {
     [contents, write],
   );
 
+  const step = useCallback(
+    async (id: number, path: string, direction: -1 | 1) => {
+      const current = contents[id] ?? [];
+      const next = stepPlaylistItem(current, path, direction);
+      if (next === current) return;
+      await write(id, next);
+    },
+    [contents, write],
+  );
+
   const suggestName = useCallback(
     (base: string) => uniquePlaylistName(all, base),
     [all],
@@ -164,6 +177,7 @@ export function usePlaylists(): Playlists {
     add,
     removeTracks,
     move,
+    step,
     suggestName,
     reload,
   };

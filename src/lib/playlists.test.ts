@@ -6,6 +6,7 @@ import {
   movePlaylistItem,
   movePlaylistItems,
   removeFromPlaylist,
+  stepPlaylistItem,
   uniquePlaylistName,
 } from "./playlists";
 import { makeTrack } from "../test/factories";
@@ -101,6 +102,37 @@ describe("movePlaylistItems", () => {
   it("ignores paths that are not in the playlist", () => {
     const current = [A, B];
     expect(movePlaylistItems(current, ["/elsewhere.aiff"], A)).toBe(current);
+  });
+});
+
+describe("stepPlaylistItem", () => {
+  it("moves a track one place, in both directions", () => {
+    // Down is the one with the trap: the track is lifted out before it is put
+    // back, so aiming at its neighbour would swap it with itself.
+    expect(stepPlaylistItem([A, B, C], A, 1)).toEqual([B, A, C]);
+    expect(stepPlaylistItem([A, B, C], B, 1)).toEqual([A, C, B]);
+    expect(stepPlaylistItem([A, B, C], C, -1)).toEqual([A, C, B]);
+    expect(stepPlaylistItem([A, B, C], B, -1)).toEqual([B, A, C]);
+  });
+
+  it("moves the last track down to nowhere, and the first up to nowhere", () => {
+    const current = [A, B, C];
+    expect(stepPlaylistItem(current, C, 1)).toBe(current);
+    expect(stepPlaylistItem(current, A, -1)).toBe(current);
+  });
+
+  it("ignores a track that is not in the playlist", () => {
+    const current = [A, B];
+    expect(stepPlaylistItem(current, C, 1)).toBe(current);
+  });
+
+  it("agrees with the drag, which is the point of sharing its rule", () => {
+    // One step down and a drag in front of the row after next are the same
+    // move; if these two ever disagree, one of the two ways of reordering is
+    // wrong and only one of them is tested.
+    expect(stepPlaylistItem([A, B, C, D], A, 1)).toEqual(
+      movePlaylistItems([A, B, C, D], [A], C),
+    );
   });
 });
 

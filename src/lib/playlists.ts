@@ -116,6 +116,33 @@ export function uniquePlaylistName(existing: Playlist[], base: string): string {
   return trimmed;
 }
 
+/**
+ * Moves one track a step through the playlist.
+ *
+ * Expressed with the same "put it in front of that one" rule the drag uses, so
+ * the two ways of reordering cannot drift apart. The catch is the direction:
+ * the track is lifted out before it is put back, so moving *down* has to aim
+ * one row further along than it looks — off by one here and a track swaps with
+ * itself, which reads as a button that does nothing.
+ */
+export function stepPlaylistItem(
+  current: string[],
+  path: string,
+  step: -1 | 1,
+): string[] {
+  const index = current.indexOf(path);
+  if (index < 0) return current;
+  // Already at the end it can move to. Returning the same list rather than an
+  // identical copy is what lets the caller skip the write — a button at the top
+  // of a playlist should cost nothing at all when it is pressed anyway.
+  if ((step < 0 && index === 0) || (step > 0 && index === current.length - 1)) {
+    return current;
+  }
+  const target = index + step + (step > 0 ? 1 : 0);
+  const before = target >= current.length ? null : current[target];
+  return movePlaylistItems(current, [path], before);
+}
+
 /** Key of the bucket holding everything that is in no playlist. */
 export const UNSORTED_ID = -1;
 

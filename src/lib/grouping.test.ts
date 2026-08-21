@@ -328,7 +328,7 @@ describe("BPM sorting", () => {
     expect(last.type).toBe("group");
   });
 
-  it("leaves the Downloaded column's ordering untouched", () => {
+  it("leaves the Added column's ordering untouched", () => {
     // Missing dates keep their long-standing 0, i.e. first ascending.
     const dated = makeTrack({ id: "dated", download_date: 500 });
     const undated = makeTrack({ id: "undated", path: "/lib/u.aiff", download_date: null });

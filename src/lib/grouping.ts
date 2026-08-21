@@ -191,7 +191,7 @@ export function sortTracks(
 /**
  * Numeric sort value of a track. Only BPM can be null (many files carry no
  * tempo tag) — a missing download date keeps its long-standing 0, so the
- * "Downloaded" column sorts exactly as before.
+ * "Added" column sorts exactly as before.
  */
 export function trackNumber(
   t: TrackAnalysis,

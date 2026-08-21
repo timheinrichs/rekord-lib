@@ -2050,10 +2050,15 @@ export default function LibraryView({
                   prog: ConvertProgress | undefined,
                   result: ConvertResult | undefined,
                   fromBandcamp: boolean,
-                  /** 1-based place in a playlist, where the row is in one. */
-                  position?: number,
+                  /** Where the row sits in a playlist, when it is in one. */
+                  inPlaylist?: { id: number; position: number; of: number },
                 ): ReactNode => {
-                  const pad = "px-4 py-3";
+                  // `py-0`: the row's own `h-16` sets the height now, for every
+                  // row in every grouping. Padding used to do it, and it could
+                  // not — a cover is 40 px tall, a waveform 26, a line of text
+                  // 20, so each kind of row came out its own height and the
+                  // table stepped up and down as you scrolled through a folder.
+                  const pad = "px-4 py-0";
                   switch (c.id) {
                     case "select":
                       // Never indented. Nesting is shown in the title column,
@@ -2085,9 +2090,9 @@ export default function LibraryView({
                       return (
                         <td
                           key={c.id}
-                          className="px-1 py-3 text-right text-xs tabular-nums text-fg-subtle"
+                          className="px-1 text-right text-xs tabular-nums text-fg-subtle"
                         >
-                          {position ?? ""}
+                          {inPlaylist?.position ?? ""}
                         </td>
                       );
                     case "cover":
@@ -2234,6 +2239,41 @@ export default function LibraryView({
                           onClick={(e) => e.stopPropagation()}
                         >
 <div className="pointer-events-none absolute inset-y-0 right-4 flex items-center gap-2 rounded-lg bg-surface-2 pl-3 opacity-0 transition-opacity group-hover:pointer-events-auto group-hover:opacity-100">
+                        {inPlaylist && (
+                          <>
+                            {/* The same move as the drag, by another road: a
+                                drag is unusable once the target is off screen,
+                                which on a 200-track set is most of the time. */}
+                            <button
+                              onClick={() => void playlists.step(inPlaylist.id, t.path, -1)}
+                              disabled={inPlaylist.position === 1}
+                              className="flex h-8 w-8 items-center justify-center rounded-md text-fg-subtle enabled:hover:bg-surface enabled:hover:text-accent-400 disabled:text-fg-disabled"
+                              title="Move up in the playlist"
+                              aria-label="Move up"
+                            >
+                              ↑
+                            </button>
+                            <button
+                              onClick={() => void playlists.step(inPlaylist.id, t.path, 1)}
+                              disabled={inPlaylist.position === inPlaylist.of}
+                              className="flex h-8 w-8 items-center justify-center rounded-md text-fg-subtle enabled:hover:bg-surface enabled:hover:text-accent-400 disabled:text-fg-disabled"
+                              title="Move down in the playlist"
+                              aria-label="Move down"
+                            >
+                              ↓
+                            </button>
+                            <button
+                              onClick={() =>
+                                void playlists.removeTracks(inPlaylist.id, [t.path])
+                              }
+                              className="flex h-8 w-8 items-center justify-center rounded-md text-fg-subtle hover:bg-surface hover:text-danger-500"
+                              title="Remove from this playlist (the file stays)"
+                              aria-label="Remove from playlist"
+                            >
+                              −
+                            </button>
+                          </>
+                        )}
                         {!t.compat.compatible && (
                           <button
                             onClick={() => convertOne(t)}
@@ -2282,7 +2322,7 @@ export default function LibraryView({
                    * row holds and makes it draggable — nowhere else is a row's
                    * order the user's to change, so nowhere else is it draggable.
                    */
-                  inPlaylist?: { id: number; position: number },
+                  inPlaylist?: { id: number; position: number; of: number },
                 ) => {
                 const prog = progress[t.id];
                 const result = results[t.id];
@@ -2319,7 +2359,7 @@ export default function LibraryView({
                           }
                         : undefined
                     }
-                    className={`group cursor-pointer border-b border-border last:border-0 hover:bg-surface-2 ${
+                    className={`group h-16 cursor-pointer border-b border-border last:border-0 hover:bg-surface-2 ${
                       dropHere ? "border-t-2 border-t-accent-500" : ""
                     }`}
                   >
@@ -2333,7 +2373,7 @@ export default function LibraryView({
                         prog,
                         result,
                         fromBandcamp,
-                        inPlaylist?.position,
+                        inPlaylist,
                       ),
                     )}
                   </tr>
@@ -2365,7 +2405,8 @@ export default function LibraryView({
                   someSel: boolean,
                   groupStatus: TrackStatus[],
                 ): ReactNode => {
-                  const pad = "px-4 py-2.5";
+                  // Same height as a track row — see the note there.
+                  const pad = "px-4 py-0";
                   const gTracks = opts.tracks;
                   switch (c.id) {
                     case "select":
@@ -2541,7 +2582,7 @@ export default function LibraryView({
                     <tr
                       key={opts.id}
                       onClick={opts.onToggle}
-                      className="group cursor-pointer border-b border-border bg-surface-2/40 hover:bg-surface-2"
+                      className="group h-16 cursor-pointer border-b border-border bg-surface-2/40 hover:bg-surface-2"
                     >
                       {cols.map((c) =>
                         groupCell(c, opts, s, allSel, someSel, groupStatus),
@@ -2702,7 +2743,11 @@ export default function LibraryView({
                           idxRef.i++,
                           1,
                           group.playlist
-                            ? { id: group.id, position: i + 1 }
+                            ? {
+                                id: group.id,
+                                position: i + 1,
+                                of: group.tracks.length,
+                              }
                             : undefined,
                         ),
                       );
