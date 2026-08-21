@@ -44,12 +44,16 @@ pub fn collection_xml(
     // Rekordbox keys playlist entries by TrackID, so every track needs one that
     // is stable within the document. The index is exactly that, and nothing
     // outside the file refers to it.
-    let id_of = |path: &str| {
-        tracks
-            .iter()
-            .position(|t| t.path == path)
-            .map(|i| i as i64 + 1)
-    };
+    //
+    // Indexed once rather than searched per entry: a linear scan here is
+    // tracks × entries full path comparisons, which on a library where every
+    // track is also in a playlist is quadratic in the size of the collection.
+    let ids: std::collections::HashMap<&str, i64> = tracks
+        .iter()
+        .enumerate()
+        .map(|(i, t)| (t.path.as_str(), i as i64 + 1))
+        .collect();
+    let id_of = |path: &str| ids.get(path).copied();
 
     let mut out = String::with_capacity(tracks.len() * 512);
     out.push_str("<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n");

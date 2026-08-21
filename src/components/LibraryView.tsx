@@ -2421,6 +2421,18 @@ export default function LibraryView({
                           }
                         : undefined
                     }
+                    // A drag does not always end in a drop: Escape cancels it,
+                    // and so does letting go anywhere else. Only the drop used
+                    // to clear this, which left the accent line painted under a
+                    // row and the lifted selection still held.
+                    onDragEnd={
+                      inPlaylist
+                        ? () => {
+                            setDragOver(null);
+                            setPlaylistDrag(null);
+                          }
+                        : undefined
+                    }
                     className={`group h-16 cursor-pointer border-b border-border last:border-0 hover:bg-surface-2 ${
                       dropHere ? "border-t-2 border-t-accent-500" : ""
                     }`}
