@@ -88,6 +88,27 @@ describe("playlists", () => {
     expect(set.paths).toEqual([A, B]);
   });
 
+  it("will not offer a playlist the selection is already in", async () => {
+    // Adding tracks to the playlist they are already in is a click that does
+    // nothing, and the menu should say so rather than let it happen.
+    const user = userEvent.setup();
+    fake.state.playlists = [
+      { id: 1, name: "Has both", created_ms: 1, updated_ms: 1 },
+      { id: 2, name: "Has one", created_ms: 2, updated_ms: 2 },
+    ];
+    fake.state.playlistContents = { 1: [A, B], 2: [A] };
+
+    const { container } = render(<App />);
+    await selectAll(user, container);
+    await user.click(screen.getByRole("button", { name: /Add to playlist/ }));
+
+    expect(screen.getByRole("button", { name: /Has both/ })).toBeDisabled();
+    // The other one says what it would actually take.
+    const partial = screen.getByRole("button", { name: /Has one/ });
+    expect(partial).toBeEnabled();
+    expect(partial.textContent).toContain("+1 of 2");
+  });
+
   it("shows the playlist as a group, with a position per row", async () => {
     const user = userEvent.setup();
     fake.state.playlists = [

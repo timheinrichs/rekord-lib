@@ -56,6 +56,7 @@ what the new order is, and it is pure:
 | `movePlaylistItems` | a selection in front of a row — the drag |
 | `stepPlaylistItem` | one row up or down, expressed as the same move |
 | `uniquePlaylistName` | a name that is not taken |
+| `wouldAdd` | how many of a selection a playlist would actually gain |
 | `buildPlaylistGroups` | the grouping's heads and their tracks |
 
 `stepPlaylistItem` sharing the drag's rule is deliberate: moving *down* has to
@@ -81,6 +82,10 @@ keeps its shape.
 - **Unsorted** is always there, even empty. It is where a track lands when it
   leaves a playlist, and a bucket that appears only sometimes is one nobody
   learns to look in.
+- "Add to playlist" says what each entry would do — `+3`, `+1 of 4`, or
+  `already in` for one that holds the whole selection, which is then not
+  clickable. Said rather than hidden: it is also the answer to "are these
+  already in there?".
 - A path with no visible track is skipped rather than drawn empty: it may be
   filtered out, or the file may be gone and the row already pruned.
 
@@ -148,6 +153,7 @@ comes from a native panel the user drove.
 | Step and drag are the same move | `playlists.test.ts` · "agrees with the drag, which is the point of sharing its rule" |
 | A move that cannot happen writes nothing | `playlists.test.ts` · "moves the last track down to nowhere, and the first up to nowhere" |
 | The grouping shows the playlist's order and an Unsorted bucket | `playlists.test.ts` · `buildPlaylistGroups` cases |
+| A playlist that would gain nothing is not offered | `playlists.e2e.test.tsx` · "will not offer a playlist the selection is already in", `playlists.test.ts` · `wouldAdd` |
 | The selection reaches the backend in screen order | `playlists.e2e.test.tsx` · "puts a selection into a new playlist, in the order on screen" |
 | The export goes where the dialog points, and nowhere on cancel | `playlists.e2e.test.tsx` · "exports the library where the save dialog points", "writes nothing when the save dialog is cancelled" |
 | What we write, Rekordbox's own reader reads back | `export/rekordbox.rs` · `what_we_write_is_read_back_by_the_reference_reader` |

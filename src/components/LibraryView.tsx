@@ -83,7 +83,7 @@ import PlaylistMenu from "./PlaylistMenu";
 import AddToPlaylist from "./AddToPlaylist";
 import { usePlayer, type PlayerTrack } from "../lib/player";
 import { usePlaylists } from "../lib/usePlaylists";
-import { buildPlaylistGroups } from "../lib/playlists";
+import { buildPlaylistGroups, wouldAdd } from "../lib/playlists";
 import { exportRekordbox } from "../lib/api";
 import MarqueeText from "./MarqueeText";
 import DuplicatesModal from "./DuplicatesModal";
@@ -1017,6 +1017,22 @@ export default function LibraryView({
     [renderOrder, selected],
   );
 
+  /**
+   * What each playlist would gain from the current selection.
+   *
+   * Computed here rather than in the menu so the menu stays a renderer, and
+   * eagerly rather than on open, because it is a set lookup per selected track
+   * and the answer decides whether an entry is clickable at all.
+   */
+  const playlistGains = useMemo(() => {
+    const paths = selectedPaths();
+    const out: Record<number, number> = {};
+    for (const p of playlists.all) {
+      out[p.id] = wouldAdd(playlists.contents[p.id] ?? [], paths);
+    }
+    return out;
+  }, [playlists.all, playlists.contents, selectedPaths]);
+
   const startPlaylistDrag = useCallback(
     (id: number, track: TrackAnalysis) => {
       const paths = selected.has(track.id) ? selectedPaths() : [track.path];
@@ -1805,6 +1821,7 @@ export default function LibraryView({
           </button>
           <AddToPlaylist
             playlists={playlists.all}
+            gains={playlistGains}
             count={selected.size}
             disabled={converting || writing}
             onAdd={(id) => void playlists.add(id, selectedPaths())}

@@ -8,6 +8,7 @@ import {
   removeFromPlaylist,
   stepPlaylistItem,
   uniquePlaylistName,
+  wouldAdd,
 } from "./playlists";
 import { makeTrack } from "../test/factories";
 import type { Playlist } from "../types";
@@ -152,6 +153,21 @@ describe("uniquePlaylistName", () => {
 
   it("falls back to a name at all", () => {
     expect(uniquePlaylistName([], "   ")).toBe("Playlist");
+  });
+});
+
+describe("wouldAdd", () => {
+  it("counts only what a playlist does not already hold", () => {
+    // What the menu shows next to each entry, and what decides whether the
+    // entry is clickable at all: offering a playlist that would gain nothing is
+    // a click that does nothing.
+    expect(wouldAdd([A], [A, B])).toBe(1);
+    expect(wouldAdd([], [A, B])).toBe(2);
+    expect(wouldAdd([A, B], [A, B])).toBe(0);
+  });
+
+  it("counts a repeated path once", () => {
+    expect(wouldAdd([], [A, A])).toBe(1);
   });
 });
 

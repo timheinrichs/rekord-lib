@@ -4,6 +4,8 @@ import type { Playlist } from "../types";
 
 interface Props {
   playlists: Playlist[];
+  /** How many of the selected tracks each playlist would gain, by id. */
+  gains: Record<number, number>;
   count: number;
   disabled?: boolean;
   onAdd: (id: number) => void;
@@ -23,6 +25,7 @@ interface Props {
  */
 export default function AddToPlaylist({
   playlists,
+  gains,
   count,
   disabled,
   onAdd,
@@ -47,21 +50,33 @@ export default function AddToPlaylist({
       </button>
       {open && (
         <div className="absolute bottom-full right-0 z-30 mb-1 max-h-80 w-56 overflow-y-auto rounded-lg border border-border bg-surface-2 py-1 shadow-2xl">
-          {playlists.map((p) => (
-            <button
-              key={p.id}
-              onClick={() => {
-                setOpen(false);
-                onAdd(p.id);
-              }}
-              className="flex w-full items-baseline justify-between gap-2 px-3 py-1.5 text-left text-sm hover:bg-surface hover:text-accent-400"
-            >
-              <span className="min-w-0 truncate">{p.name}</span>
-              <span className="shrink-0 text-xs text-fg-subtle">
-                {p.track_count}
-              </span>
-            </button>
-          ))}
+          {playlists.map((p) => {
+            // A playlist that already holds every selected track has nothing to
+            // gain, and offering it is a click that does nothing. Said rather
+            // than hidden: it is also the answer to "is this lot already in
+            // there?", which is worth more than a shorter menu.
+            const gain = gains[p.id] ?? 0;
+            return (
+              <button
+                key={p.id}
+                onClick={() => {
+                  setOpen(false);
+                  onAdd(p.id);
+                }}
+                disabled={gain === 0}
+                className="flex w-full items-baseline justify-between gap-2 px-3 py-1.5 text-left text-sm enabled:hover:bg-surface enabled:hover:text-accent-400 disabled:text-fg-disabled"
+              >
+                <span className="min-w-0 truncate">{p.name}</span>
+                <span className="shrink-0 text-xs text-fg-subtle">
+                  {gain === 0
+                    ? "already in"
+                    : gain === count
+                      ? `+${gain}`
+                      : `+${gain} of ${count}`}
+                </span>
+              </button>
+            );
+          })}
           {playlists.length > 0 && <div className="my-1 border-t border-border" />}
           {creating ? (
             <input

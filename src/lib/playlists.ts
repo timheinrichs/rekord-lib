@@ -143,6 +143,19 @@ export function stepPlaylistItem(
   return movePlaylistItems(current, [path], before);
 }
 
+/** How many of `paths` a playlist would actually gain. */
+export function wouldAdd(current: string[], paths: string[]): number {
+  const have = new Set(current);
+  let count = 0;
+  const seen = new Set<string>();
+  for (const path of paths) {
+    if (have.has(path) || seen.has(path)) continue;
+    seen.add(path);
+    count += 1;
+  }
+  return count;
+}
+
 /** Key of the bucket holding everything that is in no playlist. */
 export const UNSORTED_ID = -1;
 
