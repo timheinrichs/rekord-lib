@@ -9,15 +9,16 @@ contain incompatible changes.
 
 ## [Unreleased]
 
+## [0.7.3] - 2026-08-21
+
 ### Security
 - **A Bandcamp download can no longer write outside the folder it belongs in,
   or take the machine down while trying.** The bytes arrive from a server we do
   not control and land in the library, so they are now treated that way: the
   file is streamed into the app's cache folder instead of being held in memory
   whole, a cancelled or refused download leaves nothing behind, and a download,
-  a single extracted
-  track, an archive as a whole and its number of entries each have a ceiling
-  that no real purchase reaches. A ZIP entry is written under a sanitised name
+  a single extracted track, an archive as a whole and its number of entries
+  each have a ceiling that no real purchase reaches. A ZIP entry is written under a sanitised name
   in the album folder and nowhere else — the previous code fell back to the raw
   entry name for a name like `sub/..`, which is a path out of the folder — and
   entries that are symlinks are skipped. A web page returned instead of a file,
@@ -669,6 +670,7 @@ tool for a CDJ/XDJ- and Rekordbox-compatible library.
   ffmpeg/ffprobe sidecar, first analysis/conversion pipeline.
 
 [Unreleased]: https://github.com/timheinrichs/rekord-lib/compare/v0.7.2...HEAD
+[0.7.3]: https://github.com/timheinrichs/rekord-lib/compare/v0.7.2...v0.7.3
 [0.7.2]: https://github.com/timheinrichs/rekord-lib/compare/v0.7.1...v0.7.2
 [0.7.1]: https://github.com/timheinrichs/rekord-lib/compare/v0.7.0...v0.7.1
 [0.7.0]: https://github.com/timheinrichs/rekord-lib/compare/v0.6.0...v0.7.0
