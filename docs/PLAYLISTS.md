@@ -118,13 +118,31 @@ something we detect. The phase is stored on the *track's* clock — the detector
 counts from the start of its 120 s excerpt, which usually begins 30 s in, so the
 raw number would put every beat half a minute early.
 
-**The format is not guessed.** `scripts/rekordbox-reference.py` has been reading
-real exports from this collection since the tempo benchmark existed, so the
-field names, the `Location` encoding and the `TEMPO` shape come from files
-Rekordbox itself wrote. That reader is also the test that matters: what the
-writer produces goes back through it and has to come out as the rows it went in
-as. It is the only check here that did not come out of the same head as the
-writer.
+**The format is not guessed, and the `Location` encoding is not either.** Every
+attribute name, the `TEMPO` shape and the `NODE` shape were read off a real
+export (`rekordbox 7.2.17`, 2219 tracks). Two things that came out of comparing
+against it rather than reasoning about it:
+
+- **Rekordbox leaves `, ( ) ! + # $ @ ?` unescaped** and escapes the space, the
+  apostrophe, the ampersand and every non-ASCII byte. Our encoder now agrees on
+  all 2219 locations, down to the byte, with the sole exception of hex letter
+  case — where the export disagrees with *itself* (`%c3` in some rows, `%D0` in
+  others), and where RFC 3986 says the two are equivalent.
+- **That agreement is not cosmetic.** Rekordbox matches an imported track to one
+  it already holds by comparing this string. The same file written with a
+  different-but-valid encoding reads as a second file, so an import into an
+  existing collection would quietly duplicate every track with a bracket in its
+  name.
+
+`scripts/rekordbox-reference.py` is the second check, and the one that runs in
+CI: what the writer produces goes back through the reader that was built for
+real exports, and has to come out as the rows it went in as.
+
+**The export itself is deliberately not in the repository** — it lists a whole
+personal collection with absolute paths, which is why `DSP_BENCHMARK.md` keeps
+only a hashed distillation. Re-verifying the encoding therefore means pointing
+the comparison at a fresh export by hand; the method is in this section, not in
+a test.
 
 **The save dialog is why `dialog:allow-save` is in the capability.** This is the
 one file the app writes outside the library folder it was given, and the path

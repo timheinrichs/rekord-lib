@@ -160,19 +160,31 @@ fn track_xml(t: &TrackAnalysis, id: i64, size: Option<u64>) -> String {
     line
 }
 
-/// `file://localhost/…`, percent-encoded — the form every `Location` in a real
-/// export has.
+/// Characters Rekordbox leaves unescaped in a `Location`, beyond the
+/// alphanumerics.
 ///
-/// Everything outside the unreserved set is escaped, `/` excepted, and escaping
-/// happens per UTF-8 byte, which is what makes a non-ASCII filename survive the
-/// trip. The reader on the other side is `urllib.parse.unquote`, so the test
-/// that matters is the round trip rather than the exact set of characters.
+/// **Read off a real export, not chosen.** Over 2219 locations that Rekordbox
+/// 7.2.17 wrote itself, these are the characters that appear literally —
+/// `,` 2439 times, `(`/`)` about 1600 each, then `!`, `+`, `#`, `$`, `@`, `?`.
+/// Everything else it escapes, including the space, the apostrophe, the
+/// ampersand and every non-ASCII byte.
+///
+/// Matching it exactly is not cosmetic. **Rekordbox matches an imported track to
+/// one it already has by comparing this string**, so the same file written with
+/// a different-but-equally-valid encoding reads as a second file — and an import
+/// into an existing collection would quietly duplicate every track with a
+/// bracket in its name.
+const UNESCAPED: &[u8] = b"-_.~/,()!+#$@?";
+
+/// `file://localhost/…`, percent-encoded the way Rekordbox does it.
+///
+/// Escaping happens per UTF-8 byte, which is what makes a non-ASCII filename
+/// survive the trip.
 pub fn location_url(path: &str) -> String {
     let mut out = String::from("file://localhost");
     for byte in path.as_bytes() {
-        let c = *byte as char;
-        if byte.is_ascii_alphanumeric() || matches!(c, '-' | '_' | '.' | '~' | '/') {
-            out.push(c);
+        if byte.is_ascii_alphanumeric() || UNESCAPED.contains(byte) {
+            out.push(*byte as char);
         } else {
             out.push_str(&format!("%{byte:02X}"));
         }
@@ -389,19 +401,34 @@ mod tests {
     }
 
     #[test]
-    fn a_location_is_a_percent_encoded_file_url() {
+    fn a_location_is_encoded_the_way_rekordbox_encodes_one() {
         assert_eq!(
             location_url("/Users/me/Music/Track 01.aiff"),
             "file://localhost/Users/me/Music/Track%2001.aiff"
         );
-        // The characters that actually turn up in a music folder.
+        // Non-ASCII, per UTF-8 byte.
         assert_eq!(
             location_url("/lib/Oaxaqueño señor.aiff"),
             "file://localhost/lib/Oaxaque%C3%B1o%20se%C3%B1or.aiff"
         );
-        assert!(location_url("/lib/a#b&c.aiff").contains("a%23b%26c"));
         // Separators stay separators.
         assert!(location_url("/a/b/c.aiff").contains("/a/b/c.aiff"));
+    }
+
+    #[test]
+    fn the_characters_a_real_export_leaves_alone_are_left_alone() {
+        // Taken from 2219 locations Rekordbox wrote itself. Getting this wrong
+        // does not corrupt anything — it makes an import into an existing
+        // collection see a second copy of every track with a bracket in its
+        // name, because that string is what it matches on.
+        assert_eq!(
+            location_url("/lib/A (Remix), Pt. 1! +2 #3 $4 @5 ?6.aiff"),
+            "file://localhost/lib/A%20(Remix),%20Pt.%201!%20+2%20#3%20$4%20@5%20?6.aiff"
+        );
+        // And the ones it does escape, which are easy to assume are safe.
+        assert!(location_url("/lib/Rock & Roll.aiff").contains("Rock%20%26%20Roll"));
+        assert!(location_url("/lib/Don't.aiff").contains("Don%27t"));
+        assert!(location_url("/lib/50%.aiff").contains("50%25"));
     }
 
     /// The check that speaks the other side's language.
