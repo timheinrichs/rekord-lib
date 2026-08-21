@@ -289,6 +289,7 @@ async fn analyze_path(app: &AppHandle, path: String) -> AppResult<TrackAnalysis>
         // run the detector, and saying otherwise would silence the file for
         // good.
         bpm_absent: false,
+        grid_absent: false,
         beat_offset_secs: None,
         beat_confidence: None,
     })
@@ -710,13 +711,23 @@ async fn detect_bpm_pass(
                 }
 
                 let mut marked = false;
-                if let Some(absent) = tempo_verdict(
-                    true,
-                    item_wanted_tempo(chunk, index),
-                    tracks[index].metadata.bpm,
-                ) {
+                let asked = item_wanted_tempo(chunk, index);
+                if let Some(absent) = tempo_verdict(true, asked, tracks[index].metadata.bpm) {
                     marked = tracks[index].bpm_absent != absent;
                     tracks[index].bpm_absent = absent;
+                }
+                // And the same answer about the grid, which needs its own mark
+                // rather than sharing the tempo's: `detect_beats` returns
+                // nothing for a track with no clear pulse, and a phase is also
+                // refused when it disagrees with the tempo already on the row.
+                // Both leave `beat_offset_secs` NULL, which is indistinguishable
+                // from "never analysed" — so without this the file is decoded
+                // again at every start, which is C9 all over again.
+                if let Some(absent) =
+                    tempo_verdict(true, asked, tracks[index].beat_offset_secs.map(f64::from))
+                {
+                    marked |= tracks[index].grid_absent != absent;
+                    tracks[index].grid_absent = absent;
                 }
                 if result.changes_row() || marked || gridded {
                     updated.push(tracks[index].clone());
@@ -753,7 +764,9 @@ async fn detect_bpm_pass(
 ///   the next read finds it in the tag and never analyses again — which meant a
 ///   library built before the grid existed could never grow one, and exported
 ///   without a single `TEMPO` marker. The analysis has to run once more for
-///   those, and after that the grid is there and this stops being true.
+///   those, and `grid_absent` is what stops it running a third time: a track
+///   with no findable phase would otherwise be back in the backlog at every
+///   start, which is the same trap `bpm_absent` was dug out of.
 fn wants_tempo(track: &TrackAnalysis, force: bool) -> bool {
     if force {
         return true;
@@ -761,7 +774,10 @@ fn wants_tempo(track: &TrackAnalysis, force: bool) -> bool {
     if track.bpm_absent {
         return false;
     }
-    track.metadata.bpm.is_none() || track.beat_offset_secs.is_none()
+    if track.metadata.bpm.is_none() {
+        return true;
+    }
+    track.beat_offset_secs.is_none() && !track.grid_absent
 }
 
 /// How far a re-detected tempo may sit from the stored one before the grid it
@@ -2553,6 +2569,32 @@ mod tests {
         }
 
         #[test]
+        fn a_track_whose_grid_cannot_be_found_is_not_hunted_forever() {
+            // The trap the grid walked straight into after C9 closed it for the
+            // tempo. `detect_beats` legitimately finds no phase — ambient, a
+            // spoken intro, anything without a clear pulse — and a phase is
+            // refused outright when it disagrees with a tempo tag another
+            // program wrote. Both leave the column NULL, which the backlog
+            // cannot tell apart from "never analysed", so the file was decoded
+            // again at every single start.
+            let mut looked = track_with(Some(128.0), false);
+            looked.beat_offset_secs = None;
+            looked.grid_absent = true;
+            assert!(!wants_tempo(&looked, false), "already listened for a phase");
+
+            // A deliberate re-detect still asks, and so does the next release:
+            // the mark is a version stamp, so `grid_absent` reads false again
+            // after an update — the same expiry `bpm_absent` has.
+            assert!(wants_tempo(&looked, true));
+
+            // And it says nothing about a track that has no tempo yet: that one
+            // is wanted for the tempo itself.
+            let mut no_tempo = track_with(None, false);
+            no_tempo.grid_absent = true;
+            assert!(wants_tempo(&no_tempo, false));
+        }
+
+        #[test]
         fn a_grid_is_only_kept_next_to_a_tempo_it_belongs_to() {
             // The phase was measured against the tempo the detector just found.
             // Stored next to a different one — a tag somebody else wrote, or a
@@ -2810,6 +2852,7 @@ mod tests {
             key_camelot: None,
             key_confidence: None,
             bpm_absent: false,
+            grid_absent: false,
             beat_offset_secs: None,
             beat_confidence: None,
         }
@@ -2934,6 +2977,7 @@ mod tests {
             key_camelot: None,
             key_confidence: None,
             bpm_absent: false,
+            grid_absent: false,
             beat_offset_secs: None,
             beat_confidence: None,
         };

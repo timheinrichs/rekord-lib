@@ -189,6 +189,16 @@ pub struct TrackAnalysis {
     /// release gets one more attempt at each of them.
     #[serde(default)]
     pub bpm_absent: bool,
+    /// This version's detector has already listened for a beat grid and found
+    /// no phase it may store — either the track has no clear pulse, or the
+    /// tempo it measured against disagrees with the one on the row.
+    ///
+    /// The same distinction as `bpm_absent` and needed for the same reason: a
+    /// tempo without a grid otherwise looks like a track that was never
+    /// analysed, so it goes back into the backlog at every start and is decoded
+    /// again for an answer that will not change.
+    #[serde(default)]
+    pub grid_absent: bool,
 }
 
 /// Options for a conversion run.

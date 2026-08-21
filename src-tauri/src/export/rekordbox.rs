@@ -294,6 +294,7 @@ mod tests {
             key_camelot: Some("8A".into()),
             key_confidence: Some(0.5),
             bpm_absent: false,
+            grid_absent: false,
             beat_offset_secs: Some(30.25),
             beat_confidence: Some(0.7),
         }

@@ -58,6 +58,7 @@ export function makeTrack(over: Partial<TrackAnalysis> = {}): TrackAnalysis {
     key_camelot: over.key_camelot ?? null,
     key_confidence: over.key_confidence ?? null,
     bpm_absent: over.bpm_absent ?? false,
+    grid_absent: over.grid_absent ?? false,
     beat_offset_secs: over.beat_offset_secs ?? null,
     beat_confidence: over.beat_confidence ?? null,
   };

@@ -93,6 +93,13 @@ export interface TrackAnalysis {
    * backlog from re-analysing those files on every start.
    */
   bpm_absent: boolean;
+  /**
+   * The same, for the phase: this version listened for a beat grid and found
+   * none it may keep — no clear pulse, or a phase that disagrees with the tempo
+   * already on the row. Without it a track with a tempo and no grid looks like
+   * one nobody has analysed, and goes back into the backlog at every start.
+   */
+  grid_absent: boolean;
 }
 
 export interface ConvertOptions {

@@ -153,7 +153,8 @@ pub fn meta_set(conn: &Connection, key: &str, value: &str) -> DbResult<()> {
 const TRACK_COLUMNS: &str = "path, file_name, download_date, container, codec, sample_rate, \
      bits_per_sample, channels, duration_secs, lossless, title, artist, album, album_artist, \
      genre, year, track_number, catalog_number, label, country, bpm, has_cover, bpm_confidence, \
-     music_key, key_confidence, bpm_absent_at, beat_offset_secs, beat_confidence";
+     music_key, key_confidence, bpm_absent_at, beat_offset_secs, beat_confidence, \
+     grid_absent_at";
 
 /// The version whose analysis produced what is in the rows. Used to stamp
 /// `bpm_absent_at`, so a "listened, no tempo" mark expires with the detector
@@ -165,7 +166,7 @@ const APP_VERSION: &str = env!("CARGO_PKG_VERSION");
 /// `bpm_confidence` to the list above once shifted `mtime_ms` out from under
 /// [`load_track_cache`], which read a confidence where an mtime should have been.
 /// `track_columns_and_count_agree` keeps the two in step.
-const TRACK_COLUMN_COUNT: usize = 28;
+const TRACK_COLUMN_COUNT: usize = 29;
 
 /// Rebuilds a [`TrackAnalysis`] from a row. `compat` and `metadata_incomplete`
 /// are recomputed rather than read: they are derived values, and recomputing
@@ -217,6 +218,9 @@ fn row_to_track(row: &rusqlite::Row) -> DbResult<TrackAnalysis> {
     let bpm_absent = row.get::<_, Option<String>>(25)?.as_deref() == Some(APP_VERSION);
     let beat_offset_secs = row.get::<_, Option<f64>>(26)?.map(|v| v as f32);
     let beat_confidence = row.get::<_, Option<f64>>(27)?.map(|v| v as f32);
+    // Same shape, same reason, one column along: "this version listened and
+    // found no phase", so an ambient track is not decoded again at every start.
+    let grid_absent = row.get::<_, Option<String>>(28)?.as_deref() == Some(APP_VERSION);
     Ok(TrackAnalysis {
         id: path.clone(),
         path,
@@ -233,6 +237,7 @@ fn row_to_track(row: &rusqlite::Row) -> DbResult<TrackAnalysis> {
         bpm_absent,
         beat_offset_secs,
         beat_confidence,
+        grid_absent,
     })
 }
 
@@ -300,12 +305,12 @@ pub fn upsert_tracks(
                 title, artist, album, album_artist, genre, year, track_number,
                 catalog_number, label, country, bpm, has_cover, bpm_confidence,
                 music_key, key_confidence, bpm_absent_at,
-                beat_offset_secs, beat_confidence
+                beat_offset_secs, beat_confidence, grid_absent_at
              ) VALUES (
                 ?1, ?2, ?3, ?4, ?5, ?6,
                 ?7, ?8, ?9, ?10, ?11, ?12, ?13,
                 ?14, ?15, ?16, ?17, ?18, ?19, ?20,
-                ?21, ?22, ?23, ?24, ?25, ?26, ?27, ?28, ?29, ?30, ?31
+                ?21, ?22, ?23, ?24, ?25, ?26, ?27, ?28, ?29, ?30, ?31, ?32
              )
              ON CONFLICT(path) DO UPDATE SET
                 library_dir = excluded.library_dir,
@@ -337,7 +342,8 @@ pub fn upsert_tracks(
                 key_confidence = excluded.key_confidence,
                 bpm_absent_at = excluded.bpm_absent_at,
                 beat_offset_secs = excluded.beat_offset_secs,
-                beat_confidence = excluded.beat_confidence",
+                beat_confidence = excluded.beat_confidence,
+                grid_absent_at = excluded.grid_absent_at",
         )?;
         for rec in records {
             let t = &rec.track;
@@ -376,6 +382,7 @@ pub fn upsert_tracks(
                 t.bpm_absent.then_some(APP_VERSION),
                 t.beat_offset_secs.map(|v| v as f64),
                 t.beat_confidence.map(|v| v as f64),
+                t.grid_absent.then_some(APP_VERSION),
             ])?;
         }
     }
@@ -1075,6 +1082,7 @@ mod tests {
             key_camelot: None,
             key_confidence: Some(0.41),
             bpm_absent: false,
+            grid_absent: false,
             beat_offset_secs: None,
             beat_confidence: None,
         }
@@ -1284,6 +1292,32 @@ mod tests {
         assert!(
             !stale[0].bpm_absent,
             "a mark from an older detector must not silence the file for good"
+        );
+    }
+
+    #[test]
+    fn a_grid_that_cannot_be_found_is_remembered_the_same_way() {
+        // Its own column rather than a shared one: this row has a tempo, so
+        // `bpm_absent` is false and says nothing about the phase.
+        let db = Db::open_in_memory().unwrap();
+        let mut conn = db.0.lock().unwrap();
+
+        let mut rec = record("/lib/ambient.aiff", Some(identity(1, 2)));
+        rec.track.metadata.bpm = Some(96.0);
+        rec.track.beat_offset_secs = None;
+        rec.track.grid_absent = true;
+        upsert_tracks(&mut conn, "/lib", &[rec]).unwrap();
+
+        let stored = load_tracks(&conn, "/lib").unwrap();
+        assert!(stored[0].grid_absent, "the mark did not survive the round trip");
+        assert!(!stored[0].bpm_absent, "the tempo was found; only the phase was not");
+
+        conn.execute("UPDATE tracks SET grid_absent_at = '0.0.1-old'", [])
+            .unwrap();
+        let stale = load_tracks(&conn, "/lib").unwrap();
+        assert!(
+            !stale[0].grid_absent,
+            "a better detector in a later release has to get its turn"
         );
     }
 

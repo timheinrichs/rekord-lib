@@ -17,6 +17,7 @@ use super::DbResult;
 /// start. Only changes that transform or drop existing data need a step in
 /// [`super::migrate`].
 ///
+/// - 10: `tracks.grid_absent_at`
 /// - 9: `tracks.beat_offset_secs`, `tracks.beat_confidence`; `playlists`,
 ///   `playlist_items`
 /// - 8: `tracks.bpm_absent_at`
@@ -27,7 +28,7 @@ use super::DbResult;
 /// - 3: `undo_entries`
 /// - 2: `dismissed_groups`
 /// - 1: initial
-pub const SCHEMA_VERSION: i64 = 9;
+pub const SCHEMA_VERSION: i64 = 10;
 
 /// Key under which the schema version lives in `schema_meta`.
 pub const KEY_SCHEMA_VERSION: &str = "schema_version";
@@ -117,7 +118,18 @@ CREATE TABLE IF NOT EXISTS tracks (
     -- can export. NULL where the tempo was found but the phase was not, which
     -- the confidence beside it is there to explain.
     beat_offset_secs REAL,
-    beat_confidence  REAL
+    beat_confidence  REAL,
+    -- The app version whose detector listened for a grid and did not find one,
+    -- and the same idea as `bpm_absent_at` one column up: `beat_offset_secs IS
+    -- NULL` cannot tell "never looked" from "looked, there is no phase here".
+    --
+    -- It is not a rare case. `beats::detect_beats` answers `None` for anything
+    -- without a clear pulse, and a phase is also refused when the tempo it was
+    -- measured against disagrees with the tag another program wrote. Without a
+    -- mark, every one of those tracks is decoded again at every start — which
+    -- is exactly the complaint `bpm_absent_at` was added to end, arriving a
+    -- second time through a different column.
+    grid_absent_at  TEXT
 );
 
 CREATE INDEX IF NOT EXISTS tracks_library_dir ON tracks(library_dir);
@@ -292,6 +304,11 @@ fn upgrade(conn: &Connection, from: Option<i64>) -> DbResult<()> {
         // there to catch.
         add_column(conn, "tracks", "beat_offset_secs", "REAL")?;
         add_column(conn, "tracks", "beat_confidence", "REAL")?;
+    }
+    if from < 10 {
+        // NULL reads as "never looked", so every existing row gets one honest
+        // attempt at a grid after the update and is only marked afterwards.
+        add_column(conn, "tracks", "grid_absent_at", "TEXT")?;
     }
     Ok(())
 }
