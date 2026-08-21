@@ -284,6 +284,10 @@ async fn analyze_path(app: &AppHandle, path: String) -> AppResult<TrackAnalysis>
         key: None,
         key_camelot: None,
         key_confidence: None,
+        // Not "there is no tempo" — "nobody has listened yet". A probe does not
+        // run the detector, and saying otherwise would silence the file for
+        // good.
+        bpm_absent: false,
     })
 }
 
@@ -454,7 +458,7 @@ async fn detect_bpm_pass(
             index: i,
             path: t.path.clone(),
             wanted: analysis::Wanted {
-                tempo: force || t.metadata.bpm.is_none(),
+                tempo: wants_tempo(t, force),
                 key: force || t.key.is_none(),
                 waveform: force || !have_waveform.contains(&t.path),
             },
@@ -505,10 +509,12 @@ async fn detect_bpm_pass(
                 let wanted = item.wanted;
                 (
                     item.index,
+                    // The `Result` is kept rather than flattened to an empty
+                    // analysis: "the detector found nothing" and "the decode
+                    // failed" look identical afterwards, and one of them must
+                    // not be recorded as the file's answer (see below).
                     tauri::async_runtime::spawn(async move {
-                        analysis::analyze(&app, &path, config, wanted)
-                            .await
-                            .unwrap_or_default()
+                        analysis::analyze(&app, &path, config, wanted).await
                     }),
                 )
             })
@@ -516,7 +522,12 @@ async fn detect_bpm_pass(
 
         let mut updated = Vec::new();
         for (index, handle) in handles {
-            if let Ok(analysis) = handle.await {
+            // A join error or a failed analysis — an unreadable file, a sidecar
+            // that could not run, a volume that went away mid-scan — means the
+            // detector never got to an opinion. The pass carries on, as it did
+            // before, but nothing about this file is written down.
+            let analysed = handle.await.ok().and_then(|r| r.ok());
+            if let Some(analysis) = analysed {
                 let mut result = patch_of(&tracks[index].path, &analysis);
                 if let (Some(bpm), Some(confidence)) = (result.bpm, result.bpm_confidence) {
                     // Persist first: the tag is what keeps the next scan from
@@ -545,7 +556,21 @@ async fn detect_bpm_pass(
                 // The key is database-only, never written into the file — see
                 // `TrackAnalysis::key`.
                 apply_patch(&mut tracks[index], &result);
-                if result.changes_row() {
+                // Listened for a tempo and there is none: that is an answer,
+                // and it is the one worth remembering. Without it the backlog
+                // picks this file up again on every start and decodes two
+                // minutes of an interlude to reach the same conclusion (C9).
+                // Asked after the patch, so the row is the one being judged.
+                let mut marked = false;
+                if let Some(absent) = tempo_verdict(
+                    true,
+                    item_wanted_tempo(chunk, index),
+                    tracks[index].metadata.bpm,
+                ) {
+                    marked = tracks[index].bpm_absent != absent;
+                    tracks[index].bpm_absent = absent;
+                }
+                if result.changes_row() || marked {
                     updated.push(tracks[index].clone());
                 }
                 // Handed over the moment it exists, rather than at the end of
@@ -564,6 +589,43 @@ async fn detect_bpm_pass(
         persist(updated);
     }
     false
+}
+
+/// Is this track's tempo worth looking for?
+///
+/// `bpm_absent` is this version's detector saying it has already listened to
+/// this file and found nothing — an interlude, a drone, an air check. A plain
+/// rescan has no reason to hear it out again; "Re-detect BPM" (`force`) is the
+/// deliberate second opinion, and a new release gets one for free, because the
+/// mark expires with the version that set it (C9).
+fn wants_tempo(track: &TrackAnalysis, force: bool) -> bool {
+    force || (track.metadata.bpm.is_none() && !track.bpm_absent)
+}
+
+/// What the "listened, no tempo" mark should become after the pass looked at a
+/// row, or `None` when it should be left alone.
+///
+/// Two ways it is left alone, and both matter. Nobody asked about the tempo —
+/// a file analysed only for its waveform must not be recorded as tempo-less.
+/// And the analysis never returned: an unreadable file or a volume that went
+/// away mid-scan says nothing about the music, and marking it would silence a
+/// perfectly rhythmic track until the next release.
+///
+/// Otherwise the answer is read off the row rather than off the analysis, so a
+/// forced re-detect over a track that already carries a tempo tag — where an
+/// empty result changes nothing — does not end up claiming both.
+fn tempo_verdict(analysed: bool, asked: bool, row_bpm: Option<f64>) -> Option<bool> {
+    (analysed && asked).then(|| row_bpm.is_none())
+}
+
+/// Did this chunk ask for `index`'s tempo? The answer decides whether an empty
+/// result means "there is none" or merely "nobody asked" — a file analysed only
+/// for its waveform must not be marked as tempo-less.
+fn item_wanted_tempo(chunk: &[Todo], index: usize) -> bool {
+    chunk
+        .iter()
+        .find(|t| t.index == index)
+        .is_some_and(|t| t.wanted.tempo)
 }
 
 /// Paths whose stored waveform still matches the file on disk.
@@ -2255,6 +2317,56 @@ mod tests {
         }
     }
 
+    mod tempo_mark {
+        use super::*;
+
+        fn track_with(bpm: Option<f64>, absent: bool) -> TrackAnalysis {
+            let mut t = blank_track("/lib/a.aiff");
+            t.metadata.bpm = bpm;
+            t.bpm_absent = absent;
+            t
+        }
+
+        #[test]
+        fn a_file_already_listened_to_is_not_asked_again() {
+            // The whole point of C9: a plain rescan stops decoding the
+            // interludes, and only a deliberate re-detect or a new version
+            // (which expires the mark) asks again.
+            assert!(!wants_tempo(&track_with(None, true), false));
+            assert!(wants_tempo(&track_with(None, true), true));
+            // Everything else is unchanged: no tempo means look for one.
+            assert!(wants_tempo(&track_with(None, false), false));
+            assert!(!wants_tempo(&track_with(Some(128.0), false), false));
+            assert!(wants_tempo(&track_with(Some(128.0), false), true));
+        }
+
+        #[test]
+        fn an_analysis_that_never_ran_says_nothing_about_the_file() {
+            // An unreadable file, a sidecar that could not start, an external
+            // drive that went away mid-scan. Marking those would silence a
+            // perfectly rhythmic track until the next release — worse than the
+            // repeated work the mark exists to stop.
+            assert_eq!(tempo_verdict(false, true, None), None);
+            assert_eq!(tempo_verdict(false, true, Some(128.0)), None);
+        }
+
+        #[test]
+        fn a_tempo_nobody_asked_about_is_not_answered() {
+            // A file analysed only for its waveform.
+            assert_eq!(tempo_verdict(true, false, None), None);
+        }
+
+        #[test]
+        fn the_verdict_describes_the_row_and_not_the_attempt() {
+            // Nothing found and nothing in the row: the mark goes on.
+            assert_eq!(tempo_verdict(true, true, None), Some(true));
+            // A forced re-detect over a file that already carries a tag, where
+            // the detector came back empty: the tag stays, so the row has a
+            // tempo and must not also claim it has none.
+            assert_eq!(tempo_verdict(true, true, Some(128.0)), Some(false));
+        }
+    }
+
     #[test]
     fn file_name_extracts_basename() {
         assert_eq!(file_name("/a/b/c.mp3"), "c.mp3");
@@ -2392,6 +2504,7 @@ mod tests {
             key: None,
             key_camelot: None,
             key_confidence: None,
+            bpm_absent: false,
         }
     }
 
@@ -2513,6 +2626,7 @@ mod tests {
             key: None,
             key_camelot: None,
             key_confidence: None,
+            bpm_absent: false,
         };
 
         let out = dup_candidates(std::slice::from_ref(&track));

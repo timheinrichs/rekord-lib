@@ -78,6 +78,13 @@ export interface TrackAnalysis {
   key: string | null;
   key_camelot: string | null;
   key_confidence: number | null;
+  /**
+   * This version's detector has already listened and found no tempo — an
+   * interlude, a drone, an air check. Distinct from `bpm === null`, which also
+   * covers "nobody has looked yet", and that distinction is what keeps the
+   * backlog from re-analysing those files on every start.
+   */
+  bpm_absent: boolean;
 }
 
 export interface ConvertOptions {

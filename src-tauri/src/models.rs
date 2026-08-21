@@ -166,6 +166,17 @@ pub struct TrackAnalysis {
     /// "it could be that one instead".
     #[serde(default)]
     pub key_confidence: Option<f32>,
+    /// This version's detector has already listened to this file and found no
+    /// tempo — an interlude, a drone, an air check, something with no periodic
+    /// pulse to find.
+    ///
+    /// The difference between "no tempo yet" and "no tempo, and we know why" is
+    /// the whole point: without it the backlog re-analyses those files on every
+    /// single start, forever, and they are exactly the files where the answer
+    /// will not change. Derived from the stored version stamp on read, so a new
+    /// release gets one more attempt at each of them.
+    #[serde(default)]
+    pub bpm_absent: bool,
 }
 
 /// Options for a conversion run.

@@ -17,6 +17,7 @@ use super::DbResult;
 /// start. Only changes that transform or drop existing data need a step in
 /// [`super::migrate`].
 ///
+/// - 8: `tracks.bpm_absent_at`
 /// - 7: `waveforms`
 /// - 6: `tracks.music_key`, `tracks.key_confidence`
 /// - 5: `tracks.bpm` became `REAL`, `tracks.bpm_confidence` added
@@ -24,7 +25,7 @@ use super::DbResult;
 /// - 3: `undo_entries`
 /// - 2: `dismissed_groups`
 /// - 1: initial
-pub const SCHEMA_VERSION: i64 = 7;
+pub const SCHEMA_VERSION: i64 = 8;
 
 /// Key under which the schema version lives in `schema_meta`.
 pub const KEY_SCHEMA_VERSION: &str = "schema_version";
@@ -92,7 +93,18 @@ CREATE TABLE IF NOT EXISTS tracks (
     -- holds the stronger invariant, and it is worth holding. **New columns go
     -- at the end.**
     music_key       TEXT,
-    key_confidence  REAL
+    key_confidence  REAL,
+    -- The app version whose detector ran over this file and found no tempo, or
+    -- NULL. It is the difference between "not analysed yet" and "analysed, and
+    -- there is nothing to find" — a distinction `bpm IS NULL` cannot make, which
+    -- is why a library's interludes, drones and air checks were re-analysed on
+    -- every single start.
+    --
+    -- Version-stamped rather than a flag, so it invalidates itself: a new app
+    -- version may carry a better detector, and every one of these files gets
+    -- exactly one more chance per release. A file that changes on disk is
+    -- re-probed by `needs_reanalysis` and overwrites the row anyway.
+    bpm_absent_at   TEXT
 );
 
 CREATE INDEX IF NOT EXISTS tracks_library_dir ON tracks(library_dir);
@@ -222,6 +234,12 @@ fn upgrade(conn: &Connection, from: Option<i64>) -> DbResult<()> {
         // already exists, but `ALTER TABLE` can.
         add_column(conn, "tracks", "music_key", "TEXT")?;
         add_column(conn, "tracks", "key_confidence", "REAL")?;
+    }
+    if from < 8 {
+        // NULL for every existing row, which reads as "never asked" — so the
+        // first start after the update tries each of them once more, and only
+        // then records what it found.
+        add_column(conn, "tracks", "bpm_absent_at", "TEXT")?;
     }
     Ok(())
 }

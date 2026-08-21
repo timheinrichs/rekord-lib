@@ -144,14 +144,19 @@ pub fn meta_set(conn: &Connection, key: &str, value: &str) -> DbResult<()> {
 const TRACK_COLUMNS: &str = "path, file_name, download_date, container, codec, sample_rate, \
      bits_per_sample, channels, duration_secs, lossless, title, artist, album, album_artist, \
      genre, year, track_number, catalog_number, label, country, bpm, has_cover, bpm_confidence, \
-     music_key, key_confidence";
+     music_key, key_confidence, bpm_absent_at";
+
+/// The version whose analysis produced what is in the rows. Used to stamp
+/// `bpm_absent_at`, so a "listened, no tempo" mark expires with the detector
+/// that set it.
+const APP_VERSION: &str = env!("CARGO_PKG_VERSION");
 
 /// How many columns [`TRACK_COLUMNS`] selects. Queries that append further
 /// columns index them from here instead of from a hardcoded number — appending
 /// `bpm_confidence` to the list above once shifted `mtime_ms` out from under
 /// [`load_track_cache`], which read a confidence where an mtime should have been.
 /// `track_columns_and_count_agree` keeps the two in step.
-const TRACK_COLUMN_COUNT: usize = 25;
+const TRACK_COLUMN_COUNT: usize = 26;
 
 /// Rebuilds a [`TrackAnalysis`] from a row. `compat` and `metadata_incomplete`
 /// are recomputed rather than read: they are derived values, and recomputing
@@ -196,6 +201,11 @@ fn row_to_track(row: &rusqlite::Row) -> DbResult<TrackAnalysis> {
         .map(|k| k.camelot_name());
     let compat = compat::evaluate(&audio);
     let metadata_incomplete = !metadata.is_complete();
+    // Derived like the two above: what is stored is the version that looked, and
+    // what the app asks is "did *this* version already look and find nothing".
+    // A new release therefore gets one more attempt at every one of them,
+    // without a migration and without a flag to clear.
+    let bpm_absent = row.get::<_, Option<String>>(25)?.as_deref() == Some(APP_VERSION);
     Ok(TrackAnalysis {
         id: path.clone(),
         path,
@@ -209,6 +219,7 @@ fn row_to_track(row: &rusqlite::Row) -> DbResult<TrackAnalysis> {
         key,
         key_camelot,
         key_confidence,
+        bpm_absent,
     })
 }
 
@@ -275,12 +286,12 @@ pub fn upsert_tracks(
                 container, codec, sample_rate, bits_per_sample, channels, duration_secs, lossless,
                 title, artist, album, album_artist, genre, year, track_number,
                 catalog_number, label, country, bpm, has_cover, bpm_confidence,
-                music_key, key_confidence
+                music_key, key_confidence, bpm_absent_at
              ) VALUES (
                 ?1, ?2, ?3, ?4, ?5, ?6,
                 ?7, ?8, ?9, ?10, ?11, ?12, ?13,
                 ?14, ?15, ?16, ?17, ?18, ?19, ?20,
-                ?21, ?22, ?23, ?24, ?25, ?26, ?27, ?28
+                ?21, ?22, ?23, ?24, ?25, ?26, ?27, ?28, ?29
              )
              ON CONFLICT(path) DO UPDATE SET
                 library_dir = excluded.library_dir,
@@ -309,7 +320,8 @@ pub fn upsert_tracks(
                 has_cover = excluded.has_cover,
                 bpm_confidence = excluded.bpm_confidence,
                 music_key = excluded.music_key,
-                key_confidence = excluded.key_confidence",
+                key_confidence = excluded.key_confidence,
+                bpm_absent_at = excluded.bpm_absent_at",
         )?;
         for rec in records {
             let t = &rec.track;
@@ -342,6 +354,10 @@ pub fn upsert_tracks(
                 t.bpm_confidence.map(|c| c as f64),
                 t.key,
                 t.key_confidence.map(|c| c as f64),
+                // The stamp goes in only when this run actually looked and came
+                // back empty; a row that found a tempo, or was never asked,
+                // stores NULL and stays askable.
+                t.bpm_absent.then_some(APP_VERSION),
             ])?;
         }
     }
@@ -942,6 +958,7 @@ mod tests {
             // round-trip test asserts it comes back computed.
             key_camelot: None,
             key_confidence: Some(0.41),
+            bpm_absent: false,
         }
     }
 
@@ -965,6 +982,57 @@ mod tests {
             track: track(path),
             fs,
         }
+    }
+
+    #[test]
+    fn a_tempo_less_track_is_remembered_as_such_until_the_version_changes() {
+        // The distinction the backlog needs: "no tempo yet" and "listened, and
+        // there is none" are both `bpm IS NULL`, and without the second one an
+        // interlude is re-analysed on every start forever (C9).
+        let db = Db::open_in_memory().unwrap();
+        let mut conn = db.0.lock().unwrap();
+
+        let mut rec = record("/lib/interlude.aiff", Some(identity(1, 2)));
+        rec.track.metadata.bpm = None;
+        rec.track.bpm_absent = true;
+        upsert_tracks(&mut conn, "/lib", &[rec]).unwrap();
+
+        let stored = load_tracks(&conn, "/lib").unwrap();
+        assert_eq!(stored.len(), 1);
+        assert!(stored[0].bpm_absent, "the mark did not survive the round trip");
+
+        // The stamp is this version. Anything else reads as "not asked by the
+        // detector that is running now", so a release gets one more attempt.
+        conn.execute(
+            "UPDATE tracks SET bpm_absent_at = '0.0.1-old'",
+            [],
+        )
+        .unwrap();
+        let stale = load_tracks(&conn, "/lib").unwrap();
+        assert!(
+            !stale[0].bpm_absent,
+            "a mark from an older detector must not silence the file for good"
+        );
+    }
+
+    #[test]
+    fn finding_a_tempo_takes_the_mark_off_again() {
+        // A forced re-detect that now does find something must not leave a row
+        // claiming both a tempo and no tempo.
+        let db = Db::open_in_memory().unwrap();
+        let mut conn = db.0.lock().unwrap();
+
+        let mut rec = record("/lib/a.aiff", Some(identity(1, 2)));
+        rec.track.bpm_absent = true;
+        upsert_tracks(&mut conn, "/lib", &[rec.clone()]).unwrap();
+
+        rec.track.bpm_absent = false;
+        rec.track.metadata.bpm = Some(128.0);
+        upsert_tracks(&mut conn, "/lib", &[rec]).unwrap();
+
+        let stored = load_tracks(&conn, "/lib").unwrap();
+        assert!(!stored[0].bpm_absent);
+        assert_eq!(stored[0].metadata.bpm, Some(128.0));
     }
 
     #[test]

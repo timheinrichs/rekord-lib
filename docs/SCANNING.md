@@ -56,7 +56,7 @@ individually and there is no folder to sweep.
 
 ### What invalidates what
 
-Three caches, three different invalidation contracts. This is the part that has
+Four caches, four different invalidation contracts. This is the part that has
 to stay honest, and `CLAUDE.md` requires every new cache to state its own.
 
 | Cache | Valid while |
@@ -64,6 +64,37 @@ to stay honest, and `CLAUDE.md` requires every new cache to state its own.
 | A `tracks` row | the file's mtime and size still match (`db::needs_reanalysis`) **and** the app version has not changed since the row was written |
 | A `fingerprints` row | mtime, size and `fingerprint::ALGO_VERSION` match |
 | A `waveforms` row | mtime, size and `waveform::ALGO_VERSION` match |
+| `tracks.bpm_absent_at` — "listened, no tempo" | the stamped app version is the running one; a re-probe overwrites the row anyway |
+
+**"No tempo" is an answer, and it is stored as one.** `bpm IS NULL` cannot say
+whether a file has been analysed, so the backlog that runs at every start
+(`pathsMissingBpm` → the scan job) used to hand the detector the same interludes,
+drones and air checks on every launch — files with no periodic pulse, where
+`detect_bpm_with` correctly returns `None` and nothing is written, so they were
+still missing a tempo the next time. On one real 2217-track library that was 38
+files, each costing a 120 s decode, on every single start.
+
+The empty result is now recorded as the version that produced it, and
+`TrackAnalysis::bpm_absent` is derived from it on read. Version-stamped rather
+than a flag, so it expires by itself: a release may carry a better detector, and
+each of those files gets exactly one more attempt per release without a
+migration or a flag to clear. A tempo found later — by a forced re-detect, or
+because the file changed — takes the mark off again.
+
+Both sides honour it: the backlog leaves those paths out (`pathsMissingBpm`) and
+the pass itself does not ask for their tempo (`wants_tempo`), so a plain rescan
+does not decode them either. **"Re-detect BPM" still does** — that is the
+deliberate second opinion, and it is the one button whose whole purpose is to
+overrule what is stored.
+
+Two things never earn the mark, and both are in `tempo_verdict`: a file that was
+analysed only for its waveform — nobody asked about its tempo — and an analysis
+that never returned. An unreadable file, a sidecar that could not start, an
+external drive that went away mid-scan: none of that says anything about the
+music, and recording it would silence a perfectly rhythmic track until the next
+release. That is a worse failure than the repeated work the mark exists to
+prevent, which is why the pass keeps the analysis `Result` instead of flattening
+it to an empty one.
 
 **A version bump nulls the identity, it does not delete the row.**
 `db::invalidate_on_version_change` sets `mtime_ms` and `size_bytes` to `NULL`
@@ -195,7 +226,8 @@ import that fails and an invalidation that fails are all logged and carried past
 | … · `invalidate_on_version_change` | the version rule, and why fingerprints survive it |
 | … · `row_to_track`, `load_track_cache`, `upsert_tracks`, `retain_tracks` | reading, recomputing, writing, pruning |
 | … · `waveforms_load`, `waveform_save`, `fingerprints_load`, `fingerprint_put` | the two content-keyed caches |
-| `src-tauri/src/db/schema.rs` | `SCHEMA_VERSION` and the version history; the note on derived columns |
+| `src-tauri/src/db/schema.rs` | `SCHEMA_VERSION` and the version history; the note on derived columns and why a new one goes at the end |
+| `src-tauri/src/commands.rs` · `detect_bpm_pass`, `item_wanted_tempo` | where an empty tempo result becomes `bpm_absent` — and only when the tempo was actually asked for |
 | `src-tauri/src/db/migrate.rs` | the one-time JSON import and when the legacy keys are shed |
 | `src/lib/librarySync.ts` | `diffAudioFiles` (`null` ≠ empty), `mergeScanned`, `applyPatch`, `pathsMissingBpm` |
 | `src/lib/scanPatchBatch.ts` | the 250 ms window, and the per-path merge |
@@ -222,6 +254,11 @@ Events and their payloads are tabulated in [COMMANDS.md](COMMANDS.md).
 | The column list and its count cannot drift apart | `db/mod.rs` · `track_columns_and_count_agree` |
 | A waveform lives only while file and algorithm match | `db/mod.rs` · `a_waveform_survives_only_while_the_file_and_the_algorithm_match` |
 | A fingerprint likewise | `db/mod.rs` · `fingerprint_is_invalidated_by_content_or_algorithm_change` |
+| "Listened, no tempo" survives a restart but not a new version | `db/mod.rs` · `a_tempo_less_track_is_remembered_as_such_until_the_version_changes` |
+| Finding a tempo takes the mark off | `db/mod.rs` · `finding_a_tempo_takes_the_mark_off_again` |
+| The backlog skips those files | `librarySync.test.ts` · "leaves out what the detector has already listened to", `scan.e2e.test.tsx` · "does not send a tempo-less file to the detector again" |
+| So does the pass, unless forced | `commands.rs` · `a_file_already_listened_to_is_not_asked_again` |
+| A failed analysis is not an answer | `commands.rs` · `an_analysis_that_never_ran_says_nothing_about_the_file`, `a_tempo_nobody_asked_about_is_not_answered`, `the_verdict_describes_the_row_and_not_the_attempt` |
 | A migrated database looks like a fresh one | `db/mod.rs` · `a_migrated_database_has_the_same_tracks_schema_as_a_fresh_one`, `the_v5_migration_keeps_the_tracks_and_their_fingerprints` |
 | The width is the smaller of cores and memory, capped | `workers.rs` · `cores_bind_on_a_machine_with_memory_to_spare`, `memory_binds_on_a_high_core_low_ram_machine`, `the_cap_holds_even_when_the_host_could_do_more`, `never_returns_zero` |
 | The excerpt starts after the intro, and never past the end | `analysis.rs` · `the_excerpt_starts_after_the_intro`, `the_excerpt_never_runs_past_the_audio` |

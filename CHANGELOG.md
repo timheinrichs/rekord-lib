@@ -9,6 +9,17 @@ contain incompatible changes.
 
 ## [Unreleased]
 
+### Fixed
+- **The same files are no longer analysed on every start.** A library kept
+  handing the tempo detector the same handful of tracks at every launch —
+  interludes, intros, a vinyl snippet, a station air check — because they have
+  no steady pulse to find, nothing was written for them, and the next start saw
+  a track without a tempo and tried again. On one 2217-track library that was 38
+  files and a two-minute decode each, every time. The app now remembers that it
+  has already listened, so those files are left alone until the file changes or
+  a new version brings a different detector — which is the one thing that could
+  change the answer.
+
 ## [0.7.4] - 2026-08-21
 
 ### Fixed

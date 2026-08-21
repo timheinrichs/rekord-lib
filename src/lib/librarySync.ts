@@ -112,7 +112,13 @@ export function applyPatch(
 
 /** Paths of tracks that still have no BPM — the backlog for the scan job. */
 export function pathsMissingBpm(tracks: TrackAnalysis[]): string[] {
-  return tracks.filter((t) => t.metadata.bpm == null).map((t) => t.path);
+  return tracks
+    // Not the ones this version's detector has already listened to and found
+    // nothing in. They are the files where the answer will not change until
+    // either the file or the detector does, and re-asking costs a full decode
+    // apiece on every start (C9).
+    .filter((t) => t.metadata.bpm == null && !t.bpm_absent)
+    .map((t) => t.path);
 }
 
 /** Output paths of successful conversions (to re-analyze after a convert). */

@@ -199,6 +199,26 @@ describe("pathsMissingBpm", () => {
     expect(pathsMissingBpm(tracks)).toEqual(["/b.aiff"]);
   });
 
+  it("leaves out what the detector has already listened to", () => {
+    // An interlude, a drone, an air check: files with no periodic pulse to
+    // find. Asking again costs a full decode each and reaches the same answer,
+    // and on a real library that was 38 files on every single start (C9).
+    const tracks = [
+      makeTrack({
+        id: "a",
+        path: "/interlude.aiff",
+        metadata: makeMetadata({ bpm: null }),
+        bpm_absent: true,
+      }),
+      makeTrack({
+        id: "b",
+        path: "/track.aiff",
+        metadata: makeMetadata({ bpm: null }),
+      }),
+    ];
+    expect(pathsMissingBpm(tracks)).toEqual(["/track.aiff"]);
+  });
+
   it("returns an empty list when everything is tagged", () => {
     expect(pathsMissingBpm([])).toEqual([]);
   });

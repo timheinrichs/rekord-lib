@@ -233,6 +233,44 @@ describe("the scan", () => {
     expect(fake.called("cancel_scan")).toBe(false);
   });
 
+  it("does not send a tempo-less file to the detector again", async () => {
+    // The backlog runs at every start, and a file with no periodic pulse — an
+    // interlude, a drone, an air check — has no tempo to find on this attempt
+    // either. On a real 2217-track library that was 38 files decoded on every
+    // launch, forever (C9).
+    cleanup();
+    fake.restore();
+    fake = installFakeBackend({
+      files: [CLICK_090, CLICK_128],
+      tracks: [
+        makeTrack({
+          path: CLICK_090,
+          file_name: "click-090.aiff",
+          metadata: makeMetadata({ title: "Click 090" }),
+          // Already listened to, by this version's detector.
+          bpm_absent: true,
+        }),
+        makeTrack({
+          path: CLICK_128,
+          file_name: "click-128.aiff",
+          metadata: makeMetadata({ title: "Click 128" }),
+        }),
+      ],
+      store: { settings: { library_dir: LIBRARY } },
+    });
+
+    render(<App />);
+    await waitFor(() => expect(fake.called("start_scan")).toBe(true));
+
+    const backlog = fake
+      .argsFor("start_scan")
+      .filter((a) => Array.isArray(a.paths));
+    expect(backlog.length).toBeGreaterThan(0);
+    for (const run of backlog) {
+      expect(run.paths).toEqual([CLICK_128]);
+    }
+  });
+
   it("only re-reads the thumbnail of a file it really re-probed", async () => {
     // A scan batch carries both: rows the analysis produced and rows it reused
     // from the database unchanged. Only the first kind can have new artwork, and

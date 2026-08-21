@@ -623,6 +623,40 @@ rather than a mock: write a cover, replace it, restore, compare the bytes.
 
 *Size: S*
 
+### C9 · "No tempo" is an answer worth storing — **done**
+
+**Found in use, not in review.** A real 2217-track library re-analysed the same
+38 files at every start. They turned out to be exactly the material with no
+periodic pulse to find — interludes, an intro, a vinyl snippet, a station air
+check, a drone — where `detect_bpm_with` correctly returns `None`. Nothing is
+written for them, so they were still missing a tempo the next time the backlog
+looked, and it looked on every launch: 38 files × a 120 s decode, forever.
+
+**The cause was a missing distinction, not a bug in the detector.** `bpm IS
+NULL` covers both "not analysed yet" and "analysed, and there is nothing there",
+and the backlog could not tell them apart — the same distinction the waveform
+batcher and the cover cache make explicitly (`undefined` = not asked, `null` =
+asked, none), missing in the one cache where the cost is a decode.
+
+**What shipped** — `tracks.bpm_absent_at` (schema 8) records the app version
+whose detector came back empty, `TrackAnalysis::bpm_absent` derives from it on
+read, and `pathsMissingBpm` skips those files. Version-stamped rather than a
+flag, so it expires on its own: every release gets one more attempt at each of
+them, which is what a changed detector deserves, and neither a migration nor a
+cleanup step is needed. A tempo found later takes the mark off again, so a row
+never claims both.
+
+**What the review caught, and it was worse than the bug.** The first version
+marked a file whenever the analysis came back without a tempo — including when
+the analysis had *failed*. A library on an external drive that unmounts
+mid-scan would have had dozens of perfectly rhythmic tracks silenced until the
+next release. The pass now keeps the analysis `Result` rather than flattening a
+failure into an empty one, and the mark is read off the row after the patch, so
+a forced re-detect over a file that already carries a tempo tag cannot leave a
+row claiming both.
+
+*Size: S*
+
 ---
 
 ## D — Performance
