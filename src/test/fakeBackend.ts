@@ -490,6 +490,12 @@ export function installFakeBackend(
       };
       if (internals.__TAURI_INTERNALS__) {
         internals.__TAURI_INTERNALS__.invoke = () => Promise.resolve(null);
+        // A subscription can also *start* after this point — a listener whose
+        // `listen` call is still in flight when the test ends — and that goes
+        // through `transformCallback`.
+        internals.__TAURI_INTERNALS__.transformCallback = () => 0;
+        internals.__TAURI_INTERNALS__.unregisterCallback = () => {};
+        internals.__TAURI_INTERNALS__.runCallback = () => {};
       }
       if (internals.__TAURI_EVENT_PLUGIN_INTERNALS__) {
         internals.__TAURI_EVENT_PLUGIN_INTERNALS__.unregisterListener = () => {};
