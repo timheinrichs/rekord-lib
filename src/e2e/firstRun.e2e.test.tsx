@@ -73,10 +73,13 @@ describe("first run", () => {
     await waitFor(() => expect(fake.called("start_scan")).toBe(true));
 
     // Choosing the folder is also what lets the player read from it — the
-    // static `asset:` scope is empty, so without this call nothing plays.
-    expect(fake.argsFor("allow_library_playback")).toContainEqual({
-      dir: LIBRARY,
-    });
+    // static `asset:` scope is empty, so without this call nothing plays. It
+    // names no folder: the backend takes the one that was just saved, so the
+    // window cannot ask for a different one.
+    await waitFor(() =>
+      expect(fake.called("allow_library_playback")).toBe(true),
+    );
+    expect(fake.argsFor("allow_library_playback")).toEqual([{}]);
 
     // The arguments, in the casing Tauri actually renames them to. This is the
     // assertion the wrapper-mocking tests cannot make.

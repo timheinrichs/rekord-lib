@@ -748,6 +748,15 @@ library folder is granted at runtime (`src-tauri/src/assets.rs`): at startup
 from the saved settings, and by `allow_library_playback` whenever the folder
 changes. Nothing else is ever granted.
 
+**The command takes no folder**, which the first attempt got wrong and the
+review caught: a command that grants what it is handed lets anything running in
+the window ask for `$HOME` back, and the empty static scope would have bought
+nothing. It reads the folder the user saved, so the frontend calls it after the
+write rather than instead of it. The path is normalised first — left to the
+scope's globbing, `/Users/me/Music/../..` is `/Users` — and has to be at least
+two components deep, because every one-component path on macOS is a system
+folder rather than somebody's music.
+
 **There was no staging path to keep.** The entry assumed drag-in needed one; it
 does not. `asset:` has exactly one consumer, `convertFileSrc` in
 `lib/player.tsx` — covers come back from commands as data URLs — and everything
@@ -787,13 +796,40 @@ documentation pass in `CLAUDE.md` rather than getting a generator.
 
 *Size: S*
 
-### E5 · Move the Discogs secret into the Keychain
+### E5 · Move the Discogs secret into the Keychain — **done**
 
-**What** — store the Discogs API credentials in the macOS Keychain instead of
-`rekord-lib.json`.
+**What shipped** — the consumer key and secret live in the macOS Keychain
+(`src-tauri/src/secrets.rs`, `keyring` over Security.framework — a system
+library, so the bundle carries nothing new). The service name is derived from
+the **bundle identifier**, so the `-devtest` build has its own items and a dev
+run can neither read nor overwrite the installed app's credentials, the same
+separation the devtest database and settings already have.
 
-**Why** — it is the only genuine secret the app holds, and it currently sits in
-plaintext in the app data directory.
+**The frontend stopped holding it.** `suggest_metadata` used to take
+`discogsKey` and `discogsSecret` on every call; it now reads them itself. What
+settings can ask for is whether something is stored (`discogs_credentials`
+answers `{ stored, unavailable, key }` — the key is not the secret half and
+seeing it is how you tell which app's credentials are in there). The secret
+field is write-only and says so.
+
+**Migration, once, in the shape of `shed_legacy_keys`:** a pair still in
+`rekord-lib.json` is written to the Keychain and only then deleted from the
+store, because losing the only copy to a failed write would be worse than one
+more start with it in place. `loadSettings` also drops keys it does not know, so
+a value an older version wrote can no longer ride along and be written back by
+the next save — that was the path by which the plaintext copy would have
+returned after the migration deleted it.
+
+**It fails closed** (decided deliberately): a Keychain that will not answer —
+denied, or an ad-hoc-signed update no longer matching the item's ACL — means
+empty Discogs suggestions and a line in settings asking for the credentials
+again. Nothing falls back to the JSON store; MusicBrainz keeps working, since
+`suggest` already treats missing credentials as "no Discogs results".
+
+**What only a real update can answer:** whether the Keychain item survives an
+ad-hoc-signed update, whose designated requirement changes with the binary. If
+it does not, what the user meets is the fail-closed path — a note and a form,
+not a broken app — and it becomes one more argument for **E1**.
 
 *Size: S*
 

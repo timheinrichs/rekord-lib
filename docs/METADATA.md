@@ -148,8 +148,17 @@ folder name. It is a guess offered next to the field, never written on its own.
 Existing tags beat the filename guess as the query basis for MusicBrainz, and
 Discogs contributes per-field chips only when credentials are configured. Both
 network sides fail soft: no client, no credentials or an error yields fewer
-suggestions, never an error dialog. The Discogs secret is the one genuine secret
-the app holds and currently sits in the JSON store (**E5**).
+suggestions, never an error dialog.
+
+The Discogs credentials are the one genuine secret the app holds, and they live
+in the **macOS Keychain** — keyed by the bundle identifier, so the `-devtest`
+build has its own and a dev run cannot read the installed app's. The frontend
+writes them once and afterwards only asks whether something is stored;
+`suggest_metadata` reads them itself, so the secret never travels with a
+request. A pair left in `rekord-lib.json` by an older version is moved on the
+next start and the keys are deleted. It **fails closed**: a Keychain that will
+not answer means empty Discogs suggestions and a note in settings asking for the
+credentials again, never a fallback to a plaintext copy.
 
 ## Implementation anchors
 
@@ -165,6 +174,7 @@ the app holds and currently sits in the JSON store (**E5**).
 | `src-tauri/src/metadata/artwork.rs` · `process_cover`, `thumbnail` | `MAX_EDGE`, `TARGET_BYTES`, and the list thumbnails |
 | `src-tauri/src/metadata/suggest.rs` · `parse_filename`, `search_musicbrainz`, `suggest` | the guess and the candidates |
 | `src-tauri/src/metadata/discogs.rs` · `search`, `aggregate` | the per-field chips |
+| `src-tauri/src/secrets.rs` · `discogs`, `set_discogs`, `status`, `service`, `migrate_from_store` | the Keychain items, per bundle identifier, and the one-time move out of the JSON store |
 | `src-tauri/src/models.rs` · `TrackMetadata::is_complete` | what "incomplete" means |
 | `src-tauri/src/commands.rs` · `write_metadata`, `write_items` | per-item results, `clear_empty = true`, the re-read |
 | … · `capture_undo`, `undo_cover_for`, `store_undo`, `undo_last`, `undo_peek` | the snapshot and the restore |
@@ -187,6 +197,11 @@ the app holds and currently sits in the JSON store (**E5**).
 | Undo captures cover bytes only when it has to | `commands.rs` · `keep_over_an_embedded_cover_needs_no_bytes`, `a_replaced_cover_is_captured_as_bytes`, `keep_without_an_embedded_cover_undoes_to_none`, `removing_a_cover_that_was_never_there_undoes_to_none`, `an_unset_cover_is_treated_as_keep` |
 | An entry round-trips, the newest is undone first, dropping exposes the one below | `db/mod.rs` · `an_undo_entry_comes_back_exactly_as_it_went_in`, `the_newest_write_is_the_one_undone_next`, and the drop test beside them |
 | The filename guess handles the real patterns | `suggest.rs` · `parse_track_artist_title_with_number` and the sibling cases |
+| The dev build cannot reach the installed app's credentials | `secrets.rs` · `service_is_per_bundle_identifier` |
+| Only a complete pair is migrated out of the JSON store | `secrets.rs` · `legacy_pair_takes_only_a_complete_credential` |
+| A dropped settings key cannot be written back | `settings.test.ts` · `does not carry the Discogs credentials any more` |
+| The secret does not travel with a suggestion request | `metadata.e2e.test.tsx` · `asks for suggestions without carrying the Discogs secret` |
+| Settings stores, hides and removes it, and says so when the Keychain will not answer | `SettingsView.test.tsx` · `SettingsView · Discogs` |
 
 ## Keeping this honest
 

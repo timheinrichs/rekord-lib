@@ -48,11 +48,21 @@ describe("loadSettings", () => {
     expect((await loadSettings()).download_format).toBe("aiff");
   });
 
-  it("defaults Discogs credentials to null", async () => {
-    getMock.mockResolvedValueOnce(undefined);
+  it("ignores a stored key that only looks like one", async () => {
+    // `k in DEFAULT_SETTINGS` is true for `constructor` and `toString`; an own
+    // key is the question being asked.
+    getMock.mockResolvedValueOnce({ constructor: "x", toString: "y" });
     const s = await loadSettings();
-    expect(s.discogs_key).toBeNull();
-    expect(s.discogs_secret).toBeNull();
+    expect(s).toEqual(DEFAULT_SETTINGS);
+  });
+
+  it("does not carry the Discogs credentials any more", async () => {
+    // They live in the Keychain. A stored value from an older version is
+    // migrated and deleted on startup, and must not come back through here.
+    getMock.mockResolvedValueOnce({ discogs_key: "k", discogs_secret: "s" });
+    const s = await loadSettings();
+    expect(s).not.toHaveProperty("discogs_key");
+    expect(s).not.toHaveProperty("discogs_secret");
   });
 
   it("merges stored values over the defaults", async () => {

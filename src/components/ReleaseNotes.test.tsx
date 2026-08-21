@@ -22,16 +22,6 @@ describe("ReleaseNotes", () => {
     expect(container.textContent).not.toContain("`");
   });
 
-  it("does not repeat the severity the UI already states", () => {
-    // The tag beside the version and the banner in settings say it; the raw
-    // marker line underneath would say it a second time.
-    const { container } = render(
-      <ReleaseNotes notes={"**Severity:** critical\n\n### Fixed\n- A bug."} />,
-    );
-    expect(container.textContent).not.toMatch(/Severity/i);
-    expect(screen.getByText("A bug.")).toBeInTheDocument();
-  });
-
   it("opens a web link in the browser", async () => {
     const user = userEvent.setup();
     render(<ReleaseNotes notes="See [the docs](https://rekord.dev/docs)." />);
@@ -50,8 +40,10 @@ describe("ReleaseNotes", () => {
     expect(container.textContent).toContain("[click](javascript:alert(1))");
   });
 
-  it("renders nothing when the marker was all there was", () => {
-    const { container } = render(<ReleaseNotes notes="**Severity:** critical" />);
+  it("renders nothing when there is nothing to render", () => {
+    // The callers reduce the notes first (`renderableNotes`); a release whose
+    // section was only the severity marker arrives here as an empty string.
+    const { container } = render(<ReleaseNotes notes="" />);
     expect(container.querySelector("[data-release-notes]")).toBeNull();
   });
 

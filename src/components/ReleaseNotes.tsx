@@ -1,10 +1,15 @@
 import { Fragment, useMemo } from "react";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { parseMarkdown, type Block, type Inline } from "../lib/markdown";
-import { renderableNotes } from "../lib/changelog";
+
 
 interface Props {
-  /** The release body: the changelog section for that version. */
+  /**
+   * The release body, already reduced by `renderableNotes` — which is where the
+   * severity marker is taken out. Stripping here as well would take a second
+   * marker-shaped line out of the middle of the notes, which is nobody's
+   * intention.
+   */
   notes: string;
   /** Settings prints the notes smaller than the start-up dialog does. */
   size?: "xs" | "sm";
@@ -78,11 +83,7 @@ function Runs({ content }: { content: Inline[] }) {
  * lives in `lib/markdown`.
  */
 export default function ReleaseNotes({ notes, size = "sm" }: Props) {
-  // The severity is already said above this, as a tag or as a banner.
-  const blocks = useMemo<Block[]>(
-    () => parseMarkdown(renderableNotes(notes) ?? ""),
-    [notes],
-  );
+  const blocks = useMemo<Block[]>(() => parseMarkdown(notes), [notes]);
   const body = size === "xs" ? "text-xs" : "text-sm";
   if (!blocks.length) return null;
 

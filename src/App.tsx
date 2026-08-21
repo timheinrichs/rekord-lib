@@ -120,15 +120,6 @@ export default function App() {
     })();
   }, []);
 
-  // Open the library folder for playback whenever it is known or changes. The
-  // player reads files through `asset:`, whose scope is empty until this runs —
-  // and it is the whole feature that needs a scope at all, so nothing wider is
-  // ever granted.
-  useEffect(() => {
-    if (!settings.library_dir) return;
-    void allowLibraryPlayback(settings.library_dir).catch(() => {});
-  }, [settings.library_dir]);
-
   // Check for an app update on startup (silent; errors are treated as "up to date").
   useEffect(() => {
     void (async () => setUpdate(await checkForUpdate()))();
@@ -230,7 +221,12 @@ export default function App() {
   const updateSettings = useCallback((patch: Partial<Settings>) => {
     setSettings((prev) => {
       const next = { ...prev, ...patch };
-      void saveSettings(next);
+      // The scope grant reads the folder back out of the store rather than
+      // taking it from here, so it has to wait for the write — before it, the
+      // backend would still be looking at the previous folder.
+      void saveSettings(next).then(() => {
+        if (patch.library_dir) return allowLibraryPlayback();
+      });
       return next;
     });
   }, []);

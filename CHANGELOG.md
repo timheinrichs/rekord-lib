@@ -29,10 +29,28 @@ contain incompatible changes.
   player loading a track from disk — so it is now empty at startup and the
   library folder alone is opened at runtime, again on every start and whenever
   the folder changes.
+- **The Discogs credentials are in the macOS Keychain.** They were the one
+  genuine secret the app holds, and they sat in plaintext in `rekord-lib.json`
+  while travelling from the window to the backend on every suggestion request.
+  They are now stored in the Keychain under the app's own identifier, written
+  once from settings and never shown again; the backend reads them where it
+  needs them. A pair left over from an earlier version is moved on the next
+  start and removed from the settings file. If the Keychain cannot be read, the
+  app says so and asks for them again rather than falling back to a plaintext
+  copy — Discogs suggestions stay empty until then, and everything else,
+  MusicBrainz included, is unaffected.
 - **Dependency advisories are checked on a schedule.** A new `Audit` workflow
   runs `npm audit` and `cargo audit` every Monday and on demand, because an
   advisory is published against code that has not changed and a check that only
   runs on a diff would never see it.
+
+### Fixed
+- **The page no longer scrolls behind an open dialog.** The track list kept
+  moving under the wheel while the update prompt, the duplicates list or the
+  metadata editor was open — the dialog stayed put while its context slid away,
+  which reads as if the dialog were a picture of the app rather than the thing
+  you are talking to. Every dialog goes through the same overlay, so all of them
+  hold the page still now, and give the scroll back exactly as it was.
 
 ### Changed
 - **The release notes in the update dialog are readable.** They arrive as the

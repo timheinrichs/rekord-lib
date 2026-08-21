@@ -41,8 +41,8 @@ track of, without uploading anything anywhere.
   AIFF-C, 16- or 24-bit. FLAC/ALAC are flagged as CDJ-3000/NXS2-only. External
   files can be dragged in.
 - **Metadata editor** with suggestions from the filename, MusicBrainz and —
-  once an API key is configured — Discogs, required-field checks, and bulk edit
-  across a selection.
+  once an API key is configured (kept in the macOS Keychain) — Discogs,
+  required-field checks, and bulk edit across a selection.
 - **Covers** — embedded artwork as thumbnails, falling back to a `cover.jpg`
   next to the audio, which conversion then embeds.
 - **Duplicate detection** across formats and filenames, by length, acoustic

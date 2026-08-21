@@ -37,13 +37,8 @@ beforeEach(() => {
         metadata_incomplete: true,
       }),
     ],
-    store: {
-      settings: {
-        library_dir: LIBRARY,
-        discogs_key: "key-123",
-        discogs_secret: "secret-456",
-      },
-    },
+    store: { settings: { library_dir: LIBRARY } },
+    discogs: { key: "key-123", secret: "secret-456" },
   });
 });
 
@@ -75,17 +70,17 @@ function field(label: string): HTMLElement {
 }
 
 describe("editing metadata", () => {
-  it("asks for suggestions with the configured Discogs credentials", async () => {
+  it("asks for suggestions without carrying the Discogs secret", async () => {
     const { container } = render(<App />);
     await openEditor(container);
 
     await waitFor(() => expect(fake.called("suggest_metadata")).toBe(true));
     const [args] = fake.argsFor("suggest_metadata");
     expect(args.path).toBe(TRACK);
-    // The credentials come from the settings rather than being re-read or
-    // dropped on the way. Absent they are `null`, never `undefined`.
-    expect(args.discogsKey).toBe("key-123");
-    expect(args.discogsSecret).toBe("secret-456");
+    // The credentials are in the Keychain and the backend reads them there.
+    // A secret that travels on every suggestion request is a secret the
+    // frontend holds — this is the test that fails if it comes back.
+    expect(args).toEqual({ path: TRACK });
   });
 
   it("records the edit and writes it, in that order", async () => {

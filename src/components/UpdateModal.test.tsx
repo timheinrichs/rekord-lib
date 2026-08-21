@@ -32,6 +32,32 @@ describe("UpdateModal", () => {
     expect(screen.getByText(/A data-loss bug/)).toBeInTheDocument();
   });
 
+  it("does not repeat the severity the tag already states", () => {
+    // The tag beside the version says it; the raw marker line in the notes
+    // would say it a second time, in the one form nobody was meant to read.
+    const { container } = render(
+      <UpdateModal
+        update={update({
+          notes: "**Severity:** critical\n\n### Fixed\n- A bug.",
+          severity: "critical",
+        })}
+        onClose={() => {}}
+      />,
+    );
+    expect(container.textContent).not.toMatch(/\*\*Severity/);
+    expect(screen.getByText("A bug.")).toBeInTheDocument();
+  });
+
+  it("says a release came without notes when the marker was all of them", () => {
+    render(
+      <UpdateModal
+        update={update({ notes: "**Severity:** critical" })}
+        onClose={() => {}}
+      />,
+    );
+    expect(screen.getByText(/came without notes/)).toBeInTheDocument();
+  });
+
   it("says so when the release carried no notes", () => {
     // Every release built before the workflow started passing them.
     render(<UpdateModal update={update({ notes: undefined })} onClose={() => {}} />);

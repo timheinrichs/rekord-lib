@@ -33,15 +33,16 @@ export function isLibraryDirAvailable(dir: string): Promise<boolean> {
 }
 
 /**
- * Lets the player read audio files in `dir`.
+ * Lets the player read the audio files in the saved library folder.
  *
  * The webview may read nothing at all through `asset:` until this says
  * otherwise — the scope in `tauri.conf.json` is empty, and used to be the whole
- * home folder. Called for the saved folder on startup and again whenever the
- * user picks a different one; the backend grants it for this run only.
+ * home folder. It takes no folder on purpose: the backend reads the one the
+ * user saved, so a call from here cannot ask for anything else. Which is why it
+ * has to run **after** the settings are written, not before.
  */
-export function allowLibraryPlayback(dir: string): Promise<void> {
-  return invoke("allow_library_playback", { dir });
+export function allowLibraryPlayback(): Promise<void> {
+  return invoke("allow_library_playback");
 }
 
 /**

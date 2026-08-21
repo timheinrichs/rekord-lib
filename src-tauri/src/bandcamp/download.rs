@@ -480,7 +480,11 @@ fn extract_zip_within(
             continue;
         }
 
-        let out_path = album_dir.join(&file_name);
+        // Sanitising maps different entries onto the same name — a multi-disc
+        // release has `CD1/01 Song.flac` next to `CD2/01 Song.flac`, and both
+        // become `01 Song.flac`. Without this the second overwrites the first
+        // and the ledger records one path twice.
+        let out_path = album_dir.join(free_name(&album_dir, &file_name));
         // Belt to the sanitising brace: nothing leaves the album folder.
         if !is_inside(&album_str, &out_path.to_string_lossy()) {
             continue;
@@ -514,6 +518,28 @@ fn extract_zip_within(
         return Err(AppError::Bandcamp("no audio files in the ZIP".into()));
     }
     Ok(files)
+}
+
+/// `name`, or `name (2)` — the first form the folder does not already hold.
+fn free_name(dir: &Path, name: &str) -> String {
+    if !dir.join(name).exists() {
+        return name.to_string();
+    }
+    let path = Path::new(name);
+    let stem = path.file_stem().and_then(|s| s.to_str()).unwrap_or(name);
+    let ext = path.extension().and_then(|e| e.to_str());
+    for n in 2..1000 {
+        let candidate = match ext {
+            Some(ext) => format!("{stem} ({n}).{ext}"),
+            None => format!("{stem} ({n})"),
+        };
+        if !dir.join(&candidate).exists() {
+            return candidate;
+        }
+    }
+    // A thousand entries of the same name is not a release; let the write fail
+    // rather than loop.
+    name.to_string()
 }
 
 fn extension_for_format(fmt: &str) -> &'static str {
@@ -569,7 +595,13 @@ fn move_into_place(part: &Path, out: &Path) -> AppResult<()> {
     if std::fs::rename(part, out).is_ok() {
         return Ok(());
     }
-    std::fs::copy(part, out)?;
+    // A copy can stop halfway — a full disk is the ordinary way — and what it
+    // leaves is a truncated file with a real track's name, which the watcher
+    // and the next scan would take for music.
+    if let Err(e) = std::fs::copy(part, out) {
+        let _ = std::fs::remove_file(out);
+        return Err(e.into());
+    }
     std::fs::remove_file(part)?;
     Ok(())
 }
@@ -776,6 +808,23 @@ mod tests {
         assert!(format!("{err}").contains("size limit"), "got {err}");
         // And it leaves no truncated file behind.
         assert!(!dir.path().join("Album").join("a.flac").exists());
+    }
+
+    #[test]
+    fn extract_zip_keeps_both_sides_of_a_multi_disc_release() {
+        // Two entries, one name after sanitising: the second must not overwrite
+        // the first, and the returned list must not name one file twice.
+        let dir = tempfile::tempdir().unwrap();
+        let archive = zip_file(
+            dir.path(),
+            &[("CD1/01 Song.flac", b"one"), ("CD2/01 Song.flac", b"two")],
+        );
+        let files = extract_zip(&archive, dir.path(), "Album").unwrap();
+        assert_eq!(files.len(), 2);
+        assert_ne!(files[0], files[1]);
+        assert!(files[1].ends_with("Album/01 Song (2).flac"), "got {}", files[1]);
+        assert_eq!(std::fs::read(&files[0]).unwrap(), b"one");
+        assert_eq!(std::fs::read(&files[1]).unwrap(), b"two");
     }
 
     #[test]

@@ -49,6 +49,10 @@ rusqlite = { version = "0.40.2", features = ["bundled"] }
 # plus libc, so it links against system libraries only — a native dependency
 # would break the self-contained-binaries rule.
 sysinfo = { version = "0.39", default-features = false, features = ["system"] }
+# The Discogs consumer secret, in the macOS Keychain instead of in a plaintext
+# JSON file. `apple-native` is Security.framework — a system library, so this
+# adds no dependency the bundle would have to carry.
+keyring = { version = "3", default-features = false, features = ["apple-native"] }
 
 # Test-only, and off unless the `wdio` feature is on. The embedded WebDriver
 # server that lets `@wdio/tauri-service` drive the real app: `tauri-driver`

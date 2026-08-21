@@ -90,7 +90,7 @@ reachable through this API and no view passes `true`. Only `forceBpm` is, from
 | `library_delete` | `paths` | `AppResult<number>` — rows forgotten |
 | `library_dir_available` | `dir` | `bool` |
 | `library_relocate` | `oldDir`, `newDir` | `AppResult<RelocateResult>` |
-| `allow_library_playback` | `dir` | `()` |
+| `allow_library_playback` | — | `()` |
 | `edits_load` | — | `AppResult<Record<string, TrackEdit>>` |
 | `edit_set` | `path`, `edit` | `AppResult<()>` |
 | `edit_clear` | `paths` | `AppResult<()>` |
@@ -99,12 +99,16 @@ reachable through this API and no view passes `true`. Only `forceBpm` is, from
 `delete_files`. `library_relocate` re-points stored paths at a moved folder and
 never deletes: what it cannot find under the new root is reported as skipped.
 
-`allow_library_playback` grants the webview read access to one folder over the
-`asset:` protocol, for this run only — the static scope in `tauri.conf.json` is
-empty, so until it is called `convertFileSrc` resolves to a URL the webview may
-not load. The frontend calls it for the saved folder on startup and again on
-every change; the backend grants the same folder at startup from the store, so
-playback works before the first call arrives. A relative path or `/` is ignored.
+`allow_library_playback` grants the webview read access to the **saved** library
+folder over the `asset:` protocol, for this run only — the static scope in
+`tauri.conf.json` is empty, so until it is called `convertFileSrc` resolves to a
+URL the webview may not load. It takes no argument on purpose: a command that
+granted whatever it was handed would let anything running in the window ask for
+`$HOME` back, which is the scope this exists to remove. The folder therefore
+comes from the store, which means the frontend calls it **after** the settings
+are written; the backend grants the same folder at startup, so playback works
+before the first call arrives. A path that is relative, is the root, or resolves
+to a single component (`/Users`, `/Volumes`) is ignored.
 
 `edits_load`, `edit_set`, `duplicates_load` and `duplicates_save` are typed
 `serde_json::Value` in Rust while TypeScript asserts `TrackEdit` and
@@ -130,12 +134,21 @@ dismissals are a separate store rather than a flag on a group.
 
 | Command | Arguments | Returns | Emits |
 | --- | --- | --- | --- |
-| `suggest_metadata` | `path`, `discogsKey?`, `discogsSecret?` | `AppResult<MetadataSuggestions>` | — |
+| `suggest_metadata` | `path` | `AppResult<MetadataSuggestions>` | — |
+| `discogs_credentials` | — | `DiscogsStatus` | — |
+| `set_discogs_credentials` | `key`, `secret` | `AppResult<()>` | — |
+| `clear_discogs_credentials` | — | `AppResult<()>` | — |
 | `cover_preview` | `source`, `cover` | `AppResult<string \| null>` — a `data:` URL | — |
 | `cover_thumbnail` | `path` | `AppResult<string \| null>` — a `data:` URL | — |
 | `write_metadata` | `items`, `recordUndo?`, `label?` | `WriteMetadataResult[]` — never rejects | `scan://skipped`, `events://new` |
 | `undo_peek` | — | `AppResult<UndoEntry \| null>` | — |
 | `undo_last` | — | `AppResult<WriteMetadataResult[]>` | `scan://skipped` |
+
+`suggest_metadata` takes no credentials: they live in the macOS Keychain and the
+backend reads them itself, so a secret never travels with a request.
+`discogs_credentials` answers `{ stored, unavailable, key }` — never the secret
+half; `unavailable` means the Keychain could not be asked, which is a different
+thing from nothing being stored and is what settings puts on screen.
 
 `write_metadata` reports per item because a bulk edit over a selection must not
 lose the twelve files that worked because the thirteenth was read-only. It also

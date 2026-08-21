@@ -32,9 +32,6 @@ interface Props {
   initial?: TrackEdit;
   /** Existing values per field as selection suggestions. */
   fieldOptions?: Record<string, string[]>;
-  /** Discogs credentials (from settings) for online suggestions. */
-  discogsKey?: string | null;
-  discogsSecret?: string | null;
   onClose: () => void;
   onSave: (edit: TrackEdit) => void;
 }
@@ -135,8 +132,6 @@ export default function MetadataEditor({
   track,
   initial,
   fieldOptions,
-  discogsKey,
-  discogsSecret,
   onClose,
   onSave,
 }: Props) {
@@ -159,14 +154,14 @@ export default function MetadataEditor({
   useEffect(() => {
     let active = true;
     setLoading(true);
-    suggestMetadata(track.path, discogsKey, discogsSecret)
+    suggestMetadata(track.path)
       .then((s) => active && setSuggestions(s))
       .catch((e) => console.error(e))
       .finally(() => active && setLoading(false));
     return () => {
       active = false;
     };
-  }, [track.path, discogsKey, discogsSecret]);
+  }, [track.path]);
 
   // Load cover preview when the cover source changes.
   useEffect(() => {

@@ -2623,8 +2623,6 @@ export default function LibraryView({
               track={track}
               initial={edits[editingId]}
               fieldOptions={fieldOptions}
-              discogsKey={settings.discogs_key}
-              discogsSecret={settings.discogs_secret}
               onClose={() => setEditingId(null)}
               onSave={(edit) => saveEdit(editingId, edit)}
             />

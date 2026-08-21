@@ -305,17 +305,39 @@ export function onConvertProgress(
   return listen<ConvertProgress>("convert://progress", (e) => cb(e.payload));
 }
 
-/** Fetches metadata suggestions (tags, filename, MusicBrainz, Discogs) for a file. */
-export function suggestMetadata(
-  path: string,
-  discogsKey?: string | null,
-  discogsSecret?: string | null,
-): Promise<MetadataSuggestions> {
-  return invoke<MetadataSuggestions>("suggest_metadata", {
-    path,
-    discogsKey: discogsKey ?? null,
-    discogsSecret: discogsSecret ?? null,
-  });
+/**
+ * Fetches metadata suggestions (tags, filename, MusicBrainz, Discogs) for a
+ * file. The Discogs credentials are not passed: the backend reads them from the
+ * Keychain, so the secret never travels through here.
+ */
+export function suggestMetadata(path: string): Promise<MetadataSuggestions> {
+  return invoke<MetadataSuggestions>("suggest_metadata", { path });
+}
+
+/** Whether Discogs credentials are stored, and whether the Keychain answered. */
+export interface DiscogsStatus {
+  stored: boolean;
+  /** The Keychain could not be used — see `SettingsView` for what that means. */
+  unavailable: boolean;
+  /** The consumer key. The secret half is never returned. */
+  key: string | null;
+}
+
+export function discogsCredentials(): Promise<DiscogsStatus> {
+  return invoke<DiscogsStatus>("discogs_credentials");
+}
+
+/** Stores the Discogs consumer key and secret in the Keychain. */
+export function setDiscogsCredentials(
+  key: string,
+  secret: string,
+): Promise<void> {
+  return invoke("set_discogs_credentials", { key, secret });
+}
+
+/** Removes the stored Discogs credentials. */
+export function clearDiscogsCredentials(): Promise<void> {
+  return invoke("clear_discogs_credentials");
 }
 
 /** Returns a cover preview as a data: URL for the chosen cover source. */

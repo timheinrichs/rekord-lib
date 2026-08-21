@@ -89,6 +89,13 @@ Two stores, with a clear dividing line — keep new state on the right side of i
   config-shaped state: `settings`, `bandcamp_session`, `bandcamp_collection`,
   `bandcamp_downloads`. Every `save()` rewrites the whole file, so nothing that
   scales with the library belongs here.
+- **A secret belongs in neither.** The Discogs consumer key and secret live in
+  the macOS Keychain (`src-tauri/src/secrets.rs`), keyed by the bundle
+  identifier so the `-devtest` build has its own. The frontend writes them once
+  and afterwards only asks whether something is stored; a command that needs
+  them reads them itself, rather than taking them as arguments. Anything else
+  the app ever has to keep secret goes the same way — and fails closed, never
+  back into the JSON store.
 
 Two rules that keep the caches honest:
 

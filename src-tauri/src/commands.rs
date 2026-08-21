@@ -373,19 +373,20 @@ pub async fn analyze_files(
     Ok(out)
 }
 
-/// Opens the library folder for playback (`asset:`), and nothing else.
+/// Opens the **saved** library folder for playback (`asset:`), and nothing else.
 ///
-/// The scope is runtime state rather than a line in `tauri.conf.json`, so it has
-/// to be granted again for a folder the user picks — and it is deliberately
-/// never revoked mid-run: a track that is playing when the folder changes would
-/// otherwise stop halfway. The next start begins from an empty scope.
+/// Takes no folder, deliberately. The whole point of the empty static scope is
+/// that the window cannot read the disk; a command that grants whatever it is
+/// handed would let anything running in that window ask for `$HOME` back. So
+/// the folder comes from the saved settings — the one the user chose — and the
+/// frontend calls this after the save, not instead of it.
+///
+/// The scope is runtime state, so it has to be granted again after a change,
+/// and it is never revoked mid-run: a track playing when the folder changes
+/// would otherwise stop halfway. The next start begins from nothing.
 #[tauri::command]
-pub fn allow_library_playback(app: AppHandle, dir: String) {
-    if let Some(dir) = crate::assets::playable_dir(Some(&serde_json::json!({
-        "library_dir": dir
-    }))) {
-        crate::assets::allow(&app, &dir);
-    }
+pub fn allow_library_playback(app: AppHandle) {
+    crate::assets::allow_saved_library(&app);
 }
 
 /// Is `path` inside `dir`? Used to keep an imported file's analysis out of the
@@ -1499,18 +1500,35 @@ pub fn start_library_watch(
 
 /// Returns metadata suggestions (existing tags, file name guess,
 /// MusicBrainz candidates) for manual confirmation.
+///
+/// The Discogs credentials are read here rather than passed in: they live in the
+/// Keychain, and a secret that travels through the frontend on every request is
+/// a secret the frontend holds. Without them — none stored, or a Keychain that
+/// will not answer — the Discogs half is simply empty.
 #[tauri::command]
-pub async fn suggest_metadata(
-    path: String,
-    discogs_key: Option<String>,
-    discogs_secret: Option<String>,
-) -> AppResult<MetadataSuggestions> {
-    suggest::suggest(
-        &path,
-        discogs_key.as_deref().unwrap_or(""),
-        discogs_secret.as_deref().unwrap_or(""),
-    )
-    .await
+pub async fn suggest_metadata(app: AppHandle, path: String) -> AppResult<MetadataSuggestions> {
+    let (key, secret) = crate::secrets::discogs(&app).unwrap_or_default();
+    suggest::suggest(&path, &key, &secret).await
+}
+
+/// Stores the Discogs consumer key and secret in the Keychain.
+#[tauri::command]
+pub fn set_discogs_credentials(app: AppHandle, key: String, secret: String) -> AppResult<()> {
+    crate::secrets::set_discogs(&app, key.trim(), secret.trim())
+        .map_err(|e| AppError::Metadata(format!("Keychain: {e}")))
+}
+
+/// Whether a Discogs credential is stored — never what it is, except for the
+/// consumer key, which is not the secret half.
+#[tauri::command]
+pub fn discogs_credentials(app: AppHandle) -> crate::secrets::DiscogsStatus {
+    crate::secrets::status(&app)
+}
+
+/// Removes the stored Discogs credentials.
+#[tauri::command]
+pub fn clear_discogs_credentials(app: AppHandle) -> AppResult<()> {
+    crate::secrets::clear_discogs(&app).map_err(|e| AppError::Metadata(format!("Keychain: {e}")))
 }
 
 /// Returns a cover preview as a data: URL (already resized to <=800px/<100KB).

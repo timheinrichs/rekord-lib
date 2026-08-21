@@ -10,6 +10,7 @@ mod events;
 mod jobs;
 mod metadata;
 mod models;
+mod secrets;
 
 use tauri::Manager;
 
@@ -115,6 +116,10 @@ pub fn run() {
                 }
             });
 
+            // A credential that was written into the JSON store by an older
+            // version does not belong there; move it and delete the keys.
+            secrets::migrate_from_store(app.handle());
+
             // Let the player read the library folder — and nothing else. The
             // frontend re-grants this whenever the folder changes; doing it here
             // too means playback works before that first call arrives.
@@ -151,6 +156,9 @@ pub fn run() {
             commands::duplicates_dismiss,
             commands::start_library_watch,
             commands::suggest_metadata,
+            commands::set_discogs_credentials,
+            commands::discogs_credentials,
+            commands::clear_discogs_credentials,
             commands::cover_preview,
             commands::cover_thumbnail,
             commands::convert_tracks,

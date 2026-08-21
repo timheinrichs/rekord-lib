@@ -72,6 +72,11 @@ export interface FakeState {
   store: Record<string, unknown>;
   account: BandcampAccount | null;
   collection: BandcampItem[];
+  /**
+   * The Keychain, which is not the store: the credentials moved out of
+   * `rekord-lib.json`, and a test that puts them back there proves nothing.
+   */
+  discogs: { key: string; secret: string } | null;
   /** Non-null makes the app report a broken ffmpeg/ffprobe at startup. */
   sidecarError: string | null;
   /**
@@ -100,6 +105,7 @@ function defaults(): FakeState {
     store: {},
     account: null,
     collection: [],
+    discogs: null,
     sidecarError: null,
     dbAvailable: true,
     dialogAnswer: null,
@@ -225,6 +231,21 @@ export function installFakeBackend(
     },
     library_dir_available: () => true,
     allow_library_playback: () => null,
+    // The Discogs credentials live in the Keychain, so the fake keeps them in
+    // one place too — and, like the real thing, never hands the secret back.
+    discogs_credentials: () => ({
+      stored: !!state.discogs,
+      unavailable: false,
+      key: state.discogs?.key ?? null,
+    }),
+    set_discogs_credentials: (args) => {
+      state.discogs = { key: args.key as string, secret: args.secret as string };
+      return null;
+    },
+    clear_discogs_credentials: () => {
+      state.discogs = null;
+      return null;
+    },
     library_relocate: (): RelocateResult => ({ moved: state.tracks.length, skipped: 0 }),
     edits_load: () => state.edits,
     edit_set: (args) => {

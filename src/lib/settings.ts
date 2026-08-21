@@ -93,9 +93,6 @@ export interface Settings {
    * the default is everything visible, and a column is hidden only on request.
    */
   hidden_columns: string[];
-  /** Discogs app credentials for metadata suggestions (stored locally only). */
-  discogs_key: string | null;
-  discogs_secret: string | null;
 }
 
 export const DEFAULT_SETTINGS: Settings = {
@@ -110,8 +107,6 @@ export const DEFAULT_SETTINGS: Settings = {
   bpm_min: 60,
   bpm_max: 200,
   hidden_columns: [],
-  discogs_key: null,
-  discogs_secret: null,
 };
 
 // Same store file as the Rust backend (separate keys).
@@ -127,8 +122,19 @@ function getStore(): Promise<Store> {
 /** Loads the saved settings (filled in with defaults). */
 export async function loadSettings(): Promise<Settings> {
   const store = await getStore();
-  const saved = await store.get<Partial<Settings>>(SETTINGS_KEY);
-  return { ...DEFAULT_SETTINGS, ...(saved ?? {}) };
+  const saved = (await store.get<Partial<Settings>>(SETTINGS_KEY)) ?? {};
+  // Only keys we still know. A value an older version wrote and this one has
+  // dropped would otherwise ride along and be written back on every save —
+  // which for the Discogs credentials, now in the Keychain, would mean the
+  // plaintext copy coming back after the migration deleted it.
+  const known = Object.fromEntries(
+    // An own key, not `in`: `in` is true for `constructor` and `toString` too,
+    // which would let a stored key of that name ride through.
+    Object.entries(saved).filter(([k]) =>
+      Object.prototype.hasOwnProperty.call(DEFAULT_SETTINGS, k),
+    ),
+  ) as Partial<Settings>;
+  return { ...DEFAULT_SETTINGS, ...known };
 }
 
 /** Persists the settings. */

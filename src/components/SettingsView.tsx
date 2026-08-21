@@ -5,8 +5,12 @@ import {
   bandcampConnect,
   bandcampDisconnect,
   bandcampLogin,
+  clearDiscogsCredentials,
+  discogsCredentials,
   onScanProgress,
   pickOutputDir,
+  setDiscogsCredentials,
+  type DiscogsStatus,
 } from "../lib/api";
 import { relocateLibrary } from "../lib/library";
 import { relocateMessage, shouldRelocate } from "../lib/relocate";
@@ -166,6 +170,53 @@ export default function SettingsView({
       }
     }
     onSettingsChange({ library_dir: dir });
+  };
+
+  // Discogs credentials. The secret is write-only: it goes into the Keychain
+  // and the app only ever asks again whether one is there.
+  const [discogs, setDiscogs] = useState<DiscogsStatus | null>(null);
+  const [discogsKey, setDiscogsKey] = useState("");
+  const [discogsSecret, setDiscogsSecret] = useState("");
+  const [discogsBusy, setDiscogsBusy] = useState(false);
+  const [discogsError, setDiscogsError] = useState<string | null>(null);
+
+  const readDiscogs = () =>
+    discogsCredentials()
+      .then(setDiscogs)
+      // A rejected call is the same situation as a Keychain that says no.
+      .catch(() => setDiscogs({ stored: false, unavailable: true, key: null }));
+
+  useEffect(() => {
+    void readDiscogs();
+  }, []);
+
+  const saveDiscogs = async () => {
+    setDiscogsBusy(true);
+    setDiscogsError(null);
+    try {
+      await setDiscogsCredentials(discogsKey.trim(), discogsSecret.trim());
+      setDiscogsSecret("");
+      await readDiscogs();
+    } catch (e) {
+      setDiscogsError(`Could not store the credentials: ${e}`);
+    } finally {
+      setDiscogsBusy(false);
+    }
+  };
+
+  const forgetDiscogs = async () => {
+    setDiscogsBusy(true);
+    setDiscogsError(null);
+    try {
+      await clearDiscogsCredentials();
+      setDiscogsKey("");
+      setDiscogsSecret("");
+      await readDiscogs();
+    } catch (e) {
+      setDiscogsError(`Could not remove the credentials: ${e}`);
+    } finally {
+      setDiscogsBusy(false);
+    }
   };
 
   // What the update's notes come to once the severity marker is out of them —
@@ -428,33 +479,83 @@ export default function SettingsView({
           >
             discogs.com/settings/developers
           </button>
-          ) for per-field metadata suggestions. Stored locally only.
+          ) for per-field metadata suggestions. Kept in the macOS Keychain, not
+          in the app&rsquo;s settings file.
         </p>
-        <div className="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-2">
-          <label className="flex flex-col gap-1 text-sm">
-            <span className="text-fg-muted">Consumer key</span>
-            <input
-              value={settings.discogs_key ?? ""}
-              onChange={(e) =>
-                onSettingsChange({ discogs_key: e.target.value.trim() || null })
-              }
-              className="rounded-lg border border-border-strong bg-surface-2 px-3 py-2 outline-none focus:border-accent-500"
-            />
-          </label>
-          <label className="flex flex-col gap-1 text-sm">
-            <span className="text-fg-muted">Consumer secret</span>
-            <input
-              type="password"
-              value={settings.discogs_secret ?? ""}
-              onChange={(e) =>
-                onSettingsChange({
-                  discogs_secret: e.target.value.trim() || null,
-                })
-              }
-              className="rounded-lg border border-border-strong bg-surface-2 px-3 py-2 outline-none focus:border-accent-500"
-            />
-          </label>
-        </div>
+
+        {/* The Keychain is the only copy, so a Keychain that will not answer is
+            said plainly rather than papered over with an empty form: nothing was
+            lost, and entering the credentials again is the way out. */}
+        {discogs?.unavailable && (
+          <p className="mt-3 rounded-lg border border-warning-500/40 bg-warning-500/10 px-4 py-3 text-sm text-warning-500">
+            The Keychain could not be read, so stored credentials cannot be
+            used. Suggestions from Discogs stay empty until they are entered
+            again; everything else works as usual.
+          </p>
+        )}
+
+        {discogs?.stored && !discogs.unavailable ? (
+          <div className="mt-4 flex flex-wrap items-center gap-3 text-sm">
+            <span className="inline-flex items-center gap-2 rounded-full bg-success-500/15 px-3 py-1 text-success-500 ring-1 ring-success-500/30">
+              <span className="h-1.5 w-1.5 rounded-full bg-success-500" />
+              Stored in the Keychain
+            </span>
+            {discogs.key && (
+              <span className="min-w-0 truncate text-fg-muted" title={discogs.key}>
+                {discogs.key}
+              </span>
+            )}
+            <button
+              onClick={forgetDiscogs}
+              disabled={discogsBusy}
+              className="ml-auto rounded-lg border border-border-strong px-3 py-1.5 enabled:hover:border-danger-500 enabled:hover:text-danger-500 disabled:border-border disabled:text-fg-disabled"
+            >
+              Remove
+            </button>
+          </div>
+        ) : (
+          <>
+            <div className="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-2">
+              <label className="flex flex-col gap-1 text-sm">
+                <span className="text-fg-muted">Consumer key</span>
+                <input
+                  value={discogsKey}
+                  onChange={(e) => setDiscogsKey(e.target.value)}
+                  className="rounded-lg border border-border-strong bg-surface-2 px-3 py-2 outline-none focus:border-accent-500"
+                />
+              </label>
+              <label className="flex flex-col gap-1 text-sm">
+                <span className="text-fg-muted">Consumer secret</span>
+                <input
+                  type="password"
+                  value={discogsSecret}
+                  onChange={(e) => setDiscogsSecret(e.target.value)}
+                  className="rounded-lg border border-border-strong bg-surface-2 px-3 py-2 outline-none focus:border-accent-500"
+                />
+              </label>
+            </div>
+            <div className="mt-3 flex flex-wrap items-center gap-3">
+              <button
+                onClick={saveDiscogs}
+                disabled={
+                  discogsBusy || !discogsKey.trim() || !discogsSecret.trim()
+                }
+                className="rounded-lg bg-accent-600 px-4 py-2 text-sm font-medium enabled:hover:bg-accent-500 disabled:bg-surface-2 disabled:text-fg-disabled"
+              >
+                {discogsBusy ? "Saving…" : "Save to Keychain"}
+              </button>
+              {/* Written once and never read back: after this the secret is
+                  the Keychain's, and the app only asks whether it is there. */}
+              <p className="font-sans text-xs text-fg-subtle">
+                The secret is not shown again after it is saved.
+              </p>
+            </div>
+          </>
+        )}
+
+        {discogsError && (
+          <p className="mt-3 text-sm text-danger-500">{discogsError}</p>
+        )}
       </section>
 
       {/* About / updates */}
