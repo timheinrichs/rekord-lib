@@ -9,6 +9,17 @@ contain incompatible changes.
 
 ## [Unreleased]
 
+### Changed
+- **The release notes in the update dialog are readable.** They arrive as the
+  changelog section for the new version, which is Markdown, and the app was the
+  one place that showed it unrendered — `### Fixed`, `- **A tempo written into
+  the wrong file.**` and the `**Severity:**` marker, asterisks and all. Headings,
+  bullets, emphasis, inline code and links are now rendered in the app's own
+  type, links open in the browser, and the severity is left to the tag and the
+  banner that already state it. Anything the renderer does not recognise still
+  shows as its own text, so nothing can quietly disappear from what a release
+  says about itself.
+
 ## [0.7.2] - 2026-08-21
 
 ### Added

@@ -1,8 +1,9 @@
 import { useState } from "react";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import Overlay from "./Overlay";
+import ReleaseNotes from "./ReleaseNotes";
 import { installUpdate, type UpdateInfo } from "../lib/updater";
-import type { Severity } from "../lib/changelog";
+import { renderableNotes, type Severity } from "../lib/changelog";
 
 const RELEASES_URL = "https://github.com/timheinrichs/rekord-lib/releases/tag/v";
 
@@ -31,6 +32,9 @@ export default function UpdateModal({ update, onClose }: Props) {
   const [error, setError] = useState<string | null>(null);
   const severity = update.severity;
   const critical = severity === "critical";
+  // Notes that are nothing but the severity marker are notes with nothing in
+  // them, and the dialog would otherwise show a header over blank space.
+  const notes = renderableNotes(update.notes);
 
   const install = async () => {
     setInstalling(true);
@@ -90,10 +94,8 @@ export default function UpdateModal({ update, onClose }: Props) {
               This release fixes a security or data-loss problem.
             </p>
           )}
-          {update.notes ? (
-            <pre className="whitespace-pre-wrap font-sans text-sm text-fg-muted">
-              {update.notes}
-            </pre>
+          {notes ? (
+            <ReleaseNotes notes={notes} />
           ) : (
             <p className="font-sans text-sm text-fg-subtle">
               This release came without notes.

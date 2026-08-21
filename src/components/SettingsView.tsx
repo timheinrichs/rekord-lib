@@ -11,7 +11,9 @@ import {
 import { relocateLibrary } from "../lib/library";
 import { relocateMessage, shouldRelocate } from "../lib/relocate";
 import { checkForUpdate, installUpdate, type UpdateInfo } from "../lib/updater";
+import { renderableNotes } from "../lib/changelog";
 import { HeartIcon } from "./icons";
+import ReleaseNotes from "./ReleaseNotes";
 import {
   BPM_RANGE_PRESETS,
   DOWNLOAD_FORMAT_LABELS,
@@ -165,6 +167,10 @@ export default function SettingsView({
     }
     onSettingsChange({ library_dir: dir });
   };
+
+  // What the update's notes come to once the severity marker is out of them —
+  // null both when a release carried none and when the marker was all there was.
+  const updateNotes = renderableNotes(update?.notes);
 
   const newerOnly = NEWER_PLAYERS_ONLY.includes(settings.format);
   const pcmFormat = settings.format === "aiff" || settings.format === "wav";
@@ -516,10 +522,10 @@ export default function SettingsView({
             {/* What changed, straight from the changelog section for this
                 version. Worth showing whatever the severity: deciding whether
                 to restart now is easier when you can see what you get. */}
-            {update.notes && (
-              <pre className="mt-3 max-h-56 overflow-y-auto whitespace-pre-wrap rounded-lg border border-border bg-surface-2 px-4 py-3 font-sans text-xs text-fg-muted">
-                {update.notes}
-              </pre>
+            {updateNotes && (
+              <div className="mt-3 max-h-56 overflow-y-auto rounded-lg border border-border bg-surface-2 px-4 py-3">
+                <ReleaseNotes notes={updateNotes} size="xs" />
+              </div>
             )}
           </>
         ) : (

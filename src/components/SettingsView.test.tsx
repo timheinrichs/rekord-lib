@@ -91,6 +91,7 @@ describe("SettingsView · About", () => {
   it("shows no notes block when the release carried none", () => {
     // Every release built before the workflow started passing them.
     const { container } = renderSettings(update({ notes: undefined }));
-    expect(container.querySelector("pre")).toBeNull();
+    // The notes themselves — not there at all rather than there and empty.
+    expect(container.querySelector("[data-release-notes]")).toBeNull();
   });
 });
