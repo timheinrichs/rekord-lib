@@ -95,6 +95,10 @@ cd src-tauri && cargo test       # backend unit tests
 
 CI (`.github/workflows/ci.yml`) runs all four on every push and pull request.
 
+The end-to-end suite is separate, because it builds the app and drives it:
+`npm run typecheck:e2e` and `npm run e2e`. It runs on demand and before a
+release, not on every push — see [docs/TESTING.md](docs/TESTING.md).
+
 **Warnings count.** A build that already prints some is a build where the next
 one goes unnoticed — dead constants left behind by a refactor show up here and
 nowhere else:

@@ -117,9 +117,17 @@ All four must be green before committing anything non-trivial:
 
 ```sh
 npx tsc --noEmit                 # frontend types
-npm test                         # frontend unit tests (Vitest)
+npm test                         # frontend unit tests + flow tests (Vitest)
 cd src-tauri && cargo check      # Rust backend
 cd src-tauri && cargo test       # Rust unit tests
+```
+
+Two more exist and are not part of that gate, because they build and drive the
+real app and take minutes rather than seconds. Run them before a release:
+
+```sh
+npm run typecheck:e2e            # the e2e suite's own types
+npm run e2e                      # build the app and drive it (WebdriverIO)
 ```
 
 ### Build
@@ -152,8 +160,9 @@ config-shaped state. See the *Persistence* section of
 ### Documentation
 
 How the app actually works is documented per feature area — the scan and its
-caches, duplicate detection, the compatibility rules, tags and undo, and the
-command surface. Index: [docs/README.md](docs/README.md). Contribution rules and
+caches, duplicate detection, the compatibility rules, tags and undo, the
+command surface, and how the whole thing is tested. Index:
+[docs/README.md](docs/README.md). Contribution rules and
 how to run the app without damaging a real collection:
 [CONTRIBUTING.md](CONTRIBUTING.md).
 

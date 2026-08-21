@@ -9,6 +9,8 @@ contain incompatible changes.
 
 ## [Unreleased]
 
+## [0.7.2] - 2026-08-21
+
 ### Added
 - **The first scan of a new library can be watched and paused like any other.**
   Pointing the app at a folder for the first time used to be the one run that
@@ -611,7 +613,8 @@ tool for a CDJ/XDJ- and Rekordbox-compatible library.
 - Project scaffold: Tauri 2 + React 19 + Tailwind v4, bundled
   ffmpeg/ffprobe sidecar, first analysis/conversion pipeline.
 
-[Unreleased]: https://github.com/timheinrichs/rekord-lib/compare/v0.7.1...HEAD
+[Unreleased]: https://github.com/timheinrichs/rekord-lib/compare/v0.7.2...HEAD
+[0.7.2]: https://github.com/timheinrichs/rekord-lib/compare/v0.7.1...v0.7.2
 [0.7.1]: https://github.com/timheinrichs/rekord-lib/compare/v0.7.0...v0.7.1
 [0.7.0]: https://github.com/timheinrichs/rekord-lib/compare/v0.6.0...v0.7.0
 [0.6.0]: https://github.com/timheinrichs/rekord-lib/compare/v0.5.0...v0.6.0

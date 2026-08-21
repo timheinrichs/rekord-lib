@@ -116,6 +116,17 @@ its data. It can be dropped one release after 0.4.8.
     coverage: `npm run test:coverage`).
   - Backend: Rust unit tests in a `#[cfg(test)] mod tests` next to the code.
     Run with `cd src-tauri && cargo test`.
+  - **Flow tests** for anything that crosses the IPC boundary: `src/e2e/`, the
+    real frontend against one fake backend wired in at `invoke`
+    (`src/test/fakeBackend.ts`). They ride in `npm test`. A component test that
+    mocks `../lib/api` cannot see a renamed command or a wrong argument name,
+    because the wrapper never runs — that is what these are for.
+  - **End-to-end**, when the change moves files or writes tags: `e2e/`, driving
+    the built app. `npm run e2e` builds and runs it; `npm run typecheck:e2e`
+    covers its types, which the root `tsc --noEmit` does not. Minutes, not
+    seconds, so it is not part of the push gate — run it before a release.
+    See [`docs/TESTING.md`](docs/TESTING.md) for what each level can and cannot
+    answer for.
 - Keep new logic **testable**: put pure logic in `src/lib/` (frontend) or a
   dedicated `mod`/function (backend) instead of burying it in large components
   or Tauri commands. Extract if needed (see `src/lib/grouping.ts`).
