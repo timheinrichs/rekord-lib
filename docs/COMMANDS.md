@@ -90,6 +90,7 @@ reachable through this API and no view passes `true`. Only `forceBpm` is, from
 | `library_delete` | `paths` | `AppResult<number>` — rows forgotten |
 | `library_dir_available` | `dir` | `bool` |
 | `library_relocate` | `oldDir`, `newDir` | `AppResult<RelocateResult>` |
+| `allow_library_playback` | `dir` | `()` |
 | `edits_load` | — | `AppResult<Record<string, TrackEdit>>` |
 | `edit_set` | `path`, `edit` | `AppResult<()>` |
 | `edit_clear` | `paths` | `AppResult<()>` |
@@ -97,6 +98,13 @@ reachable through this API and no view passes `true`. Only `forceBpm` is, from
 `library_delete` forgets rows; it does not touch files. Deleting a file is
 `delete_files`. `library_relocate` re-points stored paths at a moved folder and
 never deletes: what it cannot find under the new root is reported as skipped.
+
+`allow_library_playback` grants the webview read access to one folder over the
+`asset:` protocol, for this run only — the static scope in `tauri.conf.json` is
+empty, so until it is called `convertFileSrc` resolves to a URL the webview may
+not load. The frontend calls it for the saved folder on startup and again on
+every change; the backend grants the same folder at startup from the store, so
+playback works before the first call arrives. A relative path or `/` is ignored.
 
 `edits_load`, `edit_set`, `duplicates_load` and `duplicates_save` are typed
 `serde_json::Value` in Rust while TypeScript asserts `TrackEdit` and

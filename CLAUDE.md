@@ -276,6 +276,10 @@ deliberate step that only happens when the maintainer says so.
     **done** marker and a *What shipped* paragraph.
   - **`docs/README.md`** — a new document gets its row; **`README.md`** and
     **`docs/CDJ_TEST_MATRIX.md`** if the feature set or a hardware claim moved.
+  - **`THIRD_PARTY_LICENSES.md`** — a dependency added or a bundled binary
+    rebuilt since the last tag. The file is curated by hand rather than
+    generated, so nothing else notices when it goes stale; the scheduled
+    `Audit` workflow watches the advisories, not the licences.
   - **`CLAUDE.md`** itself, when the rule it states is no longer how the repo
     works.
 

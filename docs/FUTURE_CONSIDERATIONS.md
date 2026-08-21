@@ -703,36 +703,87 @@ cost.)
 
 *Size: M · needs a paid Apple Developer account*
 
-### E2 · Harden Bandcamp download handling
+### E2 · Harden Bandcamp download handling — **done**
 
-**What** — validate content type and size before writing, extract archives with
-zip-slip protection, and keep treating everything that comes down the wire as
-untrusted until it has been checked.
+**What shipped** — `bandcamp::download` treats the response as what it is: bytes
+from a server we do not control, over a session cookie that can be stale,
+written into the user's library.
 
-**Why** — it is the one path where the app writes attacker-influenceable file
-names and paths into the user's library.
+- **Streamed to disk.** The whole album used to be collected into one `Vec<u8>`
+  with no ceiling. It now goes to a `.part` file in the app's **cache folder** —
+  not the library, which is watched recursively, and a file growing there for
+  minutes would fire a re-walk of the collection every 700 ms while it does. A
+  `PartFile` guard removes it on every exit that is not a finished download
+  (cancel, cap, dropped connection), and the finished file is renamed into place
+  or copied when the library is on a different volume.
+- **Ceilings, per download, per entry, per archive and per entry count.**
+  Generous enough that a real purchase never meets them, and checked against the
+  bytes actually written rather than the length the server announces — a zip
+  bomb declares little and writes a lot.
+- **Names that are names.** The old code took a ZIP entry's last path component
+  and, when there was none (`sub/..`), fell back to the *raw* entry name, which
+  is a path. `safe_name` now rejects `.`, `..`, the empty string and leading
+  dots, an entry with no usable name is skipped, symlink entries are skipped,
+  and every output path is checked to be inside the album folder before it is
+  created. `sanitize` alone was not enough for the album title either: a title
+  of `..` put the album folder one level above the destination.
+- **A web page is not a file.** An expired session answers with a login page,
+  which used to be saved as audio. Refused now — but on the bytes as much as on
+  the header, and on the probe request only *after* the body fails to parse as
+  JSON: that answer has never had a reliable content type, which is why the old
+  code sniffed its first byte, and refusing it on the header alone would fail
+  every download instead of following the `download_url` inside it.
+
+**What it did not need.** Validating the destination against the library folder
+was considered and left out: the destination comes from our own frontend, while
+the names and bytes come from the network, and the invariant that matters is
+that nothing lands outside the folder the caller named.
 
 *Size: S*
 
-### E3 · Narrow the `assetProtocol` scope
+### E3 · Narrow the `assetProtocol` scope — **done**
 
-**What** — replace `$HOME/**` and `/Volumes/**` with the library directory and
-whatever staging path drag-in needs.
+**What shipped** — the static scope in `tauri.conf.json` is `[]`, and the
+library folder is granted at runtime (`src-tauri/src/assets.rs`): at startup
+from the saved settings, and by `allow_library_playback` whenever the folder
+changes. Nothing else is ever granted.
 
-**Why** — the current scope is far wider than the feature requires, and
-`CLAUDE.md` asks for these scopes to be as narrow as the feature allows.
-Any change here needs verifying in a real build, not just `tauri dev`.
+**There was no staging path to keep.** The entry assumed drag-in needed one; it
+does not. `asset:` has exactly one consumer, `convertFileSrc` in
+`lib/player.tsx` — covers come back from commands as data URLs — and everything
+playable is under the library folder: the table is loaded per `library_dir`,
+drag-in converts *into* the library, and a Bandcamp download is written there.
+
+**Runtime rather than a wider static scope**, because the folder is a user
+setting and a config file cannot name it. The grant is not persisted, so a
+folder that stops being the library folder stops being readable on the next
+start; and it is deliberately not revoked mid-run, which would stop a track that
+is playing. A relative path or `/` is refused — the first would resolve against
+the process's working directory, the second would hand back everything.
 
 *Size: S*
 
-### E4 · Dependency auditing in CI
+### E4 · Dependency auditing in CI — **done**
 
-**What** — `cargo audit` (or `cargo deny`) and `npm audit` as a scheduled
-workflow, plus keeping `THIRD_PARTY_LICENSES.md` current per release.
+**What shipped** — `.github/workflows/audit.yml`: `npm audit --omit=dev
+--audit-level=high` and `rustsec/audit-check` over `src-tauri/Cargo.lock`, every
+Monday, on demand, and whenever a lockfile changes in a pull request. Both jobs
+run on ubuntu — they read lockfiles, so unlike the backend job in `ci.yml` they
+need neither macOS nor the aarch64 sidecars.
 
-**Why** — we ship a bundle containing FFmpeg under a different licence than our
-own code; both the security and the licence side deserve a recurring check
-rather than a manual one.
+**On a schedule, and that is the point.** An advisory is published against code
+that has not changed, so a check that only runs on a diff never sees it.
+
+**Where it stands today:** no vulnerabilities. `cargo audit` reports 19
+warnings, all of them unmaintained or unsound *Linux* crates (the GTK3 bindings
+`gtk-rs` pulls in through Tauri's Linux backend) that a macOS-only build never
+compiles. They are warnings rather than failures, so the job is green and stays
+honest — silencing them per id would hide the day one of them turns into a
+vulnerability.
+
+**The licence side stayed manual on purpose.** `THIRD_PARTY_LICENSES.md` is a
+curated overview, not a dependency dump, so it joined the pre-release
+documentation pass in `CLAUDE.md` rather than getting a generator.
 
 *Size: S*
 

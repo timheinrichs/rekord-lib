@@ -9,6 +9,31 @@ contain incompatible changes.
 
 ## [Unreleased]
 
+### Security
+- **A Bandcamp download can no longer write outside the folder it belongs in,
+  or take the machine down while trying.** The bytes arrive from a server we do
+  not control and land in the library, so they are now treated that way: the
+  file is streamed into the app's cache folder instead of being held in memory
+  whole, a cancelled or refused download leaves nothing behind, and a download,
+  a single extracted
+  track, an archive as a whole and its number of entries each have a ceiling
+  that no real purchase reaches. A ZIP entry is written under a sanitised name
+  in the album folder and nowhere else — the previous code fell back to the raw
+  entry name for a name like `sub/..`, which is a path out of the folder — and
+  entries that are symlinks are skipped. A web page returned instead of a file,
+  which is what an expired session looks like, is now an error rather than a
+  `.flac` full of HTML.
+- **The app may read the library folder, not the home folder.** The webview's
+  `asset:` scope was `$HOME/**` plus `/Volumes/**`, granted statically to a
+  window that also renders text from Bandcamp. It exists for one thing — the
+  player loading a track from disk — so it is now empty at startup and the
+  library folder alone is opened at runtime, again on every start and whenever
+  the folder changes.
+- **Dependency advisories are checked on a schedule.** A new `Audit` workflow
+  runs `npm audit` and `cargo audit` every Monday and on demand, because an
+  advisory is published against code that has not changed and a check that only
+  runs on a diff would never see it.
+
 ### Changed
 - **The release notes in the update dialog are readable.** They arrive as the
   changelog section for the new version, which is Markdown, and the app was the
