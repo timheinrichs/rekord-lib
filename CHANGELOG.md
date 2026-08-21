@@ -21,12 +21,14 @@ contain incompatible changes.
 
 ### Fixed
 - **A library database that cannot be opened no longer leaves the app stuck.**
-  The backend already tolerated it on purpose — an empty library the next scan
-  rebuilds beats refusing to launch — but the frontend did not: the failure
-  escaped unhandled and took the rest of the start-up with it, so the folder was
-  never swept, nothing was saved, and nothing on screen said why. It now reports
-  what happened and carries on scanning the folder, because the files are there
-  whatever the cache says.
+  Starting without one was always meant to be survivable — an empty library the
+  next scan rebuilds beats refusing to launch — but neither side held that line.
+  The frontend let the failure escape unhandled and took the rest of the
+  start-up with it, so the folder was never swept, nothing was saved, and nothing
+  on screen said why. Three places in the backend then went further and crashed
+  the task outright, which left the app waiting on an answer that could never
+  come. Both are fixed: the failure is reported, and the folder is still scanned,
+  because the files are there whatever the cache says.
 
 ## [0.7.1] - 2026-08-21
 

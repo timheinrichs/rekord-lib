@@ -592,16 +592,21 @@ export default function LibraryView({
       hydratedRef.current = true;
       if (active) setHydrated(true);
       if (!active || !libraryDir) return;
-      // Not `cached`: without a status there is nothing sensible to assume, and
-      // docking onto a scan that is not running would leave a spinner forever.
-      // Treated as "no scan running", which is the recoverable branch.
-      const status = await cached(scanStatus(), {
-        running: false,
-        paused: false,
-        generation: 0,
-        done: 0,
-        total: 0,
-        stage: "",
+      // Not through `cached`: `scan_status` reads an atomic in memory and never
+      // touches the database, so reporting a failure of it as a cache problem
+      // would point at the wrong subsystem. Falling back to "nothing running" is
+      // the recoverable branch either way — assuming a scan is in flight would
+      // leave a spinner up forever.
+      const status = await scanStatus().catch((e) => {
+        if (active) setError(`Could not read the scan status: ${e}`);
+        return {
+          running: false,
+          paused: false,
+          generation: 0,
+          done: 0,
+          total: 0,
+          stage: "",
+        };
       });
       if (!active) return;
       if (status.running) {

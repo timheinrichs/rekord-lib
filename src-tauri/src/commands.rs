@@ -545,7 +545,14 @@ fn load_waveform_paths(
     app: &AppHandle,
     identities: &std::collections::HashMap<String, db::FsIdentity>,
 ) -> std::collections::HashSet<String> {
-    let state = app.state::<db::Db>();
+    // `db::require`, not `app.state`: the latter panics when the database was
+    // never managed, and `lib.rs` deliberately starts the app without one when
+    // `Db::open` failed. A panic here happens inside an async command task,
+    // where it never settles the `invoke` promise — so the frontend hangs
+    // instead of seeing an error.
+    let Ok(state) = db::require(app) else {
+        return std::collections::HashSet::new();
+    };
     let Ok(conn) = state.conn() else {
         return std::collections::HashSet::new();
     };
@@ -562,7 +569,9 @@ fn save_waveform(
     fs: db::FsIdentity,
     w: &waveform::Waveform,
 ) {
-    let state = app.state::<db::Db>();
+    let Ok(state) = db::require(app) else {
+        return;
+    };
     let Ok(conn) = state.conn() else {
         return;
     };
@@ -597,7 +606,7 @@ pub fn stored_waveforms(
         .iter()
         .filter_map(|p| db::fs_identity(p).map(|fs| (p.clone(), fs)))
         .collect();
-    let state = app.state::<db::Db>();
+    let state = db::require(&app)?;
     let conn = state.conn()?;
     Ok(db::waveforms_load(&conn, &identities, waveform::ALGO_VERSION)?
         .into_iter()
@@ -2417,5 +2426,27 @@ mod tests {
         // The folder itself is not a track in it.
         assert!(!is_inside("/Users/me/Music", "/Users/me/Music"));
         assert!(!is_inside("/Users/me/Music", ""));
+    }
+
+    /// `app.state::<Db>()` panics when the state was never managed, and
+    /// `lib.rs` starts the app without a database on purpose when `Db::open`
+    /// failed. A panic inside an async command task never settles the `invoke`
+    /// promise, so the frontend waits forever instead of seeing an error — which
+    /// is strictly worse than the empty library the design intends.
+    ///
+    /// Three helpers here used `app.state` directly and so turned a survivable
+    /// start into a hung one. This asserts the shape rather than the behaviour,
+    /// because building an `AppHandle` with unmanaged state in a unit test is
+    /// not possible; `db::require` is the only correct way in.
+    #[test]
+    fn nothing_reaches_the_database_without_require() {
+        let source = include_str!("commands.rs");
+        // Assembled rather than written out, or this test would find itself.
+        let forbidden = concat!("app.state", "::<db::Db>()");
+        assert!(
+            !source.contains(forbidden),
+            "use db::require(app) instead: app.state panics when the database \
+             failed to open, and the app is designed to run without one"
+        );
     }
 }
