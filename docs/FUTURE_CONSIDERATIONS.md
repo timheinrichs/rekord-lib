@@ -130,12 +130,15 @@ has no concept of one, and inventing empty marks would put them in a player
 where nobody set them."* The export half is therefore already built and already
 proven against real Rekordbox files; what is missing is upstream of it.
 
-Two things this needs beyond storage and UI. The round trip that keeps the
-writer honest reads `<TEMPO>` and nothing else —
-`scripts/rekordbox-reference.py` has no cue element in it — so closing the loop
-means teaching the reader about marks as well. That check is the only one in the
-export that did not come out of the same head as the writer, and a cue feature
-that skips it is a cue feature nobody can verify.
+The writing itself is one place: `export::rekordbox::track_xml`, which already
+emits the `<TEMPO>` marker and is where a `<POSITION_MARK>` per cue would go.
+
+Two things this needs beyond storage and UI. The round trip that keeps the writer
+honest reads `<TEMPO>` and nothing else — `scripts/rekordbox-reference.py` has no
+cue element in it — so closing the loop means teaching the reader about marks as
+well. That check is the only one in the export that did not come out of the same
+head as the writer, and a cue feature that skips it is a cue feature nobody can
+verify.
 
 And be clear about where a mark actually arrives. Through A2 it reaches
 Rekordbox, which is the realistic path; onto a CDJ without Rekordbox in between
