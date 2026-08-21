@@ -117,6 +117,39 @@ describe("playlists", () => {
     expect(beta!.textContent).toContain("1");
   });
 
+  it("exports the library where the save dialog points", async () => {
+    // The one file the app writes outside the library folder, so the path has
+    // to come from the user and the count from the backend that wrote it.
+    const user = userEvent.setup();
+    fake.state.playlists = [{ id: 1, name: "Warmup", created_ms: 1, updated_ms: 1 }];
+    fake.state.playlistContents = { 1: [A] };
+    fake.state.dialogAnswer = "/Users/me/Desktop/rekordbox.xml";
+
+    const { container } = render(<App />);
+    const view = await ready(container);
+    await user.click(view.getByRole("button", { name: /Export for Rekordbox/ }));
+
+    await waitFor(() => expect(fake.called("export_rekordbox_xml")).toBe(true));
+    expect(fake.argsFor("export_rekordbox_xml")[0]).toEqual({
+      dir: LIBRARY,
+      dest: "/Users/me/Desktop/rekordbox.xml",
+    });
+    // And it says what it did, with a number.
+    expect(await view.findByText(/Exported 2 tracks and 1 playlist/)).toBeInTheDocument();
+  });
+
+  it("writes nothing when the save dialog is cancelled", async () => {
+    const user = userEvent.setup();
+    fake.state.dialogAnswer = null;
+
+    const { container } = render(<App />);
+    const view = await ready(container);
+    await user.click(view.getByRole("button", { name: /Export for Rekordbox/ }));
+
+    await waitFor(() => expect(fake.called("plugin:dialog|save")).toBe(true));
+    expect(fake.called("export_rekordbox_xml")).toBe(false);
+  });
+
   it("renames a playlist and reads the result back", async () => {
     const user = userEvent.setup();
     fake.state.playlists = [{ id: 1, name: "Frist", created_ms: 1, updated_ms: 1 }];

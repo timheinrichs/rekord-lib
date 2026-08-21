@@ -7,6 +7,7 @@ mod commands;
 mod db;
 mod error;
 mod events;
+mod export;
 mod jobs;
 mod metadata;
 mod models;
@@ -149,6 +150,7 @@ pub fn run() {
             commands::playlist_rename,
             commands::playlist_delete,
             commands::playlist_set,
+            commands::export_rekordbox_xml,
             commands::set_scan_paused,
             commands::events_load,
             commands::events_mark_seen,

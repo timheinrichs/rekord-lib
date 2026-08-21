@@ -84,6 +84,7 @@ import AddToPlaylist from "./AddToPlaylist";
 import { usePlayer, type PlayerTrack } from "../lib/player";
 import { usePlaylists } from "../lib/usePlaylists";
 import { buildPlaylistGroups } from "../lib/playlists";
+import { exportRekordbox } from "../lib/api";
 import MarqueeText from "./MarqueeText";
 import DuplicatesModal from "./DuplicatesModal";
 import SkippedModal from "./SkippedModal";
@@ -265,6 +266,8 @@ export default function LibraryView({
   const [skippedOpen, setSkippedOpen] = useState(false);
   // Outcome of the last re-link, shown once the folder is back.
   const [relocated, setRelocated] = useState<string | null>(null);
+  /** How many tracks the last export wrote, so the app says it happened. */
+  const [exported, setExported] = useState<number | null>(null);
 
   const libraryDir = settings.library_dir;
   // Only persist after the cache has been loaded – otherwise the initial
@@ -986,6 +989,29 @@ export default function LibraryView({
    * built from a selection should come out in the order the user was looking
    * at, not in the order a `Set` happens to iterate.
    */
+  const [exporting, setExporting] = useState(false);
+
+  /**
+   * Writes the Rekordbox collection, after asking where to put it.
+   *
+   * The count comes back from the backend rather than from the list on screen:
+   * the export reads the database, so what it wrote is what it should report,
+   * filter or no filter.
+   */
+  const runExport = useCallback(async () => {
+    if (!libraryDir) return;
+    setExporting(true);
+    setError(null);
+    try {
+      const written = await exportRekordbox(libraryDir);
+      if (written != null) setExported(written);
+    } catch (e) {
+      setError(`Could not write the export: ${e}`);
+    } finally {
+      setExporting(false);
+    }
+  }, [libraryDir]);
+
   const selectedPaths = useCallback(
     () => renderOrder.filter((t) => selected.has(t.id)).map((t) => t.path),
     [renderOrder, selected],
@@ -1883,6 +1909,26 @@ export default function LibraryView({
         </div>
       )}
 
+      {/* Writing a file somewhere the app does not otherwise touch is the kind
+          of thing that should say it happened, and with a number: "it worked"
+          and "it wrote your whole library" are different reassurances. */}
+      {exported != null && (
+        <div className="mb-4 flex items-center gap-3 rounded-lg border border-border bg-surface px-4 py-2 text-sm text-fg-muted">
+          <span>
+            Exported {exported} track{exported === 1 ? "" : "s"} and{" "}
+            {playlists.all.length} playlist
+            {playlists.all.length === 1 ? "" : "s"} for Rekordbox.
+          </span>
+          <button
+            onClick={() => setExported(null)}
+            className="ml-auto text-fg-subtle hover:text-fg"
+            aria-label="Dismiss"
+          >
+            ✕
+          </button>
+        </div>
+      )}
+
       {/* Filter bar (sticky below the header). While the cache is still being
           read its shape is held by placeholders, so the list below does not
           jump down once it appears. */}
@@ -1927,6 +1973,18 @@ export default function LibraryView({
               ? `${visibleTracks.length} of ${counts.total} tracks`
               : `${counts.total} tracks`}
           </span>
+          {/* Next to the count rather than in a menu: it exports the whole
+              library and its playlists, so it belongs to the library as a
+              whole. Named for what the other side calls it — this is the file
+              Rekordbox imports. */}
+          <button
+            onClick={runExport}
+            disabled={exporting || counts.total === 0}
+            className="ml-3 shrink-0 whitespace-nowrap rounded-lg border border-border-strong px-3 py-1.5 text-sm enabled:hover:border-accent-500 disabled:border-border disabled:text-fg-disabled"
+            title="Write a rekordbox.xml with every track, its tempo, key and beat grid, and the playlists"
+          >
+            {exporting ? "Exporting…" : "Export for Rekordbox"}
+          </button>
 
           {/* Right: the active facets sit directly beside the button that set
               them, so the two read as one control. Chips grow leftwards from

@@ -10,6 +10,7 @@ use crate::bandcamp::{collection, download, session};
 use crate::db::{self, FsIdentity, TrackRecord};
 use crate::error::{AppError, AppResult};
 use crate::events;
+use crate::export;
 use crate::jobs::{BandcampDownloadState, DedupeState, ScanState, WatchState};
 use crate::metadata::read::read_metadata;
 use crate::metadata::{artwork, suggest, write};
@@ -440,6 +441,42 @@ pub fn playlist_set(app: AppHandle, id: i64, paths: Vec<String>) -> AppResult<()
     let mut conn = database.conn()?;
     db::set_playlist_paths(&mut conn, id, &paths)?;
     Ok(())
+}
+
+/// Writes the library and its playlists as a Rekordbox XML collection.
+///
+/// The whole library, not only what is in a playlist: the collection is what
+/// Rekordbox imports tracks *from*, and a user who has spent an evening fixing
+/// sample rates wants all of it on the other side, playlists or no playlists.
+///
+/// `dest` comes from a save dialog, so it is a path the user named. Written
+/// whole rather than streamed — a few thousand tracks is a couple of megabytes,
+/// and a half-written collection is worse than none.
+#[tauri::command]
+pub fn export_rekordbox_xml(app: AppHandle, dir: String, dest: String) -> AppResult<usize> {
+    let database = db::require(&app)?;
+    let conn = database.conn()?;
+    let tracks = db::load_tracks(&conn, &dir)?;
+    let lists = db::load_playlists(&conn)?;
+    let contents = db::all_playlist_paths(&conn)?;
+    let playlists: Vec<export::rekordbox::PlaylistExport> = lists
+        .into_iter()
+        .map(|p| {
+            let paths = contents.get(&p.id).cloned().unwrap_or_default();
+            (p, paths)
+        })
+        .collect();
+
+    let xml = export::rekordbox::collection_xml(&tracks, &playlists);
+    std::fs::write(&dest, xml)?;
+    events::record(
+        &app,
+        crate::models::EventLevel::Info,
+        "export",
+        &format!("Exported {} tracks for Rekordbox", tracks.len()),
+        Some(&dest),
+    );
+    Ok(tracks.len())
 }
 
 /// Opens the **saved** library folder for playback (`asset:`), and nothing else.

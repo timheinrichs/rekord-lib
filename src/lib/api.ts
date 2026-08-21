@@ -1,6 +1,6 @@
 import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
-import { open } from "@tauri-apps/plugin-dialog";
+import { open, save } from "@tauri-apps/plugin-dialog";
 import type {
   BandcampAccount,
   BandcampItem,
@@ -319,6 +319,23 @@ export function onConvertProgress(
  */
 export function suggestMetadata(path: string): Promise<MetadataSuggestions> {
   return invoke<MetadataSuggestions>("suggest_metadata", { path });
+}
+
+/**
+ * Asks where to put the Rekordbox export, then writes it. Returns how many
+ * tracks went into the file, or null when the dialog was cancelled.
+ *
+ * The dialog is the reason `dialog:allow-save` is in the capability: the app
+ * writes one file, to a path the user named in a native panel. Everything else
+ * it writes goes into the library folder it was already given.
+ */
+export async function exportRekordbox(libraryDir: string): Promise<number | null> {
+  const dest = await save({
+    defaultPath: "rekordbox.xml",
+    filters: [{ name: "Rekordbox XML", extensions: ["xml"] }],
+  });
+  if (!dest) return null;
+  return invoke<number>("export_rekordbox_xml", { dir: libraryDir, dest });
 }
 
 // --- playlists ---------------------------------------------------------------

@@ -269,6 +269,7 @@ export function installFakeBackend(
       delete state.playlistContents[args.id as number];
       return null;
     },
+    export_rekordbox_xml: () => state.tracks.length,
     playlist_set: (args) => {
       // Like the real one: a path the library no longer holds is dropped rather
       // than failing the whole write.
