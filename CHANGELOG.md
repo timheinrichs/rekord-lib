@@ -7,7 +7,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/)
 (`MAJOR.MINOR.PATCH`). As long as the version is at `0.x`, MINOR bumps may
 contain incompatible changes.
 
-## [Unreleased]
+## [0.8.0] - 2026-08-22
 
 ### Added
 - **Playlists.** A fifth way of looking at the library, next to Flat, Album,
