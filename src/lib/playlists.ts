@@ -168,6 +168,19 @@ export interface PlaylistGroup {
   name: string;
   /** In playlist order for a real playlist; in list order for unsorted. */
   tracks: TrackAnalysis[];
+  /**
+   * Each visible track's place in the **whole** playlist, 1-based, and how long
+   * that playlist is — not its place among the rows that survived the filter.
+   *
+   * The two differ the moment a search is active, and the difference is not
+   * cosmetic: the ↑/↓ buttons move a track within the stored list, so a row
+   * showing "1" that is really the fifth entry would refuse to move up while
+   * having four tracks above it. Empty for the unsorted bucket, which has no
+   * order to be at a place in.
+   */
+  positions: Record<string, number>;
+  /** Entries in the stored playlist, visible or not. */
+  of: number;
 }
 
 /**
@@ -195,28 +208,38 @@ export function buildPlaylistGroups(
   const groups: PlaylistGroup[] = playlists.map((playlist) => {
     const paths = contents[playlist.id] ?? [];
     const inOrder: TrackAnalysis[] = [];
-    for (const path of paths) {
+    const positions: Record<string, number> = {};
+    paths.forEach((path, index) => {
+      // The position is taken from the stored list, before anything is
+      // skipped — a filtered-out track still occupies its place, and the
+      // buttons that move a row act on that list and not on this one.
+      positions[path] = index + 1;
       const track = byPath.get(path);
-      if (!track) continue;
+      if (!track) return;
       inOrder.push(track);
       spoken.add(path);
-    }
+    });
     return {
       playlist,
       id: playlist.id,
       name: playlist.name,
       tracks: inOrder,
+      positions,
+      of: paths.length,
     };
   });
 
   // Always present, even when empty: it is where a track lands when it is taken
   // out of a playlist, and a bucket that appears only sometimes is a bucket
   // nobody learns to look in.
+  const unsorted = tracks.filter((t) => !spoken.has(t.path));
   groups.push({
     playlist: null,
     id: UNSORTED_ID,
     name: "Unsorted",
-    tracks: tracks.filter((t) => !spoken.has(t.path)),
+    tracks: unsorted,
+    positions: {},
+    of: unsorted.length,
   });
   return groups;
 }

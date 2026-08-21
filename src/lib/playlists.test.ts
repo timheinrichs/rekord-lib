@@ -197,6 +197,35 @@ describe("buildPlaylistGroups", () => {
     expect(all[all.length - 1].tracks).toEqual([]);
   });
 
+  it("numbers a row by the playlist, not by what the filter left over", () => {
+    // The row shows the position and the ↑/↓ buttons switch themselves off at
+    // the ends — but they move the track inside the *stored* list. Numbering
+    // from the visible rows made a filtered track "1 of 1": no way up, no way
+    // down, while sitting third in a list of three.
+    const onlyB = [makeTrack({ path: B, id: B })];
+    const groups = buildPlaylistGroups(
+      [playlist("Set", 1)],
+      { 1: [A, B, C] },
+      onlyB,
+    );
+    expect(groups[0].tracks.map((t) => t.path)).toEqual([B]);
+    expect(groups[0].positions[B]).toBe(2);
+    expect(groups[0].of).toBe(3);
+  });
+
+  it("counts a path the library no longer holds, and does not draw it", () => {
+    // A deleted file leaves its membership behind until the sweep prunes it.
+    // Skipping the row is right; renumbering around it is not, because the
+    // stored list is what a move is applied to.
+    const groups = buildPlaylistGroups(
+      [playlist("Set", 1)],
+      { 1: ["/gone.aiff", A] },
+      tracks,
+    );
+    expect(groups[0].tracks.map((t) => t.path)).toEqual([A]);
+    expect(groups[0].positions[A]).toBe(2);
+  });
+
   it("skips a path with no track on screen", () => {
     // Filtered out, or the file is gone and the row already pruned. Either way
     // there is nothing to draw, and the count follows what is visible.

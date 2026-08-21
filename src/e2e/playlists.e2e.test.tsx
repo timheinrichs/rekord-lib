@@ -10,7 +10,7 @@
  */
 import { cleanup, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import App from "../App";
 import { libraryView } from "../test/appDom";
 import { makeMetadata, makeTrack } from "../test/factories";
@@ -136,6 +136,40 @@ describe("playlists", () => {
     expect(beta).toBeTruthy();
     // First in the playlist, whatever the table would have sorted it as.
     expect(beta!.textContent).toContain("1");
+  });
+
+  it("draws a track that is in two playlists as two rows", async () => {
+    // One flat array of rows feeds one tbody, so both groups push a row for the
+    // same track. Keyed by the track alone they are the same key: React warns
+    // and reconciles them into a single row, and the position cell and the drag
+    // handlers then belong to whichever group happened to win.
+    const user = userEvent.setup();
+    const warn = vi.spyOn(console, "error").mockImplementation(() => {});
+    fake.state.playlists = [
+      { id: 1, name: "Warmup", created_ms: 1, updated_ms: 1 },
+      { id: 2, name: "Peak", created_ms: 2, updated_ms: 2 },
+    ];
+    fake.state.playlistContents = { 1: [A], 2: [B, A] };
+
+    const { container } = render(<App />);
+    const view = await ready(container);
+    await user.click(view.getByRole("button", { name: "Playlists" }));
+    await waitFor(() =>
+      expect(view.getAllByText("Warmup").length).toBeGreaterThan(0),
+    );
+    await user.click(view.getAllByText("Warmup")[0]);
+    await user.click(view.getAllByText("Peak")[0]);
+
+    const rows = view.getAllByRole("row").filter((r) => within(r).queryByTitle(A));
+    expect(rows).toHaveLength(2);
+    // Each row carries its own group's number: first in one, second in the other.
+    const numbers = rows.map((r) => r.textContent?.trim().charAt(0));
+    expect(new Set(numbers)).toEqual(new Set(["1", "2"]));
+    expect(
+      warn.mock.calls.some((c) => String(c[0]).includes("same key")),
+      "React complained about duplicate keys",
+    ).toBe(false);
+    warn.mockRestore();
   });
 
   it("exports the library where the save dialog points", async () => {

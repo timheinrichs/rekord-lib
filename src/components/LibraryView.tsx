@@ -2392,7 +2392,12 @@ export default function LibraryView({
                   dragOver.before === t.path;
                 return (
                   <tr
-                    key={t.id}
+                    // The same track may be in two playlists, and with both
+                    // expanded it is two sibling rows. A bare `t.id` makes them
+                    // one key, which React reconciles into one row — the drag
+                    // handlers and the position cell then belong to whichever
+                    // group won.
+                    key={inPlaylist ? `${inPlaylist.id}:${t.id}` : t.id}
                     onClick={() => setEditingId(t.id)}
                     draggable={!!inPlaylist}
                     onDragStart={
@@ -2802,8 +2807,12 @@ export default function LibraryView({
                           group.playlist
                             ? {
                                 id: group.id,
-                                position: i + 1,
-                                of: group.tracks.length,
+                                // From the stored playlist, not from `i`: with
+                                // a filter on, the row's place among what is
+                                // visible is not its place in the list the
+                                // buttons move it within.
+                                position: group.positions[t.path] ?? i + 1,
+                                of: group.of,
                               }
                             : undefined,
                         ),
