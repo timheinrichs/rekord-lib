@@ -844,6 +844,18 @@ pub fn all_playlist_paths(conn: &Connection) -> DbResult<HashMap<i64, Vec<String
 /// complexity. It also means the frontend's pure ordering logic
 /// (`src/lib/playlists.ts`) is the only place that has to be right about what
 /// the new order *is*.
+/// Is this the one failure a playlist write is allowed to shrug off — a path
+/// with no row in `tracks`? Anything else means the database could not do what
+/// it was asked, and the caller has to hear about it.
+fn is_missing_track(err: &rusqlite::Error) -> bool {
+    matches!(
+        err,
+        rusqlite::Error::SqliteFailure(e, _)
+            if e.code == rusqlite::ErrorCode::ConstraintViolation
+                && e.extended_code == 787 // SQLITE_CONSTRAINT_FOREIGNKEY
+    )
+}
+
 pub fn set_playlist_paths(conn: &mut Connection, id: i64, paths: &[String]) -> DbResult<()> {
     let tx = conn.transaction()?;
     tx.execute("DELETE FROM playlist_items WHERE playlist_id = ?1", params![id])?;
@@ -856,7 +868,18 @@ pub fn set_playlist_paths(conn: &mut Connection, id: i64, paths: &[String]) -> D
             // Skipped rather than failing the whole write: the list came from a
             // UI that may be a moment behind a delete, and losing the other
             // forty entries to that race would be the worse outcome.
-            let _ = stmt.execute(params![id, path, position as i64]);
+            //
+            // Only that one, though. `let _ =` here used to swallow a full
+            // disk, a locked database and an I/O error alike — and since the
+            // DELETE above has already run and the transaction still commits,
+            // the caller was told the write had worked while the playlist had
+            // been truncated. The reload that follows then makes the short list
+            // the truth.
+            match stmt.execute(params![id, path, position as i64]) {
+                Ok(_) => {}
+                Err(e) if is_missing_track(&e) => {}
+                Err(e) => return Err(e),
+            }
         }
     }
     tx.execute(
@@ -1293,6 +1316,38 @@ mod tests {
             !stale[0].bpm_absent,
             "a mark from an older detector must not silence the file for good"
         );
+    }
+
+    #[test]
+    fn a_playlist_write_forgives_a_missing_track_and_nothing_else() {
+        // The one failure it may shrug off is a path the library no longer
+        // holds — the list came from a UI a moment behind a delete. A real
+        // error must not look the same, because the DELETE has already run:
+        // reporting success there hands back a truncated playlist as the truth.
+        let db = Db::open_in_memory().unwrap();
+        let mut conn = db.0.lock().unwrap();
+        upsert_tracks(&mut conn, "/lib", &[record("/lib/a.aiff", None)]).unwrap();
+        let id = create_playlist(&conn, "Set").unwrap();
+
+        set_playlist_paths(
+            &mut conn,
+            id,
+            &["/lib/a.aiff".into(), "/lib/gone.aiff".into()],
+        )
+        .unwrap();
+        assert_eq!(
+            all_playlist_paths(&conn).unwrap().get(&id),
+            Some(&vec!["/lib/a.aiff".to_string()])
+        );
+
+        // A duplicate violates the primary key, not the foreign key, so it is
+        // an error the caller hears about rather than a row quietly dropped.
+        let twice = set_playlist_paths(
+            &mut conn,
+            id,
+            &["/lib/a.aiff".into(), "/lib/a.aiff".into()],
+        );
+        assert!(twice.is_err(), "a constraint that is not the FK must surface");
     }
 
     #[test]

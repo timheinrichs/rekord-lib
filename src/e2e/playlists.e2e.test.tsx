@@ -210,6 +210,36 @@ describe("playlists", () => {
     expect(fake.called("export_rekordbox_xml")).toBe(false);
   });
 
+  it("puts a row back where the database has it when a write fails", async () => {
+    // The optimistic order is shown before the write returns. If the write does
+    // not land, the only honest thing left is what the database says — and it
+    // has to arrive as a row moving back, not as an unhandled rejection in a
+    // console nobody has open.
+    const user = userEvent.setup();
+    const unhandled = vi.fn();
+    window.addEventListener("unhandledrejection", unhandled);
+    fake.state.playlists = [{ id: 1, name: "Set", created_ms: 1, updated_ms: 1 }];
+    fake.state.playlistContents = { 1: [A, B] };
+    fake.fail("playlist_set", "database is locked");
+
+    const { container } = render(<App />);
+    const view = await ready(container);
+    await user.click(view.getByRole("button", { name: "Playlists" }));
+    await waitFor(() => expect(view.getAllByText("Set").length).toBeGreaterThan(0));
+    await user.click(view.getAllByText("Set")[0]);
+
+    await user.click((await view.findAllByRole("button", { name: "Move down" }))[0]);
+
+    await waitFor(() => expect(fake.called("playlist_set")).toBe(true));
+    // Re-read, and the order is the one that was there all along.
+    await waitFor(() => {
+      const rows = view.getAllByRole("row").filter((r) => within(r).queryByTitle(A));
+      expect(rows[0].textContent?.trim().charAt(0)).toBe("1");
+    });
+    expect(unhandled).not.toHaveBeenCalled();
+    window.removeEventListener("unhandledrejection", unhandled);
+  });
+
   it("renames a playlist and reads the result back", async () => {
     const user = userEvent.setup();
     fake.state.playlists = [{ id: 1, name: "Frist", created_ms: 1, updated_ms: 1 }];

@@ -85,6 +85,12 @@ export function usePlaylists(): Playlists {
       setContents((prev) => ({ ...prev, [id]: next }));
       try {
         await setPlaylistPaths(id, next);
+      } catch {
+        // Swallowed here rather than thrown at the caller: every one of them is
+        // a click handler that calls this as `void`, so a rejection would be an
+        // unhandled one in the console and nothing else. The reload below is
+        // what the user actually sees — the row goes back to where the database
+        // says it is, which is the honest answer to a write that did not land.
       } finally {
         // Even after a failure: what the database ended up with is what the
         // screen should show, and that is a question only it can answer.
