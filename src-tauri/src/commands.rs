@@ -467,7 +467,20 @@ pub fn export_rekordbox_xml(app: AppHandle, dir: String, dest: String) -> AppRes
         })
         .collect();
 
-    let xml = export::rekordbox::collection_xml(&tracks, &playlists);
+    // Stat'd here rather than carried on the row: the size is part of the scan's
+    // cache identity, not something the UI ever shows, and the export is the one
+    // reader that wants it. A file that cannot be stat'd is simply exported
+    // without a size.
+    let sizes: std::collections::HashMap<String, u64> = tracks
+        .iter()
+        .filter_map(|t| {
+            std::fs::metadata(&t.path)
+                .ok()
+                .map(|m| (t.path.clone(), m.len()))
+        })
+        .collect();
+
+    let xml = export::rekordbox::collection_xml(&tracks, &playlists, &sizes);
     std::fs::write(&dest, xml)?;
     events::record(
         &app,
@@ -664,9 +677,15 @@ async fn detect_bpm_pass(
                 // reads it from the row.
                 let mut gridded = false;
                 if let Some(grid) = analysis.beats.as_ref() {
-                    gridded = tracks[index].beat_offset_secs != Some(grid.offset_secs);
-                    tracks[index].beat_offset_secs = Some(grid.offset_secs);
-                    tracks[index].beat_confidence = Some(grid.confidence);
+                    // The row's tempo, not the analysis's: for a track that
+                    // already had one, the stored value is what the export
+                    // writes and therefore what the grid has to belong to.
+                    let detected = analysis.tempo.map(|t| t.bpm as f64).unwrap_or(0.0);
+                    if grid_matches_tempo(tracks[index].metadata.bpm, detected) {
+                        gridded = tracks[index].beat_offset_secs != Some(grid.offset_secs);
+                        tracks[index].beat_offset_secs = Some(grid.offset_secs);
+                        tracks[index].beat_confidence = Some(grid.confidence);
+                    }
                 }
 
                 let mut marked = false;
@@ -699,15 +718,51 @@ async fn detect_bpm_pass(
     false
 }
 
-/// Is this track's tempo worth looking for?
+/// Is this track worth listening to for a tempo?
 ///
-/// `bpm_absent` is this version's detector saying it has already listened to
-/// this file and found nothing — an interlude, a drone, an air check. A plain
-/// rescan has no reason to hear it out again; "Re-detect BPM" (`force`) is the
-/// deliberate second opinion, and a new release gets one for free, because the
-/// mark expires with the version that set it (C9).
+/// Three cases, and the third is the one that is easy to miss:
+///
+/// - **No tempo yet** — the ordinary backlog.
+/// - **`bpm_absent`** — this version's detector has already listened and found
+///   nothing (an interlude, a drone, an air check). A plain rescan has no reason
+///   to hear it out again; "Re-detect BPM" (`force`) is the deliberate second
+///   opinion, and a new release gets one for free because the mark expires with
+///   the version that set it (C9).
+/// - **A tempo but no beat grid.** The scan writes the tempo into the file, so
+///   the next read finds it in the tag and never analyses again — which meant a
+///   library built before the grid existed could never grow one, and exported
+///   without a single `TEMPO` marker. The analysis has to run once more for
+///   those, and after that the grid is there and this stops being true.
 fn wants_tempo(track: &TrackAnalysis, force: bool) -> bool {
-    force || (track.metadata.bpm.is_none() && !track.bpm_absent)
+    if force {
+        return true;
+    }
+    if track.bpm_absent {
+        return false;
+    }
+    track.metadata.bpm.is_none() || track.beat_offset_secs.is_none()
+}
+
+/// How far a re-detected tempo may sit from the stored one before the grid it
+/// belongs to is worthless. 0.5 % is well inside one decimal place at any club
+/// tempo, and well outside a half- or double-time disagreement.
+const GRID_TEMPO_TOLERANCE: f64 = 0.005;
+
+/// May this grid be stored next to that tempo?
+///
+/// The phase was measured against the tempo the detector just found. If the row
+/// holds a different one — a tag somebody else wrote, or a value from a detector
+/// we have since improved — then beats placed with our period drift against the
+/// number the player will use, and a grid that drifts is worse than none. So the
+/// two have to agree about what tempo the grid belongs to.
+fn grid_matches_tempo(stored: Option<f64>, detected: f64) -> bool {
+    match stored {
+        None => true,
+        Some(stored) if stored > 0.0 && detected > 0.0 => {
+            (stored - detected).abs() / stored <= GRID_TEMPO_TOLERANCE
+        }
+        Some(_) => false,
+    }
 }
 
 /// What the "listened, no tempo" mark should become after the pass looked at a
@@ -2444,8 +2499,54 @@ mod tests {
             assert!(wants_tempo(&track_with(None, true), true));
             // Everything else is unchanged: no tempo means look for one.
             assert!(wants_tempo(&track_with(None, false), false));
-            assert!(!wants_tempo(&track_with(Some(128.0), false), false));
-            assert!(wants_tempo(&track_with(Some(128.0), false), true));
+            // A track that has both a tempo and a grid has nothing left to
+            // find. Spelled out with the grid set, because without one it is
+            // wanted for the grid alone — which is the case the test below
+            // covers, and the reason this fixture has to say which it is.
+            let mut done = track_with(Some(128.0), false);
+            done.beat_offset_secs = Some(30.0);
+            assert!(!wants_tempo(&done, false));
+            assert!(wants_tempo(&done, true));
+        }
+
+        #[test]
+        fn a_track_with_a_tempo_but_no_grid_is_listened_to_once_more() {
+            // The scan writes the tempo into the file, so the next read finds it
+            // in the tag and never analyses again. A library built before the
+            // grid existed could therefore never grow one, and exported without
+            // a single TEMPO marker — which is exactly what happened.
+            let mut has_both = track_with(Some(128.0), false);
+            has_both.beat_offset_secs = Some(30.0);
+            assert!(!wants_tempo(&has_both, false), "nothing left to find");
+
+            let mut no_grid = track_with(Some(128.0), false);
+            no_grid.beat_offset_secs = None;
+            assert!(wants_tempo(&no_grid, false), "the grid is still missing");
+
+            // Except where the detector has already said there is nothing to
+            // find: no tempo means no phase either, and asking again is the
+            // repeated work C9 exists to stop.
+            let mut absent = track_with(None, true);
+            absent.beat_offset_secs = None;
+            assert!(!wants_tempo(&absent, false));
+        }
+
+        #[test]
+        fn a_grid_is_only_kept_next_to_a_tempo_it_belongs_to() {
+            // The phase was measured against the tempo the detector just found.
+            // Stored next to a different one — a tag somebody else wrote, or a
+            // value from a detector we have since improved — the beats drift
+            // against the number the player actually uses.
+            assert!(grid_matches_tempo(Some(128.0), 128.0));
+            assert!(grid_matches_tempo(Some(128.0), 128.4), "within a rounding");
+            assert!(!grid_matches_tempo(Some(128.0), 129.0));
+            // Half and double time are the disagreement that matters most.
+            assert!(!grid_matches_tempo(Some(128.0), 64.0));
+            assert!(!grid_matches_tempo(Some(128.0), 256.0));
+            // No stored tempo: the analysis is the only opinion there is.
+            assert!(grid_matches_tempo(None, 128.0));
+            // A detector that found nothing cannot place a grid either.
+            assert!(!grid_matches_tempo(Some(128.0), 0.0));
         }
 
         #[test]

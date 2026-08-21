@@ -13,9 +13,14 @@
 //!
 //! **What is deliberately not written.** Cue points — the app has no concept of
 //! one, and inventing empty ones would put marks in somebody's player that
-//! nobody set. `Size`, because a track row does not carry the file size. And
-//! nothing at all for a track with no tempo: `AverageBpm="0.00"` is what
-//! Rekordbox writes for "not analysed", and that is the honest value.
+//! nobody set. And nothing at all for a track with no tempo:
+//! `AverageBpm="0.00"` is what Rekordbox writes for "not analysed", and that is
+//! the honest value.
+//!
+//! **Artwork is not in this format.** There is no attribute for it; Rekordbox
+//! reads the cover out of the file itself, once the track is imported into the
+//! collection rather than only browsed in the xml view. Nothing to write here,
+//! and nothing missing.
 
 use crate::models::{Playlist, TrackAnalysis};
 
@@ -27,7 +32,15 @@ pub type PlaylistExport = (Playlist, Vec<String>);
 /// A string rather than a writer: an XML collection of a few thousand tracks is
 /// a couple of megabytes, the caller writes it in one go, and being able to
 /// assert on the result in a test is worth more here than streaming would be.
-pub fn collection_xml(tracks: &[TrackAnalysis], playlists: &[PlaylistExport]) -> String {
+/// `sizes` is the file size per path. Not on the track row — the scan keeps the
+/// size as part of the cache identity, not as something the UI shows — so the
+/// caller stats the files and hands them over. A path that is missing simply
+/// gets no `Size`, which is what an unreadable file deserves.
+pub fn collection_xml(
+    tracks: &[TrackAnalysis],
+    playlists: &[PlaylistExport],
+    sizes: &std::collections::HashMap<String, u64>,
+) -> String {
     // Rekordbox keys playlist entries by TrackID, so every track needs one that
     // is stable within the document. The index is exactly that, and nothing
     // outside the file refers to it.
@@ -51,7 +64,7 @@ pub fn collection_xml(tracks: &[TrackAnalysis], playlists: &[PlaylistExport]) ->
         tracks.len()
     ));
     for (i, track) in tracks.iter().enumerate() {
-        out.push_str(&track_xml(track, i as i64 + 1));
+        out.push_str(&track_xml(track, i as i64 + 1, sizes.get(&track.path).copied()));
     }
     out.push_str("  </COLLECTION>\n");
 
@@ -77,7 +90,7 @@ pub fn collection_xml(tracks: &[TrackAnalysis], playlists: &[PlaylistExport]) ->
     out
 }
 
-fn track_xml(t: &TrackAnalysis, id: i64) -> String {
+fn track_xml(t: &TrackAnalysis, id: i64, size: Option<u64>) -> String {
     let md = &t.metadata;
     let attr = |name: &str, value: &str| {
         if value.is_empty() {
@@ -106,6 +119,15 @@ fn track_xml(t: &TrackAnalysis, id: i64) -> String {
         t.audio.duration_secs.round().max(0.0) as i64
     ));
     line.push_str(&format!(" SampleRate=\"{}\"", t.audio.sample_rate));
+    if let Some(size) = size {
+        line.push_str(&format!(" Size=\"{size}\""));
+        // The average over the whole file, which is also the only honest number
+        // for a VBR mp3 — and what Rekordbox shows for one anyway. Without it
+        // its summary panel reads "0 kbps", which looks like a broken file.
+        if let Some(kbps) = bitrate_kbps(size, t.audio.duration_secs) {
+            line.push_str(&format!(" BitRate=\"{kbps}\""));
+        }
+    }
     if let Some(n) = md.track_number {
         line.push_str(&format!(" TrackNumber=\"{n}\""));
     }
@@ -156,6 +178,14 @@ pub fn location_url(path: &str) -> String {
         }
     }
     out
+}
+
+/// Average bit rate in kbps, or `None` for a file with no length to divide by.
+fn bitrate_kbps(size: u64, duration_secs: f64) -> Option<u64> {
+    if duration_secs <= 0.0 {
+        return None;
+    }
+    Some((size as f64 * 8.0 / duration_secs / 1000.0).round() as u64)
 }
 
 /// What Rekordbox calls this kind of file.
@@ -254,6 +284,11 @@ mod tests {
         }
     }
 
+    /// No sizes, for the cases that are not about the size.
+    fn nothing() -> std::collections::HashMap<String, u64> {
+        std::collections::HashMap::new()
+    }
+
     fn list(id: i64, name: &str) -> Playlist {
         Playlist {
             id,
@@ -266,7 +301,7 @@ mod tests {
 
     #[test]
     fn a_track_carries_what_the_app_knows_about_it() {
-        let xml = collection_xml(&[track("/lib/a.aiff", "Opening")], &[]);
+        let xml = collection_xml(&[track("/lib/a.aiff", "Opening")], &[], &nothing());
         assert!(xml.contains("<DJ_PLAYLISTS Version=\"1.0.0\">"));
         assert!(xml.contains("TrackID=\"1\""));
         assert!(xml.contains("Name=\"Opening\""));
@@ -288,7 +323,7 @@ mod tests {
     fn a_track_with_no_grid_is_a_single_empty_element() {
         let mut t = track("/lib/a.aiff", "Opening");
         t.beat_offset_secs = None;
-        let xml = collection_xml(&[t], &[]);
+        let xml = collection_xml(&[t], &[], &nothing());
         assert!(!xml.contains("<TEMPO"));
         assert!(xml.contains("/>\n"), "{xml}");
     }
@@ -300,7 +335,7 @@ mod tests {
         let mut t = track("/lib/a.aiff", "Interlude");
         t.metadata.bpm = None;
         t.beat_offset_secs = None;
-        let xml = collection_xml(&[t], &[]);
+        let xml = collection_xml(&[t], &[], &nothing());
         assert!(xml.contains("AverageBpm=\"0.00\""), "{xml}");
     }
 
@@ -310,7 +345,7 @@ mod tests {
         // shows everywhere in this app.
         let mut t = track("/lib/no-tags.aiff", "");
         t.metadata.title = None;
-        let xml = collection_xml(&[t], &[]);
+        let xml = collection_xml(&[t], &[], &nothing());
         assert!(xml.contains("Name=\"no-tags.aiff\""), "{xml}");
     }
 
@@ -321,7 +356,7 @@ mod tests {
             list(1, "Warmup"),
             vec!["/lib/b.aiff".to_string(), "/lib/a.aiff".to_string()],
         )];
-        let xml = collection_xml(&tracks, &playlists);
+        let xml = collection_xml(&tracks, &playlists, &nothing());
         assert!(xml.contains("<NODE Name=\"Warmup\" Type=\"1\" KeyType=\"0\" Entries=\"2\">"));
         // In playlist order, which is the whole point of storing an order.
         let first = xml.find("<TRACK Key=\"2\"/>").unwrap();
@@ -338,7 +373,7 @@ mod tests {
             list(1, "Set"),
             vec!["/lib/a.aiff".to_string(), "/lib/gone.aiff".to_string()],
         )];
-        let xml = collection_xml(&tracks, &playlists);
+        let xml = collection_xml(&tracks, &playlists, &nothing());
         assert!(xml.contains("Entries=\"1\""), "{xml}");
     }
 
@@ -347,7 +382,7 @@ mod tests {
         let mut t = track("/lib/a.aiff", "Rock & \"Roll\" <mix>");
         t.metadata.artist = Some("A & B".into());
         let playlists = vec![(list(1, "Peak & Close"), vec!["/lib/a.aiff".to_string()])];
-        let xml = collection_xml(&[t], &playlists);
+        let xml = collection_xml(&[t], &playlists, &nothing());
         assert!(xml.contains("Name=\"Rock &amp; &quot;Roll&quot; &lt;mix&gt;\""), "{xml}");
         assert!(xml.contains("Name=\"Peak &amp; Close\""));
         assert!(!xml.contains("& \""), "a bare ampersand would not parse");
@@ -386,7 +421,7 @@ mod tests {
         a.metadata.bpm = Some(127.6);
         a.beat_offset_secs = Some(30.5);
         let b = track("/lib/b.aiff", "Beta");
-        std::fs::write(&xml_path, collection_xml(&[a, b], &[])).unwrap();
+        std::fs::write(&xml_path, collection_xml(&[a, b], &[], &nothing())).unwrap();
 
         let script = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
             .parent()
@@ -413,6 +448,31 @@ mod tests {
         assert!(csv.contains("127.60"), "{csv}");
         assert!(csv.contains("30.5000"), "{csv}");
         assert!(csv.contains(",Am,"), "{csv}");
+    }
+
+    #[test]
+    fn a_size_brings_a_bit_rate_with_it() {
+        // Without them Rekordbox' summary reads "0 Byte, 0 kbps", which looks
+        // like a broken file rather than a field we did not fill in.
+        let sizes = std::collections::HashMap::from([("/lib/a.aiff".to_string(), 37_108_800u64)]);
+        let xml = collection_xml(&[track("/lib/a.aiff", "Opening")], &[], &sizes);
+        assert!(xml.contains("Size=\"37108800\""), "{xml}");
+        // 37,108,800 bytes over 210.4 s ≈ 1411 kbps, which is CD PCM.
+        assert!(xml.contains("BitRate=\"1411\""), "{xml}");
+    }
+
+    #[test]
+    fn a_file_that_cannot_be_stated_is_exported_without_one() {
+        let xml = collection_xml(&[track("/lib/a.aiff", "Opening")], &[], &nothing());
+        assert!(!xml.contains("Size="));
+        assert!(!xml.contains("BitRate="));
+    }
+
+    #[test]
+    fn a_track_with_no_length_has_no_bit_rate_to_state() {
+        // Division by zero would otherwise reach the file as `inf`.
+        assert_eq!(bitrate_kbps(1000, 0.0), None);
+        assert_eq!(bitrate_kbps(1000, -1.0), None);
     }
 
     #[test]
