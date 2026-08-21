@@ -132,6 +132,11 @@ proven against real Rekordbox files; what is missing is upstream of it.
 
 The writing itself is one place: `export::rekordbox::track_xml`, which already
 emits the `<TEMPO>` marker and is where a `<POSITION_MARK>` per cue would go.
+That is the small end. The storage is the larger one: cues are their own table
+next to `playlist_items` — a position and a colour per mark, keyed the way that
+table is keyed, by `path` rather than by a track id — and a new table is a
+`SCHEMA_VERSION` step, currently 9. `tracks` is the wrong home: a track has one
+beat grid but any number of marks.
 
 Two things this needs beyond storage and UI. The round trip that keeps the writer
 honest reads `<TEMPO>` and nothing else — `scripts/rekordbox-reference.py` has no
@@ -1361,9 +1366,14 @@ a rebuild. The UI is what has not caught up — `PlaylistMenu` and
 `AddToPlaylist` cover create, rename, delete and add, and there is nowhere to
 see a playlist as a list and move a track within it.
 
-Note what it must not become: a second place where playlist state lives. The
-dialog edits through the same commands, and the ordering logic stays in
-`src/lib/` where it is testable, as A1 specified.
+The reason this is small: the ordering logic is already written, pure and
+covered — `movePlaylistItem`, `movePlaylistItems`, `stepPlaylistItem`,
+`addToPlaylist` and `removeFromPlaylist` in `src/lib/playlists.ts`, 29 tests. An
+overlay is a second view onto those same functions, not a new mechanism.
+
+Which is also what it must not become: a second place where playlist state
+lives. The dialog edits through the same commands and the same pure helpers, as
+A1 specified.
 
 *Size: S · depends on A1, which shipped*
 
