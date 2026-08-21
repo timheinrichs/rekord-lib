@@ -25,6 +25,7 @@ document, and a claim with no test named next to it has nowhere to hide.
 | [CONVERSION.md](CONVERSION.md) | The five compatibility rules, what "compatible" actually claims, and what the conversion pipeline changes |
 | [METADATA.md](METADATA.md) | Reading and writing tags, covers, suggestions, and what undo captures |
 | [COMMANDS.md](COMMANDS.md) | Every Tauri command and every event: arguments, return, what it emits, which wrapper calls it |
+| [TESTING.md](TESTING.md) | The three test levels and where each one stops, why `tauri-driver` cannot be used here, and how the automation server is kept out of releases |
 
 ## Evidence and measurement
 

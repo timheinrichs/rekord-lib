@@ -1,0 +1,77 @@
+# The end-to-end suite (roadmap G1), which drives the built app through
+# WebdriverIO. Deliberately not part of `ci.yml`.
+#
+# `ci.yml` gates every push and pull request — typecheck plus both unit suites,
+# in about a minute — and `docs/FUTURE_CONSIDERATIONS.md` commits us to keeping
+# that gate one people actually keep green. This job builds a Tauri bundle and
+# then scans a generated library with a debug build, which is minutes, not
+# seconds. Putting it on every push is how a gate stops being trusted.
+#
+# So it runs on demand, and on a pull request that asks for it by carrying the
+# `e2e` label. Run it before a release.
+name: E2E
+
+on:
+  workflow_dispatch:
+  pull_request:
+    types: [labeled, synchronize]
+
+jobs:
+  e2e:
+    name: End-to-end (built app)
+    # Only when asked for. `synchronize` re-runs it for a PR that already
+    # carries the label, so a labelled branch keeps being checked as it moves.
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      contains(github.event.pull_request.labels.*.name, 'e2e')
+    # macOS arm64: the only target we ship, and the only one the bundled
+    # ffmpeg/ffprobe sidecars exist for. The embedded WebDriver server drives
+    # WKWebView here; `tauri-driver` has no macOS support at all.
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-apple-darwin
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+      - run: npm ci
+
+      - name: Typecheck the suite
+        # `e2e/` sits outside the root tsconfig's `include`, so `tsc --noEmit`
+        # in ci.yml does not cover it.
+        run: npm run typecheck:e2e
+
+      - name: The release guard still guards
+        # The `wdio` feature carries an HTTP automation server, and `lib.rs`
+        # refuses to compile it into a release. This asserts that refusal is
+        # still there — a guard nobody checks is a guard that quietly stops
+        # working after a refactor.
+        run: |
+          if cargo check --release --features wdio \
+              --manifest-path src-tauri/Cargo.toml \
+              --target aarch64-apple-darwin 2>/dev/null; then
+            echo "::error::a release build with --features wdio compiled; the guard in lib.rs is gone"
+            exit 1
+          fi
+          echo "the guard held"
+
+      - name: Build the e2e app
+        # Generates the fixture library, wipes the e2e app data directory, and
+        # builds a debug bundle with the wdio feature. Never touches real data:
+        # there is no REKORD_DEV_REAL path in this script.
+        run: npm run e2e:build
+
+      - name: Run the suite
+        run: npx wdio run e2e/wdio.conf.ts
+
+      - name: Logs, when it failed
+        if: failure()
+        run: |
+          ls -la .dev || true
+          cat .dev/e2e-app.json || true
