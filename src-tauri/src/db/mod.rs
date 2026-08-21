@@ -58,6 +58,14 @@ impl Db {
     /// Locks the connection. A poisoned lock (a panic while a write was in
     /// flight) becomes an error rather than another panic, so one bad write
     /// cannot take down every later command.
+    /// The connection, locked.
+    ///
+    /// **Nothing that reaches for the database again may run while this guard is
+    /// alive.** It is a `std::sync::Mutex`, which is not reentrant, so a second
+    /// `conn()` on the same thread deadlocks against the first — and a
+    /// synchronous command does that on the thread the window is drawn on, so
+    /// the app freezes with no error at all. `events::record` is the easy one to
+    /// walk into: it stores what it logs. Scope the guard and let it go first.
     pub fn conn(&self) -> AppResult<std::sync::MutexGuard<'_, Connection>> {
         self.0
             .lock()

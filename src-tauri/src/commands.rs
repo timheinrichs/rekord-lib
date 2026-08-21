@@ -453,43 +453,64 @@ pub fn playlist_set(app: AppHandle, id: i64, paths: Vec<String>) -> AppResult<()
 /// whole rather than streamed — a few thousand tracks is a couple of megabytes,
 /// and a half-written collection is worse than none.
 #[tauri::command]
-pub fn export_rekordbox_xml(app: AppHandle, dir: String, dest: String) -> AppResult<usize> {
-    let database = db::require(&app)?;
-    let conn = database.conn()?;
-    let tracks = db::load_tracks(&conn, &dir)?;
-    let lists = db::load_playlists(&conn)?;
-    let contents = db::all_playlist_paths(&conn)?;
-    let playlists: Vec<export::rekordbox::PlaylistExport> = lists
-        .into_iter()
-        .map(|p| {
-            let paths = contents.get(&p.id).cloned().unwrap_or_default();
-            (p, paths)
-        })
-        .collect();
+pub async fn export_rekordbox_xml(app: AppHandle, dir: String, dest: String) -> AppResult<usize> {
+    let handle = app.clone();
+    let target = dest.clone();
+    // Off the main thread, and not only for politeness: a real collection means
+    // two thousand `metadata` calls and a couple of megabytes written, and a
+    // synchronous command does all of that where the window is drawn.
+    let written = tauri::async_runtime::spawn_blocking(move || -> AppResult<usize> {
+        // The connection is scoped, deliberately. `Db` is a plain `Mutex` and
+        // `std::sync::Mutex` is not reentrant, so anything that reaches for the
+        // database again — `events::record` does, to store the event — would
+        // deadlock against this very guard. It froze the whole app after a
+        // successful export, with the log line already printed.
+        let (tracks, playlists) = {
+            let database = db::require(&handle)?;
+            let conn = database.conn()?;
+            let tracks = db::load_tracks(&conn, &dir)?;
+            let lists = db::load_playlists(&conn)?;
+            let contents = db::all_playlist_paths(&conn)?;
+            let playlists: Vec<export::rekordbox::PlaylistExport> = lists
+                .into_iter()
+                .map(|p| {
+                    let paths = contents.get(&p.id).cloned().unwrap_or_default();
+                    (p, paths)
+                })
+                .collect();
+            (tracks, playlists)
+        };
 
-    // Stat'd here rather than carried on the row: the size is part of the scan's
-    // cache identity, not something the UI ever shows, and the export is the one
-    // reader that wants it. A file that cannot be stat'd is simply exported
-    // without a size.
-    let sizes: std::collections::HashMap<String, u64> = tracks
-        .iter()
-        .filter_map(|t| {
-            std::fs::metadata(&t.path)
-                .ok()
-                .map(|m| (t.path.clone(), m.len()))
-        })
-        .collect();
+        // Stat'd here rather than carried on the row: the size is part of the
+        // scan's cache identity, not something the UI ever shows, and the export
+        // is the one reader that wants it. A file that cannot be stat'd is
+        // simply exported without a size.
+        let sizes: std::collections::HashMap<String, u64> = tracks
+            .iter()
+            .filter_map(|t| {
+                std::fs::metadata(&t.path)
+                    .ok()
+                    .map(|m| (t.path.clone(), m.len()))
+            })
+            .collect();
 
-    let xml = export::rekordbox::collection_xml(&tracks, &playlists, &sizes);
-    std::fs::write(&dest, xml)?;
+        let xml = export::rekordbox::collection_xml(&tracks, &playlists, &sizes);
+        std::fs::write(&target, xml)?;
+        Ok(tracks.len())
+    })
+    .await
+    .map_err(|e| AppError::Metadata(format!("Export task failed: {e}")))??;
+
+    // After the guard is gone, so recording it cannot deadlock against the read
+    // that produced it.
     events::record(
         &app,
         crate::models::EventLevel::Info,
         "export",
-        &format!("Exported {} tracks for Rekordbox", tracks.len()),
+        &format!("Exported {written} tracks for Rekordbox"),
         Some(&dest),
     );
-    Ok(tracks.len())
+    Ok(written)
 }
 
 /// Opens the **saved** library folder for playback (`asset:`), and nothing else.
@@ -2574,6 +2595,81 @@ mod tests {
             // tempo and must not also claim it has none.
             assert_eq!(tempo_verdict(true, true, Some(128.0)), Some(false));
         }
+    }
+
+    #[test]
+    fn nothing_logs_while_it_still_holds_the_database() {
+        // The bug this exists for froze the whole app after a successful
+        // export: the function held `Db`'s mutex, `events::record` asked for it
+        // again to store the event, and a `std::sync::Mutex` is not reentrant.
+        // Nothing failed — the log line was even printed — it simply stopped.
+        //
+        // A source scan, because the deadlock needs a real app to happen in and
+        // is invisible in review. Split per function, because a scan that
+        // reported three innocent neighbours the first time round is a scan
+        // nobody would keep. It flags only an `events::` call that follows a
+        // live `conn()` inside the *same* function with no scope closed in
+        // between — the shape that hangs. If it ever fires on something
+        // harmless, scoping the guard is the right answer anyway.
+        // Only the real code: the test module below mentions both in prose and
+        // in fixtures, and it is not what can deadlock.
+        let whole = include_str!("commands.rs");
+        let src = &whole[..whole.find("\n#[cfg(test)]").unwrap_or(whole.len())];
+        let starts: Vec<usize> = src
+            .match_indices("\nfn ")
+            .chain(src.match_indices("\npub fn "))
+            .chain(src.match_indices("\nasync fn "))
+            .chain(src.match_indices("\npub async fn "))
+            .map(|(i, _)| i)
+            .collect();
+        let mut bounds = starts.clone();
+        bounds.sort_unstable();
+        bounds.push(src.len());
+
+        let mut offenders = Vec::new();
+        for pair in bounds.windows(2) {
+            let body = &src[pair[0]..pair[1]];
+            let name = body
+                .split("fn ")
+                .nth(1)
+                .and_then(|rest| rest.split(['(', '<']).next())
+                .unwrap_or("")
+                .to_string();
+            let Some(conn_at) = body.find("database.conn()") else {
+                continue;
+            };
+            let Some(event_at) = body[conn_at..].find("events::") else {
+                continue;
+            };
+            // Has the guard's own scope closed before the log? Depth, not a
+            // count: `persist_tracks` keeps its guard inside a closure, whose
+            // closing brace is immediately followed by an opening one, and
+            // counting braces called that a deadlock when it is the correct
+            // shape. The scope has ended the moment the depth would go
+            // negative.
+            let mut depth = 0i32;
+            let mut escaped = false;
+            for ch in body[conn_at..conn_at + event_at].chars() {
+                match ch {
+                    '{' => depth += 1,
+                    '}' => {
+                        depth -= 1;
+                        if depth < 0 {
+                            escaped = true;
+                            break;
+                        }
+                    }
+                    _ => {}
+                }
+            }
+            if !escaped {
+                offenders.push(name);
+            }
+        }
+        assert!(
+            offenders.is_empty(),
+            "these log while holding the database guard, which deadlocks: {offenders:?}"
+        );
     }
 
     #[test]
