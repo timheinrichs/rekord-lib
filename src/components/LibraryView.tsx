@@ -266,8 +266,6 @@ export default function LibraryView({
   const [skippedOpen, setSkippedOpen] = useState(false);
   // Outcome of the last re-link, shown once the folder is back.
   const [relocated, setRelocated] = useState<string | null>(null);
-  /** How many tracks the last export wrote, so the app says it happened. */
-  const [exported, setExported] = useState<number | null>(null);
 
   const libraryDir = settings.library_dir;
   // Only persist after the cache has been loaded – otherwise the initial
@@ -1003,8 +1001,11 @@ export default function LibraryView({
     setExporting(true);
     setError(null);
     try {
-      const written = await exportRekordbox(libraryDir);
-      if (written != null) setExported(written);
+      // No confirmation of our own: the backend records the export in the event
+      // log, which is where this app already says what it has done to the
+      // library. A second notice next to the button would be the same sentence
+      // twice, in the place people are least likely to look for it later.
+      await exportRekordbox(libraryDir);
     } catch (e) {
       setError(`Could not write the export: ${e}`);
     } finally {
@@ -1926,26 +1927,6 @@ export default function LibraryView({
         </div>
       )}
 
-      {/* Writing a file somewhere the app does not otherwise touch is the kind
-          of thing that should say it happened, and with a number: "it worked"
-          and "it wrote your whole library" are different reassurances. */}
-      {exported != null && (
-        <div className="mb-4 flex items-center gap-3 rounded-lg border border-border bg-surface px-4 py-2 text-sm text-fg-muted">
-          <span>
-            Exported {exported} track{exported === 1 ? "" : "s"} and{" "}
-            {playlists.all.length} playlist
-            {playlists.all.length === 1 ? "" : "s"} for Rekordbox.
-          </span>
-          <button
-            onClick={() => setExported(null)}
-            className="ml-auto text-fg-subtle hover:text-fg"
-            aria-label="Dismiss"
-          >
-            ✕
-          </button>
-        </div>
-      )}
-
       {/* Filter bar (sticky below the header). While the cache is still being
           read its shape is held by placeholders, so the list below does not
           jump down once it appears. */}
@@ -1990,18 +1971,6 @@ export default function LibraryView({
               ? `${visibleTracks.length} of ${counts.total} tracks`
               : `${counts.total} tracks`}
           </span>
-          {/* Next to the count rather than in a menu: it exports the whole
-              library and its playlists, so it belongs to the library as a
-              whole. Named for what the other side calls it — this is the file
-              Rekordbox imports. */}
-          <button
-            onClick={runExport}
-            disabled={exporting || counts.total === 0}
-            className="ml-3 shrink-0 whitespace-nowrap rounded-lg border border-border-strong px-3 py-1.5 text-sm enabled:hover:border-accent-500 disabled:border-border disabled:text-fg-disabled"
-            title="Write a rekordbox.xml with every track, its tempo, key and beat grid, and the playlists"
-          >
-            {exporting ? "Exporting…" : "Export for Rekordbox"}
-          </button>
 
           {/* Right: the active facets sit directly beside the button that set
               them, so the two read as one control. Chips grow leftwards from
@@ -2009,6 +1978,19 @@ export default function LibraryView({
               overflow-x forces overflow-y to compute as auto, which would clip
               their ring (a box-shadow, drawn outside the box). The negative
               margin buys it room without changing the bar's height. */}
+          {/* Last in the row and pinned right, after the chips. Everything to
+              the left of it refuses to shrink, so wherever it sat before, it
+              was the thing that ran off the edge of a narrow window — while
+              the chips beside it are the one element already built to scroll
+              when the bar runs out of room. */}
+          <button
+            onClick={runExport}
+            disabled={exporting || counts.total === 0}
+            className="order-last ml-2 shrink-0 whitespace-nowrap rounded-lg border border-border-strong px-3 py-1.5 text-sm enabled:hover:border-accent-500 disabled:border-border disabled:text-fg-disabled"
+            title="Write a rekordbox.xml with every track, its tempo, key and beat grid, and the playlists"
+          >
+            {exporting ? "Exporting…" : "Export for Rekordbox"}
+          </button>
           <div className="-my-1 ml-auto flex min-w-0 items-center justify-end gap-2 overflow-x-auto py-1">
             {activeChips.map((chip) => (
               <FilterChip

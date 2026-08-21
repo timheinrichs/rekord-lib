@@ -155,8 +155,13 @@ describe("playlists", () => {
       dir: LIBRARY,
       dest: "/Users/me/Desktop/rekordbox.xml",
     });
-    // And it says what it did, with a number.
-    expect(await view.findByText(/Exported 2 tracks and 1 playlist/)).toBeInTheDocument();
+    // What it did is said in the event log, which the backend writes — this
+    // level can only show that the button stops claiming to be busy.
+    await waitFor(() =>
+      expect(
+        view.getByRole("button", { name: /Export for Rekordbox/ }),
+      ).toBeEnabled(),
+    );
   });
 
   it("writes nothing when the save dialog is cancelled", async () => {
