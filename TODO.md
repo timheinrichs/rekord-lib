@@ -222,21 +222,46 @@ deliberate — the shape belongs to the UI — but it is unchecked on both sides
 Collected while writing the *Verification links* sections, where a claim with no
 test behind it has nowhere to hide.
 
-| Untested | Why it matters |
-| --- | --- |
-| `commands::convert_tracks` | only `convert_file`'s pure helpers are covered. The rename over the source, the `replace_source` trash and the three cleanup branches move the user's files |
-| `metadata::write::finalize` | end to end. Only `apply_cover` and the field mapping are tested, and this is the code that rewrites tags |
-| `metadata/artwork.rs` | no tests at all — `process_cover` decides what every embedded cover looks like |
-| `audio::dedupe::find_duplicates` | no test; it needs an `AppHandle` |
-| `src/components/DuplicatesModal.tsx` | no test file; it is the panel that decides which files get deleted |
+**G1 has shipped and this table is what it left.** Two rows are gone:
+`convert_tracks` is now driven end to end — a real conversion renamed over its
+source, checked with ffprobe (`e2e/convert.spec.ts`) — and
+`DuplicatesModal.tsx` has a flow test that pins which paths the panel offers to
+delete (`src/e2e/duplicates.e2e.test.tsx`). What remains is narrower than it was,
+because each of these is now *exercised* by a passing suite without being
+*asserted* anywhere.
 
-**Why not act** — each of these needs a harness rather than a test: a real file
-in a temporary folder, or an `AppHandle`. That is **G1** territory in the
-roadmap.
+| Untested | Why it matters | What G1 changed |
+| --- | --- | --- |
+| `metadata::write::finalize` | end to end. Only `apply_cover` and the field mapping are tested, and this is the code that rewrites tags | runs on every metadata flow test and on the e2e scan, so a panic would be caught — a wrong tag would not |
+| `metadata/artwork.rs` | no tests at all — `process_cover` decides what every embedded cover looks like | unchanged: the fixture deliberately has covers on only some files, and no assertion looks at the bytes |
+| `audio::dedupe::find_duplicates` | no test; it needs an `AppHandle` | the e2e run reaches it with real audio, but nothing asserts the tiers, so the `meta_matches` mirror can still drift |
+| `convert_file`'s three cleanup branches | the failure paths that decide whether a half-written file is left behind | still unreachable: they need ffmpeg to fail mid-run, which no fixture provokes |
 
-**What would change that** — G1, or the first bug in any of them, whichever
-comes first. Until then, a change to one of these paths earns manual
-verification in a `-devtest` app run, and the reviewer should ask for it.
+**Why not act** — each of these needs the failure *provoked*, not just the path
+walked. A corrupt file that ffprobe accepts and ffmpeg chokes on would cover the
+cleanup branches; a cover with known bytes would cover `process_cover`.
+
+**What would change that** — a fixture built to fail. `dev-library.py` generates
+files that work, on purpose; a second, smaller set built to break in a specific
+way is the missing piece, and it is small.
+
+### The e2e toolchain costs dependency surface
+
+**What** — `@wdio/*` plus its transitive tree adds roughly 380 packages to
+`node_modules` and takes `npm audit` from 5 findings to 14 (13 high). The roots
+are `extract-zip` (via `@puppeteer/browsers`, which the embedded driver never
+runs), `serialize-javascript` (via mocha), `deepmerge-ts` and `undici`.
+
+**Why not act** — all of it is `devDependencies`. `npm audit --omit=dev` reports
+zero, and nothing here enters the bundle, which is what the
+*Distribution, robustness & security* rules in `CLAUDE.md` are about. The
+alternative was dropping the whole second test layer, which would have given up
+the only thing that can say the shipped app works.
+
+**What would change that** — **E4** landing (`cargo audit` / `npm audit` in CI),
+which would report these 13 on day one and needs a decision about failing on dev
+findings; or an advisory that turns out to be reachable from a test run rather
+than only from a browser download the embedded driver never performs.
 
 ---
 

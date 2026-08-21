@@ -959,16 +959,47 @@ more useful than pretending it is waiting on evidence.
 
 ## G — Reach and test depth
 
-### G1 · End-to-end tests
+### G1 · End-to-end tests — **done, in two layers**
 
-**What** — drive the real app through the main flows (first run, scan, convert,
-resolve duplicates, edit metadata) with WebdriverIO plus `tauri-driver`.
+**What shipped** — two levels rather than one, because the cheap one is where
+the coverage comes from and the expensive one is where the claim comes from.
+Full detail in [TESTING.md](TESTING.md).
 
-**Why** — we have 119 Rust tests and 32 frontend test files, all at unit level.
-The reference project runs Playwright specs against a mock API client for
-scan/analysis batching, exports and empty states, and reports e2e coverage
-separately. Unit tests do not catch a broken wiring between a command and a
-view.
+- **Flow tests** (`src/e2e/*.e2e.test.tsx`, 30 tests over seven flows: first run,
+  scan, convert, duplicates, metadata, undo, Bandcamp). The real frontend in
+  jsdom against one fake backend wired in at the `invoke` boundary
+  (`src/test/fakeBackend.ts`), so `App.tsx` → `lib/api.ts` → `invoke(…)` runs for
+  real. They ride in `npm test` and gate every push.
+- **End-to-end specs** (`e2e/*.spec.ts`) driving the built app through
+  WebdriverIO, asserting against the filesystem: the tempo really is written
+  into the file, and a conversion really is renamed over its source. On demand
+  and before a release (`.github/workflows/e2e.yml`), never on every push.
+
+**The item as written could not be built.** `tauri-driver` supports Windows and
+Linux only — there is no WKWebView driver tool — and macOS is the only target we
+ship. That, not effort, is why this sat untouched. `@wdio/tauri-service` with
+`driverProvider: "embedded"` runs the WebDriver server inside the app instead,
+and covers WKWebView.
+
+**The automation server cannot reach a release.** It is an optional dependency
+behind a `wdio` Cargo feature, and `lib.rs` fails to compile it when the feature
+meets `not(debug_assertions)` — which every `tauri build` is. `e2e.yml` asserts
+that refusal still happens.
+
+**The counts this entry used to carry were stale, so it names none.** Re-derive
+them: `npm test` and `cd src-tauri && cargo test` both report totals.
+
+**Deliberately not bought:** `browser.tauri.*`. Its plugin evaluates scripts
+with `eval` inside the page, and our CSP has no `'unsafe-eval'` — a suite that
+proves an app with a weaker CSP than the shipped one proves the wrong app. The
+cost is a five-second probe on every WebDriver call, which is why the e2e specs
+assert against files rather than the DOM.
+
+**What is left** — three gaps in `TODO.md` are narrowed rather than closed:
+`metadata::write::finalize`, `metadata/artwork.rs` and
+`audio::dedupe::find_duplicates` are exercised through the app now but still have
+no test of their own, and the conversion's three cleanup branches are only
+reachable by making ffmpeg fail mid-run.
 
 *Size: L*
 

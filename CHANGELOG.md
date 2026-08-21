@@ -9,6 +9,25 @@ contain incompatible changes.
 
 ## [Unreleased]
 
+### Added
+- **The app is tested by driving it, not only by testing its pieces.** Seven
+  flows — first run, scan, convert, duplicates, metadata, undo, Bandcamp — now
+  run the real frontend against a fake backend wired in where the app talks to
+  Rust, so a renamed command or a mistyped argument fails a test instead of
+  reaching a release. On top of that, a second suite drives the built app
+  through a real window and checks the files afterwards: the detected tempo
+  really does land in the file, and a conversion really is written over its
+  source. See [docs/TESTING.md](docs/TESTING.md).
+
+### Fixed
+- **A library database that cannot be opened no longer leaves the app stuck.**
+  The backend already tolerated it on purpose — an empty library the next scan
+  rebuilds beats refusing to launch — but the frontend did not: the failure
+  escaped unhandled and took the rest of the start-up with it, so the folder was
+  never swept, nothing was saved, and nothing on screen said why. It now reports
+  what happened and carries on scanning the folder, because the files are there
+  whatever the cache says.
+
 ## [0.7.1] - 2026-08-21
 
 ### Added
