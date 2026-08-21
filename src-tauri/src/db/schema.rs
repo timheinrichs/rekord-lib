@@ -17,6 +17,8 @@ use super::DbResult;
 /// start. Only changes that transform or drop existing data need a step in
 /// [`super::migrate`].
 ///
+/// - 9: `tracks.beat_offset_secs`, `tracks.beat_confidence`; `playlists`,
+///   `playlist_items`
 /// - 8: `tracks.bpm_absent_at`
 /// - 7: `waveforms`
 /// - 6: `tracks.music_key`, `tracks.key_confidence`
@@ -25,7 +27,7 @@ use super::DbResult;
 /// - 3: `undo_entries`
 /// - 2: `dismissed_groups`
 /// - 1: initial
-pub const SCHEMA_VERSION: i64 = 8;
+pub const SCHEMA_VERSION: i64 = 9;
 
 /// Key under which the schema version lives in `schema_meta`.
 pub const KEY_SCHEMA_VERSION: &str = "schema_version";
@@ -104,10 +106,49 @@ CREATE TABLE IF NOT EXISTS tracks (
     -- version may carry a better detector, and every one of these files gets
     -- exactly one more chance per release. A file that changes on disk is
     -- re-probed by `needs_reanalysis` and overwrites the row anyway.
-    bpm_absent_at   TEXT
+    bpm_absent_at   TEXT,
+    -- Where the first beat sits, in seconds from the start of the *track* — the
+    -- detector answers relative to its 120 s excerpt, and `analysis::
+    -- absolute_beat` shifts it before it gets here. With `bpm` it is a whole
+    -- grid: our detector produces one tempo per track, so a grid is a period
+    -- and a phase and nothing more (B3).
+    --
+    -- Stored because a grid that is computed and thrown away is a grid nobody
+    -- can export. NULL where the tempo was found but the phase was not, which
+    -- the confidence beside it is there to explain.
+    beat_offset_secs REAL,
+    beat_confidence  REAL
 );
 
 CREATE INDEX IF NOT EXISTS tracks_library_dir ON tracks(library_dir);
+
+-- A playlist is a name and an identity; what is in it, and in which order, is
+-- the other table. Separating the two is what makes the order explicit rather
+-- than implied by whatever a query happened to return (A1).
+CREATE TABLE IF NOT EXISTS playlists (
+    id         INTEGER PRIMARY KEY AUTOINCREMENT,
+    name       TEXT NOT NULL,
+    created_ms INTEGER NOT NULL,
+    updated_ms INTEGER NOT NULL
+);
+
+-- Membership, with the position spelled out. `position` is dense and 0-based
+-- within a playlist; the renumbering that keeps it that way is pure logic in
+-- `src/lib/playlists.ts` and is written back as a whole list.
+--
+-- Both foreign keys cascade: deleting a playlist takes its rows, and a track
+-- that leaves the library takes its memberships. An orphan here would be a
+-- position pointing at nothing, which the export would have to invent a track
+-- for.
+CREATE TABLE IF NOT EXISTS playlist_items (
+    playlist_id INTEGER NOT NULL REFERENCES playlists(id) ON DELETE CASCADE,
+    path        TEXT NOT NULL REFERENCES tracks(path) ON DELETE CASCADE,
+    position    INTEGER NOT NULL,
+    PRIMARY KEY (playlist_id, path)
+);
+
+CREATE INDEX IF NOT EXISTS playlist_items_order
+    ON playlist_items(playlist_id, position);
 
 CREATE TABLE IF NOT EXISTS fingerprints (
     path         TEXT PRIMARY KEY REFERENCES tracks(path) ON DELETE CASCADE,
@@ -240,6 +281,17 @@ fn upgrade(conn: &Connection, from: Option<i64>) -> DbResult<()> {
         // first start after the update tries each of them once more, and only
         // then records what it found.
         add_column(conn, "tracks", "bpm_absent_at", "TEXT")?;
+    }
+    if from < 9 {
+        // The two new tables are `CREATE … IF NOT EXISTS` and arrive on their
+        // own; only the columns need saying out loud. Ascending order is not
+        // cosmetic here: `ALTER TABLE` can only append, so running step 9
+        // before step 8 would leave a migrated database with its columns in a
+        // different order than a fresh one — which
+        // `a_migrated_database_has_the_same_tracks_schema_as_a_fresh_one` is
+        // there to catch.
+        add_column(conn, "tracks", "beat_offset_secs", "REAL")?;
+        add_column(conn, "tracks", "beat_confidence", "REAL")?;
     }
     Ok(())
 }

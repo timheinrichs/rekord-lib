@@ -79,6 +79,14 @@ export interface TrackAnalysis {
   key_camelot: string | null;
   key_confidence: number | null;
   /**
+   * Where the first beat sits, in seconds from the start of the track, and how
+   * clearly its phase won. Together with `bpm` this is the whole beat grid —
+   * our detector produces one tempo per track, so a grid is a period and a
+   * phase. Written into the Rekordbox export as a `TEMPO` marker.
+   */
+  beat_offset_secs: number | null;
+  beat_confidence: number | null;
+  /**
    * This version's detector has already listened and found no tempo — an
    * interlude, a drone, an air check. Distinct from `bpm === null`, which also
    * covers "nobody has looked yet", and that distinction is what keeps the
@@ -247,6 +255,20 @@ export interface SkippedFile {
 }
 
 /** A batch of tracks streamed while the scan runs. */
+/**
+ * A playlist without its contents — the list the grouping mode draws its heads
+ * from. The tracks come from `playlist_contents`, which answers for all of them
+ * at once.
+ */
+export interface Playlist {
+  id: number;
+  name: string;
+  created_ms: number;
+  updated_ms: number;
+  /** Counted by the query, so it cannot drift from the membership rows. */
+  track_count: number;
+}
+
 export interface ScanTracks {
   generation: number;
   tracks: TrackAnalysis[];

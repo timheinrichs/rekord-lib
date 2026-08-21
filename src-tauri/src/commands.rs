@@ -288,6 +288,8 @@ async fn analyze_path(app: &AppHandle, path: String) -> AppResult<TrackAnalysis>
         // run the detector, and saying otherwise would silence the file for
         // good.
         bpm_absent: false,
+        beat_offset_secs: None,
+        beat_confidence: None,
     })
 }
 
@@ -380,6 +382,64 @@ pub async fn analyze_files(
         persist_tracks(&app, &dir, &records);
     }
     Ok(out)
+}
+
+// --- playlists ---------------------------------------------------------------
+
+/// Every playlist with its track count, in the order they were made.
+#[tauri::command]
+pub fn playlists_load(app: AppHandle) -> AppResult<Vec<crate::models::Playlist>> {
+    let database = db::require(&app)?;
+    let conn = database.conn()?;
+    Ok(db::load_playlists(&conn)?)
+}
+
+/// Every playlist's contents at once, keyed by id.
+///
+/// One call rather than one per playlist: the library table groups by playlist,
+/// so it needs all of them to draw a single screen.
+#[tauri::command]
+pub fn playlist_contents(
+    app: AppHandle,
+) -> AppResult<std::collections::HashMap<i64, Vec<String>>> {
+    let database = db::require(&app)?;
+    let conn = database.conn()?;
+    Ok(db::all_playlist_paths(&conn)?)
+}
+
+#[tauri::command]
+pub fn playlist_create(app: AppHandle, name: String) -> AppResult<i64> {
+    let database = db::require(&app)?;
+    let conn = database.conn()?;
+    Ok(db::create_playlist(&conn, name.trim())?)
+}
+
+#[tauri::command]
+pub fn playlist_rename(app: AppHandle, id: i64, name: String) -> AppResult<()> {
+    let database = db::require(&app)?;
+    let conn = database.conn()?;
+    db::rename_playlist(&conn, id, name.trim())?;
+    Ok(())
+}
+
+#[tauri::command]
+pub fn playlist_delete(app: AppHandle, id: i64) -> AppResult<()> {
+    let database = db::require(&app)?;
+    let conn = database.conn()?;
+    db::delete_playlist(&conn, id)?;
+    Ok(())
+}
+
+/// Replaces a playlist's contents with exactly `paths`, in that order.
+///
+/// The whole list, not a diff: the order is the payload, and the frontend's
+/// pure ordering logic has already decided what it should be.
+#[tauri::command]
+pub fn playlist_set(app: AppHandle, id: i64, paths: Vec<String>) -> AppResult<()> {
+    let database = db::require(&app)?;
+    let mut conn = database.conn()?;
+    db::set_playlist_paths(&mut conn, id, &paths)?;
+    Ok(())
 }
 
 /// Opens the **saved** library folder for playback (`asset:`), and nothing else.
@@ -561,6 +621,17 @@ async fn detect_bpm_pass(
                 // picks this file up again on every start and decodes two
                 // minutes of an interlude to reach the same conclusion (C9).
                 // Asked after the patch, so the row is the one being judged.
+                // The grid comes with the tempo or not at all, and it is the
+                // only artefact of the analysis that no patch carries — the
+                // frontend has nothing to draw with it yet, and the export
+                // reads it from the row.
+                let mut gridded = false;
+                if let Some(grid) = analysis.beats.as_ref() {
+                    gridded = tracks[index].beat_offset_secs != Some(grid.offset_secs);
+                    tracks[index].beat_offset_secs = Some(grid.offset_secs);
+                    tracks[index].beat_confidence = Some(grid.confidence);
+                }
+
                 let mut marked = false;
                 if let Some(absent) = tempo_verdict(
                     true,
@@ -570,7 +641,7 @@ async fn detect_bpm_pass(
                     marked = tracks[index].bpm_absent != absent;
                     tracks[index].bpm_absent = absent;
                 }
-                if result.changes_row() || marked {
+                if result.changes_row() || marked || gridded {
                     updated.push(tracks[index].clone());
                 }
                 // Handed over the moment it exists, rather than at the end of
@@ -2505,6 +2576,8 @@ mod tests {
             key_camelot: None,
             key_confidence: None,
             bpm_absent: false,
+            beat_offset_secs: None,
+            beat_confidence: None,
         }
     }
 
@@ -2627,6 +2700,8 @@ mod tests {
             key_camelot: None,
             key_confidence: None,
             bpm_absent: false,
+            beat_offset_secs: None,
+            beat_confidence: None,
         };
 
         let out = dup_candidates(std::slice::from_ref(&track));

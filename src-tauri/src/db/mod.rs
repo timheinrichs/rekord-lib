@@ -21,6 +21,7 @@ use tauri::{AppHandle, Manager, State};
 use crate::audio::compat;
 use crate::error::{AppError, AppResult};
 use crate::models::{
+    Playlist,
     AppEvent, AudioInfo, EventLevel, RelocateResult, TrackAnalysis, TrackMetadata, UndoEntry,
     WriteMetadataItem,
 };
@@ -144,7 +145,7 @@ pub fn meta_set(conn: &Connection, key: &str, value: &str) -> DbResult<()> {
 const TRACK_COLUMNS: &str = "path, file_name, download_date, container, codec, sample_rate, \
      bits_per_sample, channels, duration_secs, lossless, title, artist, album, album_artist, \
      genre, year, track_number, catalog_number, label, country, bpm, has_cover, bpm_confidence, \
-     music_key, key_confidence, bpm_absent_at";
+     music_key, key_confidence, bpm_absent_at, beat_offset_secs, beat_confidence";
 
 /// The version whose analysis produced what is in the rows. Used to stamp
 /// `bpm_absent_at`, so a "listened, no tempo" mark expires with the detector
@@ -156,7 +157,7 @@ const APP_VERSION: &str = env!("CARGO_PKG_VERSION");
 /// `bpm_confidence` to the list above once shifted `mtime_ms` out from under
 /// [`load_track_cache`], which read a confidence where an mtime should have been.
 /// `track_columns_and_count_agree` keeps the two in step.
-const TRACK_COLUMN_COUNT: usize = 26;
+const TRACK_COLUMN_COUNT: usize = 28;
 
 /// Rebuilds a [`TrackAnalysis`] from a row. `compat` and `metadata_incomplete`
 /// are recomputed rather than read: they are derived values, and recomputing
@@ -206,6 +207,8 @@ fn row_to_track(row: &rusqlite::Row) -> DbResult<TrackAnalysis> {
     // A new release therefore gets one more attempt at every one of them,
     // without a migration and without a flag to clear.
     let bpm_absent = row.get::<_, Option<String>>(25)?.as_deref() == Some(APP_VERSION);
+    let beat_offset_secs = row.get::<_, Option<f64>>(26)?.map(|v| v as f32);
+    let beat_confidence = row.get::<_, Option<f64>>(27)?.map(|v| v as f32);
     Ok(TrackAnalysis {
         id: path.clone(),
         path,
@@ -220,6 +223,8 @@ fn row_to_track(row: &rusqlite::Row) -> DbResult<TrackAnalysis> {
         key_camelot,
         key_confidence,
         bpm_absent,
+        beat_offset_secs,
+        beat_confidence,
     })
 }
 
@@ -286,12 +291,13 @@ pub fn upsert_tracks(
                 container, codec, sample_rate, bits_per_sample, channels, duration_secs, lossless,
                 title, artist, album, album_artist, genre, year, track_number,
                 catalog_number, label, country, bpm, has_cover, bpm_confidence,
-                music_key, key_confidence, bpm_absent_at
+                music_key, key_confidence, bpm_absent_at,
+                beat_offset_secs, beat_confidence
              ) VALUES (
                 ?1, ?2, ?3, ?4, ?5, ?6,
                 ?7, ?8, ?9, ?10, ?11, ?12, ?13,
                 ?14, ?15, ?16, ?17, ?18, ?19, ?20,
-                ?21, ?22, ?23, ?24, ?25, ?26, ?27, ?28, ?29
+                ?21, ?22, ?23, ?24, ?25, ?26, ?27, ?28, ?29, ?30, ?31
              )
              ON CONFLICT(path) DO UPDATE SET
                 library_dir = excluded.library_dir,
@@ -321,7 +327,9 @@ pub fn upsert_tracks(
                 bpm_confidence = excluded.bpm_confidence,
                 music_key = excluded.music_key,
                 key_confidence = excluded.key_confidence,
-                bpm_absent_at = excluded.bpm_absent_at",
+                bpm_absent_at = excluded.bpm_absent_at,
+                beat_offset_secs = excluded.beat_offset_secs,
+                beat_confidence = excluded.beat_confidence",
         )?;
         for rec in records {
             let t = &rec.track;
@@ -358,6 +366,8 @@ pub fn upsert_tracks(
                 // back empty; a row that found a tempo, or was never asked,
                 // stores NULL and stays askable.
                 t.bpm_absent.then_some(APP_VERSION),
+                t.beat_offset_secs.map(|v| v as f64),
+                t.beat_confidence.map(|v| v as f64),
             ])?;
         }
     }
@@ -743,6 +753,97 @@ fn now_ms() -> i64 {
         .unwrap_or(0)
 }
 
+// --- playlists ---------------------------------------------------------------
+
+/// Every playlist with its track count, newest name order last — the order the
+/// user made them in, which is the only one the app has an opinion about.
+pub fn load_playlists(conn: &Connection) -> DbResult<Vec<Playlist>> {
+    let mut stmt = conn.prepare(
+        "SELECT p.id, p.name, p.created_ms, p.updated_ms,
+                (SELECT count(*) FROM playlist_items i WHERE i.playlist_id = p.id)
+         FROM playlists p ORDER BY p.created_ms, p.id",
+    )?;
+    let rows = stmt.query_map([], |row| {
+        Ok(Playlist {
+            id: row.get(0)?,
+            name: row.get(1)?,
+            created_ms: row.get(2)?,
+            updated_ms: row.get(3)?,
+            track_count: row.get(4)?,
+        })
+    })?;
+    rows.collect::<Result<Vec<_>, _>>().map_err(Into::into)
+}
+
+/// Creates a playlist and returns its id.
+pub fn create_playlist(conn: &Connection, name: &str) -> DbResult<i64> {
+    let now = now_ms();
+    conn.execute(
+        "INSERT INTO playlists (name, created_ms, updated_ms) VALUES (?1, ?2, ?3)",
+        params![name, now, now],
+    )?;
+    Ok(conn.last_insert_rowid())
+}
+
+pub fn rename_playlist(conn: &Connection, id: i64, name: &str) -> DbResult<usize> {
+    Ok(conn.execute(
+        "UPDATE playlists SET name = ?2, updated_ms = ?3 WHERE id = ?1",
+        params![id, name, now_ms()],
+    )?)
+}
+
+/// Deletes a playlist. Its membership rows go with it, by cascade.
+pub fn delete_playlist(conn: &Connection, id: i64) -> DbResult<usize> {
+    Ok(conn.execute("DELETE FROM playlists WHERE id = ?1", params![id])?)
+}
+
+/// Every playlist's contents at once, keyed by id — what the library table
+/// needs to group by playlist without one query per group.
+pub fn all_playlist_paths(conn: &Connection) -> DbResult<HashMap<i64, Vec<String>>> {
+    let mut stmt = conn.prepare(
+        "SELECT playlist_id, path FROM playlist_items ORDER BY playlist_id, position",
+    )?;
+    let rows = stmt.query_map([], |row| {
+        Ok((row.get::<_, i64>(0)?, row.get::<_, String>(1)?))
+    })?;
+    let mut out: HashMap<i64, Vec<String>> = HashMap::new();
+    for row in rows {
+        let (id, path) = row?;
+        out.entry(id).or_default().push(path);
+    }
+    Ok(out)
+}
+
+/// Replaces a playlist's contents with exactly this list, in this order.
+///
+/// The whole list rather than a diff, deliberately. Order is the thing being
+/// stored, every reorder rewrites most of the positions anyway, and a playlist
+/// is tens or hundreds of rows — not the scale where a diff earns its
+/// complexity. It also means the frontend's pure ordering logic
+/// (`src/lib/playlists.ts`) is the only place that has to be right about what
+/// the new order *is*.
+pub fn set_playlist_paths(conn: &mut Connection, id: i64, paths: &[String]) -> DbResult<()> {
+    let tx = conn.transaction()?;
+    tx.execute("DELETE FROM playlist_items WHERE playlist_id = ?1", params![id])?;
+    {
+        let mut stmt = tx.prepare(
+            "INSERT INTO playlist_items (playlist_id, path, position) VALUES (?1, ?2, ?3)",
+        )?;
+        for (position, path) in paths.iter().enumerate() {
+            // A path the library no longer holds would violate the foreign key.
+            // Skipped rather than failing the whole write: the list came from a
+            // UI that may be a moment behind a delete, and losing the other
+            // forty entries to that race would be the worse outcome.
+            let _ = stmt.execute(params![id, path, position as i64]);
+        }
+    }
+    tx.execute(
+        "UPDATE playlists SET updated_ms = ?2 WHERE id = ?1",
+        params![id, now_ms()],
+    )?;
+    tx.commit()
+}
+
 // --- fingerprints -----------------------------------------------------------
 
 /// Encodes a fingerprint as little-endian `u32` bytes.
@@ -959,6 +1060,8 @@ mod tests {
             key_camelot: None,
             key_confidence: Some(0.41),
             bpm_absent: false,
+            beat_offset_secs: None,
+            beat_confidence: None,
         }
     }
 
@@ -982,6 +1085,160 @@ mod tests {
             track: track(path),
             fs,
         }
+    }
+
+    mod playlists {
+        use super::*;
+
+        /// One playlist's contents, out of the call that reads them all —
+        /// which is the only reader the app has, and so the only one worth
+        /// keeping a function for.
+        fn paths_of(conn: &Connection, id: i64) -> Vec<String> {
+            all_playlist_paths(conn).unwrap().remove(&id).unwrap_or_default()
+        }
+
+        fn library(conn: &mut Connection, paths: &[&str]) {
+            let records: Vec<TrackRecord> = paths
+                .iter()
+                .map(|p| record(p, Some(identity(1, 2))))
+                .collect();
+            upsert_tracks(conn, "/lib", &records).unwrap();
+        }
+
+        #[test]
+        fn a_playlist_keeps_the_order_it_was_given() {
+            // The whole reason membership is its own table: the order is stored,
+            // not implied by whatever a query happens to return.
+            let db = Db::open_in_memory().unwrap();
+            let mut conn = db.0.lock().unwrap();
+            library(&mut conn, &["/lib/a.aiff", "/lib/b.aiff", "/lib/c.aiff"]);
+
+            let id = create_playlist(&conn, "Warmup").unwrap();
+            let order = vec![
+                "/lib/c.aiff".to_string(),
+                "/lib/a.aiff".to_string(),
+                "/lib/b.aiff".to_string(),
+            ];
+            set_playlist_paths(&mut conn, id, &order).unwrap();
+            assert_eq!(paths_of(&conn, id), order);
+
+            // And a reorder is just the new list.
+            let reversed: Vec<String> = order.iter().rev().cloned().collect();
+            set_playlist_paths(&mut conn, id, &reversed).unwrap();
+            assert_eq!(paths_of(&conn, id), reversed);
+        }
+
+        #[test]
+        fn deleting_a_track_takes_it_out_of_every_playlist() {
+            // Otherwise the export would have to invent a track for a position
+            // pointing at nothing.
+            let db = Db::open_in_memory().unwrap();
+            let mut conn = db.0.lock().unwrap();
+            library(&mut conn, &["/lib/a.aiff", "/lib/b.aiff"]);
+            let id = create_playlist(&conn, "Set").unwrap();
+            set_playlist_paths(
+                &mut conn,
+                id,
+                &["/lib/a.aiff".to_string(), "/lib/b.aiff".to_string()],
+            )
+            .unwrap();
+
+            delete_tracks(&mut conn, &["/lib/a.aiff".to_string()]).unwrap();
+            assert_eq!(paths_of(&conn, id), vec!["/lib/b.aiff"]);
+        }
+
+        #[test]
+        fn deleting_a_playlist_takes_its_rows_and_leaves_the_tracks() {
+            let db = Db::open_in_memory().unwrap();
+            let mut conn = db.0.lock().unwrap();
+            library(&mut conn, &["/lib/a.aiff"]);
+            let id = create_playlist(&conn, "Gone").unwrap();
+            set_playlist_paths(&mut conn, id, &["/lib/a.aiff".to_string()]).unwrap();
+
+            delete_playlist(&conn, id).unwrap();
+            assert!(load_playlists(&conn).unwrap().is_empty());
+            assert!(paths_of(&conn, id).is_empty());
+            assert_eq!(load_tracks(&conn, "/lib").unwrap().len(), 1, "the track stays");
+        }
+
+        #[test]
+        fn a_path_the_library_no_longer_holds_is_dropped_rather_than_fatal() {
+            // The list comes from a UI that can be a moment behind a delete.
+            // Losing the other entries to that race would be the worse outcome.
+            let db = Db::open_in_memory().unwrap();
+            let mut conn = db.0.lock().unwrap();
+            library(&mut conn, &["/lib/a.aiff"]);
+            let id = create_playlist(&conn, "Set").unwrap();
+
+            set_playlist_paths(
+                &mut conn,
+                id,
+                &["/lib/a.aiff".to_string(), "/lib/ghost.aiff".to_string()],
+            )
+            .unwrap();
+            assert_eq!(paths_of(&conn, id), vec!["/lib/a.aiff"]);
+        }
+
+        #[test]
+        fn the_list_carries_a_count_and_survives_a_rename() {
+            let db = Db::open_in_memory().unwrap();
+            let mut conn = db.0.lock().unwrap();
+            library(&mut conn, &["/lib/a.aiff", "/lib/b.aiff"]);
+            let id = create_playlist(&conn, "Frist Draft").unwrap();
+            set_playlist_paths(
+                &mut conn,
+                id,
+                &["/lib/a.aiff".to_string(), "/lib/b.aiff".to_string()],
+            )
+            .unwrap();
+
+            rename_playlist(&conn, id, "First Draft").unwrap();
+            let all = load_playlists(&conn).unwrap();
+            assert_eq!(all.len(), 1);
+            assert_eq!(all[0].name, "First Draft");
+            assert_eq!(all[0].track_count, 2);
+        }
+
+        #[test]
+        fn every_playlist_can_be_read_in_one_go() {
+            // What the table needs to group by playlist without one query per
+            // group.
+            let db = Db::open_in_memory().unwrap();
+            let mut conn = db.0.lock().unwrap();
+            library(&mut conn, &["/lib/a.aiff", "/lib/b.aiff"]);
+            let one = create_playlist(&conn, "One").unwrap();
+            let two = create_playlist(&conn, "Two").unwrap();
+            set_playlist_paths(&mut conn, one, &["/lib/b.aiff".to_string()]).unwrap();
+            set_playlist_paths(
+                &mut conn,
+                two,
+                &["/lib/a.aiff".to_string(), "/lib/b.aiff".to_string()],
+            )
+            .unwrap();
+
+            let all = all_playlist_paths(&conn).unwrap();
+            assert_eq!(all[&one], vec!["/lib/b.aiff"]);
+            assert_eq!(all[&two], vec!["/lib/a.aiff", "/lib/b.aiff"]);
+        }
+    }
+
+    #[test]
+    fn a_beat_grid_survives_the_round_trip() {
+        // A period and a phase is the whole grid (B3), and it is stored so the
+        // export can write a marker somebody can mix to. It used to be computed
+        // and dropped on the floor.
+        let db = Db::open_in_memory().unwrap();
+        let mut conn = db.0.lock().unwrap();
+
+        let mut rec = record("/lib/a.aiff", Some(identity(1, 2)));
+        rec.track.metadata.bpm = Some(128.0);
+        rec.track.beat_offset_secs = Some(30.25);
+        rec.track.beat_confidence = Some(0.72);
+        upsert_tracks(&mut conn, "/lib", &[rec]).unwrap();
+
+        let stored = &load_tracks(&conn, "/lib").unwrap()[0];
+        assert_eq!(stored.beat_offset_secs, Some(30.25));
+        assert_eq!(stored.beat_confidence, Some(0.72));
     }
 
     #[test]

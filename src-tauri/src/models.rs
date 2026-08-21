@@ -166,6 +166,18 @@ pub struct TrackAnalysis {
     /// "it could be that one instead".
     #[serde(default)]
     pub key_confidence: Option<f32>,
+    /// Where the first beat sits, in seconds from the start of the track, and
+    /// how clearly its phase won.
+    ///
+    /// With [`TrackMetadata::bpm`] this is the whole beat grid: the detector
+    /// produces one tempo per track, so a grid is a period and a phase (B3).
+    /// Kept so the Rekordbox export can write a `<TEMPO>` marker somebody can
+    /// actually mix to — a grid that is computed and dropped is one nothing can
+    /// use.
+    #[serde(default)]
+    pub beat_offset_secs: Option<f32>,
+    #[serde(default)]
+    pub beat_confidence: Option<f32>,
     /// This version's detector has already listened to this file and found no
     /// tempo — an interlude, a drone, an air check, something with no periodic
     /// pulse to find.
@@ -258,6 +270,23 @@ pub struct UndoEntry {
     /// What the write was, in the user's terms ("12 tracks", a filename).
     pub label: String,
     pub items: Vec<WriteMetadataItem>,
+}
+
+/// A playlist, without its contents.
+///
+/// The tracks are a separate table and a separate call: the sidebar-shaped
+/// question ("what playlists are there") and the table-shaped one ("what is in
+/// this one") have different costs, and a list of names should not carry a
+/// thousand paths to answer the first.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Playlist {
+    pub id: i64,
+    pub name: String,
+    pub created_ms: i64,
+    pub updated_ms: i64,
+    /// How many tracks are in it. Counted by the query rather than stored, so
+    /// it cannot drift from the membership rows.
+    pub track_count: i64,
 }
 
 /// A single conversion job (may contain confirmed metadata).

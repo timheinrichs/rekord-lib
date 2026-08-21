@@ -81,9 +81,12 @@ pub async fn analyze(
                 .then(|| key::detect_key(excerpt, SAMPLE_RATE))
                 .flatten(),
             // Beats need a tempo to have a phase at all, so they come free with
-            // one and are skipped without.
+            // one and are skipped without. The phase comes back relative to the
+            // excerpt; `absolute_beat` puts it back on the track's own clock,
+            // which is the only form anything outside this module can use.
             beats: tempo
-                .and_then(|t| beats::detect_beats(excerpt, SAMPLE_RATE, t.bpm)),
+                .and_then(|t| beats::detect_beats(excerpt, SAMPLE_RATE, t.bpm))
+                .map(|grid| absolute_beat(grid, &samples, SAMPLE_RATE)),
             waveform: wanted
                 .waveform
                 .then(|| waveform::reduce(&samples, waveform::BINS)),
@@ -93,17 +96,42 @@ pub async fn analyze(
     .map_err(|e| AppError::Probe(format!("Analysis task failed: {e}")))
 }
 
+/// The detected phase, moved from the excerpt's clock onto the track's.
+///
+/// `detect_beats` counts from the start of the window it was given, and that
+/// window usually begins 30 s into the file. A grid written into a Rekordbox
+/// export with the excerpt-relative number would place every beat 30 s early —
+/// which is why the shift happens here, once, next to the function that decides
+/// where the excerpt starts, rather than at each place that reads the value.
+fn absolute_beat(grid: beats::BeatGrid, samples: &[i16], sample_rate: u32) -> beats::BeatGrid {
+    beats::BeatGrid {
+        offset_secs: grid.offset_secs + excerpt_start_secs(samples, sample_rate),
+        ..grid
+    }
+}
+
+/// Where [`excerpt_of`] starts, in seconds. The two share this so they cannot
+/// disagree about which part of the track was analysed.
+fn excerpt_start_secs(samples: &[i16], sample_rate: u32) -> f32 {
+    let start = (EXCERPT_OFFSET_SECS * sample_rate) as usize;
+    let usable = samples.len().saturating_sub(start) >= (sample_rate * 10) as usize;
+    if usable {
+        EXCERPT_OFFSET_SECS as f32
+    } else {
+        0.0
+    }
+}
+
 /// The window tempo and key are detected from, as a slice of the full decode.
 ///
 /// Falls back to the start for a track shorter than the offset, and to the whole
 /// thing for one shorter than the window — the same rule the separate decoders
 /// had, kept because the B7 baseline was measured with it.
 fn excerpt_of(samples: &[i16], sample_rate: u32) -> &[i16] {
-    let start = (EXCERPT_OFFSET_SECS * sample_rate) as usize;
     let len = (EXCERPT_SECS * sample_rate) as usize;
-    // Ten seconds is the least worth analysing; below that, use the start.
-    let usable = samples.len().saturating_sub(start) >= (sample_rate * 10) as usize;
-    let from = if usable { start } else { 0 };
+    // Ten seconds is the least worth analysing; below that, use the start —
+    // `excerpt_start_secs` is the same rule, and the one the phase is shifted by.
+    let from = (excerpt_start_secs(samples, sample_rate) * sample_rate as f32) as usize;
     &samples[from..(from + len).min(samples.len())]
 }
 
@@ -123,6 +151,43 @@ mod tests {
         // Same slice the old separate decode produced.
         let start = SR as usize * 30;
         assert_eq!(excerpt.as_ptr(), samples[start..].as_ptr());
+    }
+
+    #[test]
+    fn the_beat_phase_is_reported_on_the_tracks_own_clock() {
+        // The detector counts from the start of the window it was given, and
+        // that window usually begins 30 s in. Exported as-is, every beat in the
+        // Rekordbox grid would sit half a minute early — the whole reason the
+        // shift happens in one place.
+        let long = vec![0i16; SR as usize * 300];
+        let grid = beats::BeatGrid {
+            offset_secs: 0.25,
+            confidence: 0.8,
+        };
+        let shifted = absolute_beat(grid, &long, SR);
+        assert!((shifted.offset_secs - 30.25).abs() < 1e-6);
+        assert_eq!(shifted.confidence, grid.confidence, "only the clock moves");
+
+        // A short track is analysed from its start, so there is nothing to add
+        // and the number is already absolute.
+        let short = vec![0i16; SR as usize * 20];
+        let same = absolute_beat(grid, &short, SR);
+        assert!((same.offset_secs - 0.25).abs() < 1e-6);
+    }
+
+    #[test]
+    fn the_excerpt_and_the_phase_agree_on_where_it_started() {
+        // Two readers of one decision. If they ever disagree, the grid is
+        // shifted by exactly the gap and nothing says so.
+        for secs in [5u32, 20, 35, 41, 300] {
+            let samples = vec![0i16; SR as usize * secs as usize];
+            let start = (excerpt_start_secs(&samples, SR) * SR as f32) as usize;
+            assert_eq!(
+                excerpt_of(&samples, SR).as_ptr(),
+                samples[start..].as_ptr(),
+                "{secs} s track"
+            );
+        }
     }
 
     #[test]
