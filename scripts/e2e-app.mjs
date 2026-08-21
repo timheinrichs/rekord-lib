@@ -118,9 +118,11 @@ export function build() {
   console.log(`manifest: ${writeManifest()}`);
 }
 
-// Only when run directly, so `wdio.conf.ts` can import the paths without
-// triggering a build.
-if (process.argv[1] === fileURLToPath(import.meta.url)) {
-  prepare();
-  build();
-}
+// This file is only ever run directly — `wdio.conf.ts` reads the manifest rather
+// than importing it — so there is nothing to guard against, and an entry-point
+// check comparing a non-realpath'd argv against a resolved module URL would
+// silently do nothing from a symlinked checkout. That failure is invisible: the
+// build exits 0 and wdio then drives a stale fixture still carrying the previous
+// run's tag writes, which is exactly what `--force` exists to prevent.
+prepare();
+build();

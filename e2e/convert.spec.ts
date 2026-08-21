@@ -56,6 +56,15 @@ function audioOf(path: string): { rate: number; bits: number } {
   };
 }
 
+/** `audioOf`, but a file that cannot be probed right now counts as "not yet". */
+function probe(path: string): { rate: number; bits: number } | null {
+  try {
+    return audioOf(path);
+  } catch {
+    return null;
+  }
+}
+
 async function untilFile(
   check: () => boolean,
   { timeout, what }: { timeout: number; what: string },
@@ -89,7 +98,11 @@ describe("converting a file the players cannot read", () => {
     await convert.click();
 
     // From here on the app is left alone and the file is watched instead.
-    await untilFile(() => audioOf(SOURCE).rate === 44_100, {
+    // `audioOf` shells out to ffprobe, which throws if the file is momentarily
+    // absent — and would if a future target format ever made the conversion
+    // trash the source instead of renaming over it. A throwing poll would
+    // replace the message below with a raw ffprobe error.
+    await untilFile(() => probe(SOURCE)?.rate === 44_100, {
       timeout: 300_000,
       what: "the converted file to replace the source",
     });

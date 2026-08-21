@@ -32,7 +32,11 @@ try {
 
 export const config: WebdriverIO.Config = {
   runner: "local",
-  specs: ["./*.spec.ts"],
+  // Named, not globbed. `@wdio/config` sorts a glob result, which put the
+  // smoke spec last — and its whole job is to check that this run points at the
+  // generated fixture and its own data directory *before* another spec converts
+  // or trashes anything.
+  specs: ["./smoke.spec.ts", "./scan.spec.ts", "./convert.spec.ts"],
   // One at a time. The specs convert files and write tags in one shared fixture
   // library, so two instances would race over the same folder.
   maxInstances: 1,
@@ -62,5 +66,10 @@ export const config: WebdriverIO.Config = {
   // above the longest wait inside a spec, or mocha kills the test before its own
   // timeoutMsg can say what it was waiting for.
   waitforTimeout: 30_000,
-  mochaOpts: { ui: "bdd", timeout: 600_000 },
+  // Above the worst case a single spec can wait for, not merely above a typical
+  // run: `convert.spec.ts` can spend 420 s waiting for the row, 60 s for the
+  // button and 300 s for the file. Under that sum mocha kills the test before
+  // the spec's own message can say what it was waiting for, which is the one
+  // thing a timeout is good for.
+  mochaOpts: { ui: "bdd", timeout: 900_000 },
 };

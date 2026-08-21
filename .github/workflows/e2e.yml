@@ -14,7 +14,9 @@ name: E2E
 on:
   workflow_dispatch:
   pull_request:
-    types: [labeled, synchronize]
+    # `opened`/`reopened` too, or a branch that already carries the label
+    # waits for someone to re-label it before it is ever checked.
+    types: [opened, reopened, labeled, synchronize]
 
 jobs:
   e2e:
@@ -52,11 +54,23 @@ jobs:
         # refuses to compile it into a release. This asserts that refusal is
         # still there — a guard nobody checks is a guard that quietly stops
         # working after a refactor.
+        # Asserting the message, not merely a non-zero exit: a network hiccup, a
+        # toolchain mismatch or an unrelated compile error would otherwise all
+        # read as "the guard held" while the `compile_error!` was already gone.
         run: |
-          if cargo check --release --features wdio \
+          set +e
+          out=$(cargo check --release --features wdio \
               --manifest-path src-tauri/Cargo.toml \
-              --target aarch64-apple-darwin 2>/dev/null; then
+              --target aarch64-apple-darwin 2>&1)
+          status=$?
+          set -e
+          if [ "$status" -eq 0 ]; then
             echo "::error::a release build with --features wdio compiled; the guard in lib.rs is gone"
+            exit 1
+          fi
+          if ! grep -q "must never be built into a release" <<<"$out"; then
+            echo "::error::the build failed for some other reason, so the guard was not tested"
+            echo "$out" | tail -30
             exit 1
           fi
           echo "the guard held"

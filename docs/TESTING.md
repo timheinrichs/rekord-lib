@@ -33,7 +33,7 @@ so it runs on demand and before a release (`.github/workflows/e2e.yml`, or
 | --- | --- | --- |
 | unit | `npm test`, `cd src-tauri && cargo test` | there is no boundary in it |
 | flow | `npm test` (same run) | the Rust side is imaginary; every line of frontend is real |
-| end-to-end | `npm run e2e` | nothing is faked; the app differs from the shipped one in four listed ways |
+| end-to-end | `npm run e2e` | nothing is faked; the app differs from the shipped one in three listed ways |
 
 ## Deep technical details
 
@@ -209,6 +209,8 @@ costs less than a short one.
 | Undo restores the tags from before the write | `undo.e2e.test.tsx` · "restores the previous tags and stops offering" |
 | A failed download is not recorded as present | `bandcamp.e2e.test.tsx` · "reports a failed download instead of recording it as present" |
 | The tempo is detected and written into the real file | `e2e/scan.spec.ts` · "writes the detected tempo into the file, not only into the database" |
+| A conversion is renamed over its source, at the target rate and depth | `e2e/convert.spec.ts` · "rewrites the file in place, at the target rate and depth" |
+| Nothing reaches the database without `db::require` | `commands.rs` · `nothing_reaches_the_database_without_require` |
 | A release cannot contain the automation server | `.github/workflows/e2e.yml` · "The release guard still guards" |
 
 Run them with `npm test`, `cd src-tauri && cargo test`, and `npm run e2e`. CI
@@ -225,7 +227,7 @@ gates the first two on every push; the third is on demand.
 - **A flow test that needs a change to a component is suspect.** The app's DOM
   is not wrong because a query is awkward: narrow the query instead. There are
   no `data-testid` attributes in app code, on purpose.
-- **The four differences between the e2e build and the shipped build are a
+- **The three differences between the e2e build and the shipped build are a
   list that must not grow quietly.** Each one is a thing a green run does not
   prove.
 - Anchors name a file and a symbol on purpose. If a symbol in the tables above
