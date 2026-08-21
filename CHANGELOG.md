@@ -28,7 +28,8 @@ contain incompatible changes.
   window that also renders text from Bandcamp. It exists for one thing — the
   player loading a track from disk — so it is now empty at startup and the
   library folder alone is opened at runtime, again on every start and whenever
-  the folder changes.
+  the folder changes. The built app is tested for both halves of that: a track
+  in the library plays, and the same file outside it does not load.
 - **The Discogs credentials are in the macOS Keychain.** They were the one
   genuine secret the app holds, and they sat in plaintext in `rekord-lib.json`
   while travelling from the window to the backend on every suggestion request.

@@ -212,6 +212,7 @@ costs less than a short one.
 | A failed download is not recorded as present | `bandcamp.e2e.test.tsx` · "reports a failed download instead of recording it as present" |
 | The tempo is detected and written into the real file | `e2e/scan.spec.ts` · "writes the detected tempo into the file, not only into the database" |
 | A conversion is renamed over its source, at the target rate and depth | `e2e/convert.spec.ts` · "rewrites the file in place, at the target rate and depth" |
+| The window may read the library folder over `asset:`, and nothing else | `e2e/playback.spec.ts` · "plays a track from the library folder", "will not read an audio file outside it" |
 | Nothing reaches the database without `db::require` | `commands.rs` · `nothing_reaches_the_database_without_require` |
 | A release cannot contain the automation server | `.github/workflows/e2e.yml` · "The release guard still guards" |
 

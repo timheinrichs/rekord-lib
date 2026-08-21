@@ -761,6 +761,13 @@ scope's globbing, `/Users/me/Music/../..` is `/Users` — and has to be at least
 two components deep, because every one-component path on macOS is a system
 folder rather than somebody's music.
 
+**Proved in a built app, because nothing else can prove it.** `e2e/playback.spec.ts`
+loads the same audio file twice through `convertFileSrc` and an `Audio` element —
+the player's own path — once from the library folder and once from a copy
+outside it. The first plays, the second does not. A flow test has no protocol
+handler to answer at all, and `tauri dev` is not what ships, so this claim had
+no home until the suite grew one.
+
 **There was no staging path to keep.** The entry assumed drag-in needed one; it
 does not. `asset:` has exactly one consumer, `convertFileSrc` in
 `lib/player.tsx` — covers come back from commands as data URLs — and everything

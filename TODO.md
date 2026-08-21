@@ -243,10 +243,15 @@ zero, and nothing here enters the bundle, which is what the
 alternative was dropping the whole second test layer, which would have given up
 the only thing that can say the shipped app works.
 
-**What would change that** — **E4** landing (`cargo audit` / `npm audit` in CI),
-which would report these 13 on day one and needs a decision about failing on dev
-findings; or an advisory that turns out to be reachable from a test run rather
-than only from a browser download the embedded driver never performs.
+**The decision E4 needed has been made.** The scheduled `Audit` workflow runs
+`npm audit --omit=dev --audit-level=high`, so these 13 do not fail a job: they
+are `devDependencies` and the rule they would be measured against is about what
+ships in the bundle. The entry stays because the surface does — the audit simply
+no longer has an open question attached to it.
+
+**What would change that** — an advisory that turns out to be reachable from a
+test run rather than only from a browser download the embedded driver never
+performs; or `@wdio/*` becoming a runtime dependency, which it must not.
 
 ---
 
