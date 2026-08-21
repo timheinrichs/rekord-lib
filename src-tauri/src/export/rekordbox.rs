@@ -244,10 +244,13 @@ fn escape(value: &str) -> String {
             '>' => out.push_str("&gt;"),
             '"' => out.push_str("&quot;"),
             '\'' => out.push_str("&apos;"),
-            // A control character in a tag is not representable in XML 1.0 at
-            // all, and a file that will not parse is worse than a lost
-            // character.
+            // Not representable in XML 1.0 at all, and a file that will not
+            // parse is worse than a lost character: the C0 controls apart from
+            // tab, newline and return, and the two non-characters at the end of
+            // the BMP. The surrogates the `Char` production also excludes
+            // cannot occur — a Rust `char` is never one.
             c if (c as u32) < 0x20 && c != '\t' && c != '\n' && c != '\r' => {}
+            '\u{fffe}' | '\u{ffff}' => {}
             c => out.push(c),
         }
     }
@@ -398,6 +401,32 @@ mod tests {
         assert!(xml.contains("Name=\"Rock &amp; &quot;Roll&quot; &lt;mix&gt;\""), "{xml}");
         assert!(xml.contains("Name=\"Peak &amp; Close\""));
         assert!(!xml.contains("& \""), "a bare ampersand would not parse");
+    }
+
+    #[test]
+    fn a_character_xml_cannot_hold_is_dropped_rather_than_written() {
+        // Tags come out of files we did not write, and a tagger will happily
+        // store a byte XML 1.0 has no way of representing. Escaping does not
+        // help — there is no entity for these — so the choice is a lost
+        // character or a document Rekordbox refuses to open.
+        let mut t = track("/lib/a.aiff", "Bell\u{7}End\u{0}");
+        t.metadata.album = Some("Edge\u{fffe}case\u{ffff}".into());
+        // Legal, and worth keeping: tab, newline, return and the rest of BMP.
+        t.metadata.artist = Some("Two\tNames\u{fdd0}".into());
+        let xml = collection_xml(&[t], &[], &nothing());
+
+        assert!(xml.contains("Name=\"BellEnd\""), "{xml}");
+        assert!(xml.contains("Album=\"Edgecase\""), "{xml}");
+        assert!(xml.contains("Artist=\"Two\tNames\u{fdd0}\""), "{xml}");
+        assert!(
+            !xml.chars().any(|c| (c as u32) < 0x20
+                && c != '\t'
+                && c != '\n'
+                && c != '\r'
+                || c == '\u{fffe}'
+                || c == '\u{ffff}'),
+            "the document still holds a character XML cannot express"
+        );
     }
 
     #[test]

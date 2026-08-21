@@ -421,9 +421,13 @@ fn relocated_path(path: &str, old_dir: &str, new_dir: &str) -> Option<String> {
 /// A row is only rewritten when the file exists under the new root and no row
 /// for that path exists yet; everything else is counted as skipped and left
 /// alone, because this runs precisely when the user is trying to recover data.
-/// Foreign keys are deferred for the transaction: `fingerprints.path`
-/// references `tracks(path)`, so updating the parent key would otherwise fail
-/// before the child row can follow.
+/// Foreign keys are deferred for the transaction: `fingerprints.path`,
+/// `edits.path` and `playlist_items.path` all reference `tracks(path)`, so
+/// updating the parent key would otherwise fail before the child rows can
+/// follow. **Every one of them has to be listed here.** A child left behind
+/// does not fail where it was forgotten — it fails at `COMMIT`, as a bare
+/// `FOREIGN KEY constraint failed` that rolls the whole relocation back, in
+/// exactly the situation this function exists to recover from.
 pub fn relocate_tracks(
     conn: &mut Connection,
     old_dir: &str,
@@ -444,6 +448,8 @@ pub fn relocate_tracks(
             tx.prepare("UPDATE tracks SET path = ?2, library_dir = ?3 WHERE path = ?1")?;
         let mut move_fingerprint = tx.prepare("UPDATE fingerprints SET path = ?2 WHERE path = ?1")?;
         let mut move_edit = tx.prepare("UPDATE edits SET path = ?2 WHERE path = ?1")?;
+        let mut move_member =
+            tx.prepare("UPDATE playlist_items SET path = ?2 WHERE path = ?1")?;
 
         for old_path in &rows {
             let Some(new_path) = relocated_path(old_path, old_dir, new_dir) else {
@@ -457,6 +463,7 @@ pub fn relocate_tracks(
             move_track.execute(params![old_path, new_path, new_dir])?;
             move_fingerprint.execute(params![old_path, new_path])?;
             move_edit.execute(params![old_path, new_path])?;
+            move_member.execute(params![old_path, new_path])?;
             result.moved += 1;
         }
     }
@@ -1457,7 +1464,7 @@ mod tests {
     }
 
     #[test]
-    fn relocate_keeps_identity_including_edits_and_fingerprints() {
+    fn relocate_keeps_identity_including_edits_fingerprints_and_playlists() {
         let dir = tempfile::tempdir().unwrap();
         let new_root = dir.path().to_string_lossy().to_string();
         std::fs::create_dir(dir.path().join("sub")).unwrap();
@@ -1469,6 +1476,8 @@ mod tests {
         upsert_tracks(&mut conn, "/old", &[record("/old/sub/a.aiff", Some(fs))]).unwrap();
         fingerprint_put(&conn, "/old/sub/a.aiff", fs, 1, &[1, 2, 3]).unwrap();
         set_edit(&conn, "/old/sub/a.aiff", &serde_json::json!({"title": "x"})).unwrap();
+        let list = create_playlist(&conn, "Set").unwrap();
+        set_playlist_paths(&mut conn, list, &["/old/sub/a.aiff".to_string()]).unwrap();
 
         let result = relocate_tracks(&mut conn, "/old", &new_root).unwrap();
         assert_eq!(result, RelocateResult { moved: 1, skipped: 0 });
@@ -1482,6 +1491,13 @@ mod tests {
         // … so everything keyed by the path came along, which is the point.
         assert!(fp_of(&conn, &new_path, fs, 1).is_some());
         assert!(load_edits(&conn).unwrap().contains_key(&new_path));
+        // A membership left pointing at the old path does not merely go
+        // missing: the deferred foreign key turns it into a failed COMMIT, so
+        // one playlist would have cost the user the whole relocation.
+        assert_eq!(
+            all_playlist_paths(&conn).unwrap().get(&list),
+            Some(&vec![new_path])
+        );
     }
 
     #[test]
