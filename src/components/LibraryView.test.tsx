@@ -232,12 +232,15 @@ describe("tempo backlog on start-up", () => {
 
   it("leaves detection alone when the user turned it off", async () => {
     mocks.listAudioFiles.mockResolvedValue(["/lib/a.aiff"]);
-    mocks.analyzeFiles.mockResolvedValue([untagged("a.aiff")]);
 
     renderLibrary({ analyze_bpm: false });
 
-    await waitFor(() => expect(mocks.isLibraryDirAvailable).toHaveBeenCalled());
-    expect(mocks.startScan).not.toHaveBeenCalled();
+    // A new file still goes through the scan job — that is how it gets probed
+    // and how the run reports progress — but with detection off it must ask for
+    // no tempo, and no backlog run may follow.
+    await waitFor(() => expect(mocks.startScan).toHaveBeenCalledTimes(1));
+    expect(mocks.startScan.mock.calls[0][1]).toBe(false);
+    expect(mocks.startScan.mock.calls[0][2]).toEqual(["/lib/a.aiff"]);
   });
 
   it("does not re-queue a file whose tempo could not be detected", async () => {
@@ -301,18 +304,21 @@ describe("the incremental sync", () => {
     expect(mocks.forgetTracks).not.toHaveBeenCalled();
   });
 
-  it("analyses only the files that are new", async () => {
+  it("hands only the new files to the scan job", async () => {
     mocks.loadLibraryTracks.mockResolvedValue([untagged("old.aiff")]);
     mocks.listAudioFiles.mockResolvedValue(["/lib/old.aiff", "/lib/new.aiff"]);
-    mocks.analyzeFiles.mockResolvedValue([untagged("new.aiff")]);
 
     renderLibrary();
 
-    await waitFor(() => expect(mocks.analyzeFiles).toHaveBeenCalled());
-    expect(mocks.analyzeFiles.mock.calls[0][0]).toEqual(["/lib/new.aiff"]);
-    // Without a BPM: the backlog does that afterwards, so a folder of new files
-    // appears in the list immediately instead of after every decode.
-    expect(mocks.analyzeFiles.mock.calls[0][1]).toBe(false);
+    // The diff is the whole job of the sync now: the new file goes to the scan
+    // job rather than to the blocking `analyze_files`, so the run has counters
+    // and a pause gate (C5a). The cached row is not handed over again — that is
+    // what makes a rescan cheap.
+    await waitFor(() => expect(mocks.startScan).toHaveBeenCalled());
+    expect(mocks.startScan.mock.calls[0][2]).toEqual(["/lib/new.aiff"]);
+    // Not a full sweep: a sweep would re-probe everything.
+    expect(mocks.startScan.mock.calls[0][2]).not.toBeNull();
+    expect(mocks.analyzeFiles).not.toHaveBeenCalled();
   });
 });
 

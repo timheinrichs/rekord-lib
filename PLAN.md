@@ -37,10 +37,13 @@ Its own documentation carries the warning that decides this plan's shape:
 *"This plugin exposes automation capabilities via HTTP. Never include it in
 production builds."*
 
-## Version — PATCH, `0.7.1` → `0.7.2`
+## Version — MINOR, `0.7.1` → `0.8.0`
 
-Tests, a dev-only Cargo feature, a new workflow and one document. Nothing new
-in the app and nothing a user sees, which at `0.x` is a **PATCH**. The plan
+It started as a PATCH: tests, a dev-only Cargo feature, a workflow and a
+document, none of it visible. Two things changed that. The database fix is a
+fix, so still a PATCH on its own. But **C5a** gives the first fill of a library
+progress, a counter and a pause — behaviour a user can see and did not have
+before — and at `0.x` anything user-facing that is *new* is a **MINOR**. The plan
 proposes the number; it does not bump it.
 
 ## Two layers, and why both
@@ -92,10 +95,12 @@ per-item `error` inside an otherwise successful return, an unreadable folder.
 
 **Seven flows**, `src/e2e/<flow>.e2e.test.tsx`, one commit each:
 
-1. **`firstRun`** — empty state → settings → folder pick → rows appear. The
-   first population does **not** go through `start_scan`; the incremental sync
-   hands every new file to `analyze_files`, one blocking command with no
-   progress and no pause gate (`TODO.md`, C5a). The test asserts that path.
+1. **`firstRun`** — empty state → settings → folder pick → rows appear. Pinning
+   the division of labour: the sync does the diff, the scan job does the work.
+   It was the other way round when this plan was written — `analyze_files`, one
+   blocking call with no progress and no pause — and closing that (**C5a**) came
+   out of the same session, because the flow test is what made the arrangement
+   visible.
 2. **`scan`** — `start_scan` with the right arguments, then `scan://tracks`,
    `scan://patch` (a `null` field means *unchanged*, not "not detected"),
    `scan://progress`, `scan://done`, `scan://skipped` → the skipped list. Pause

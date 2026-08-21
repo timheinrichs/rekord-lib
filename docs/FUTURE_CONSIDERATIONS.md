@@ -519,15 +519,19 @@ Verified over libraries of 10,000 and 6,000 generated files: the counter held at
 5144/10000 across ten seconds and continued from there on resume, and the button
 swapped between status and action on hover in both directions.
 
-**What is left**:
+**C5a is closed too.** The *first* population of a library used to bypass the
+scan job entirely: the incremental sync diffed the folder and handed every new
+file to `analyze_files`, one blocking command with no progress events and no
+gate — six and a half minutes on 10,000 files, and the run a user would most
+want to hold. The sync now does the diff and nothing else, and the new paths go
+to the job, which was already able to take a subset. One decode per file either
+way, because the tempo comes along in the same run instead of a second pass over
+the same files.
 
-- **C5a** — the *first* population of a library is not pausable. It does not go
-  through the scan job at all: the incremental sync diffs the folder and hands
-  every new file to `analyze_files`, one blocking command with no progress
-  events and no gate. On 10,000 files that is six and a half minutes of a
-  spinner that cannot be stopped — and it is exactly the run a user would most
-  want to hold. Routing it through the scan job would fix the pause and the
-  missing progress at once.
+The splash also stays up through it rather than dropping to an empty table with
+one unlabelled spinner in the header, which is what that arrangement actually
+looked like — it says *Loading library…* while the folder is being diffed and
+then counts with the scan.
 
 *Size: S*
 

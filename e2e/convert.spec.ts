@@ -84,13 +84,19 @@ describe("converting a file the players cannot read", () => {
     expect(before.rate).toBe(96_000);
     expect(before.bits).toBe(24);
 
-    // Selecting a row is the path that needs no hover: the row's own Convert
-    // button only appears under the pointer, while the selection toolbar's is
-    // always there.
-    const checkbox = $('input[aria-label="Select 96khz-24bit.aiff"]');
+    // Narrow the list to this one file first. The table is virtualised, so a
+    // row outside the viewport is not in the DOM at all — which jsdom never
+    // shows, because it computes every height as zero and therefore renders
+    // everything. Searching is also how a user would find one file among
+    // thousands.
+    const search = $('input[type="search"]');
     // A long interval on purpose — every poll is a WebDriver round trip, and
     // each of those pays a five-second probe (see docs/TESTING.md).
-    await checkbox.waitForExist({ timeout: 420_000, interval: 5_000 });
+    await search.waitForExist({ timeout: 420_000, interval: 5_000 });
+    await search.setValue("96khz-24bit");
+
+    const checkbox = $('input[aria-label="Select 96khz-24bit.aiff"]');
+    await checkbox.waitForExist({ timeout: 120_000, interval: 5_000 });
     await checkbox.click();
 
     const convert = $("button*=Convert selection");

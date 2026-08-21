@@ -39,11 +39,16 @@ The frontend never polls. `LibraryView` merges `scan://tracks` and
 progress through `scan_status`. Progress, stage and the pause flag all travel in
 `scan://progress`, which is why the scan button survives a reload mid-scan.
 
-Two entry points do not go through the job at all. The **incremental sync** runs
-on start and whenever the watched folder changes: it lists the folder, diffs it
-against the library, and hands genuinely new files to `analyze_files` — one
-blocking command, no progress, no pause. That is why the very first population
-of a library cannot be held (**C5a** in [TODO.md](../TODO.md)).
+The **incremental sync** runs on start and whenever the watched folder changes,
+and it is only a diff: it lists the folder, compares it against the library,
+forgets rows whose file is gone, and hands genuinely new paths to the job as a
+targeted run. It used to hand them to `analyze_files` instead — one blocking
+command with no progress and no pause, which is why the first population of a
+library could not be held. That was **C5a**, and it is closed.
+
+One entry point still does not go through the job: files dragged in from outside
+the library go straight to `analyze_files`, because they are converted or copied
+individually and there is no folder to sweep.
 
 ## Deep technical details
 

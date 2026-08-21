@@ -105,21 +105,6 @@ not, and it comes back exactly once. Rewriting dismissal keys inside
 **What would change that** — a group id that is not a path. See
 [docs/DUPLICATES.md](docs/DUPLICATES.md).
 
-### C5a · The first population of a library cannot be paused
-
-**What** — the initial fill does not go through the scan job at all: the
-incremental sync diffs the folder and hands every new file to `analyze_files`,
-one blocking command with no progress events and no pause gate. On 10,000 files
-that is several minutes of a spinner that cannot be stopped — and it is exactly
-the run a user would most want to hold.
-
-**Why not** — nothing except that the scan job was built for rescans and the
-first fill predates it.
-
-**What would change that** — routing that path through the scan job, which fixes
-the pause and the missing progress at once. See
-[docs/SCANNING.md](docs/SCANNING.md).
-
 ### C7 · The cover thumbnail cache never invalidates
 
 **What** — `CoverThumb` keeps a module-wide `Map<path, dataURL>` and nothing
@@ -283,4 +268,5 @@ CI, unsigned updates, and a vanilla-JS frontend.
   changelog is the record of what happened, this file is only the record of what
   deliberately did not.
 - A roadmap item that ships *without* part of itself creates an entry here in
-  the same commit, with an id, the way `C1a` and `C5a` were created.
+  the same commit, with an id, the way `C1a` and `C2a` were created — and it
+  leaves again when that part ships, the way `C5a` did.

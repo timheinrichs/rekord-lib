@@ -330,14 +330,36 @@ export default function LibraryView({
         // delete) have to leave the database too — otherwise the next start
         // would serve them from the cache again.
         if (removedPaths.length) await forgetTracks(removedPaths);
-        // No BPM here — the background job below picks it up, so the sync
-        // stays fast no matter how many files arrived. Passing the folder lets
-        // the backend store what it analyzed.
-        const analyzed = addedPaths.length
-          ? await analyzeFiles(addedPaths, false, libraryDir)
-          : [];
-        current = [...keptTracks, ...analyzed];
+        current = keptTracks;
         setTracks(current);
+        // New files go to the scan job, not to `analyze_files`.
+        //
+        // They used to go to the blocking command, which is why the first fill
+        // of a library had no progress and could not be held: on ten thousand
+        // files that was several minutes of a spinner with no counter and no way
+        // to stop it — the run a user would most want to pause. The job does the
+        // same probing in its first phase, but it reports counters, it takes the
+        // pause gate, and it persists as it goes, so a quit costs one batch
+        // instead of the whole run.
+        //
+        // The rows therefore arrive through `scan://tracks` rather than being
+        // returned here, and this loop no longer waits for them. That is the
+        // point: the sync is now only the diff.
+        if (addedPaths.length) {
+          // The tempo comes along in the same run when it is wanted. A separate
+          // backlog pass over the same files would decode each one twice.
+          await startScan(
+            libraryDir,
+            settings.analyze_bpm,
+            addedPaths,
+            false,
+            false,
+            { min: settings.bpm_min, max: settings.bpm_max },
+          );
+          // No handling of a `false` return: it means a scan already owns the
+          // library, and the scan-done listener runs the backlog again when it
+          // finishes. Marking these paths as done here is what would lose them.
+        }
       } while (dirtyRef.current);
       return current;
     } catch (e) {
@@ -350,7 +372,7 @@ export default function LibraryView({
       setSyncing(false);
     }
     },
-    [libraryDir],
+    [libraryDir, settings.analyze_bpm, settings.bpm_min, settings.bpm_max],
   );
 
   // Paths already handed to a BPM run this session. Without this, files whose
@@ -1034,13 +1056,26 @@ export default function LibraryView({
   useEffect(() => {
     if (!onBootPhase) return;
     if (!hydrated) return;
-    const emptyAndScanning =
-      tracks.length === 0 && !!libraryDir && (loading || !!scanProgress);
-    if (emptyAndScanning) onBootPhase("scanning", scanProgress);
-    else onBootPhase("ready");
+    if (tracks.length === 0 && !!libraryDir) {
+      // A run is in progress and there is nothing to show yet, so the splash
+      // stays and says which part.
+      if (loading || scanProgress) {
+        onBootPhase("scanning", scanProgress);
+        return;
+      }
+      // The gap between the two: the sync is still diffing the folder, and the
+      // scan it starts for the new files has not reported yet. Without this the
+      // splash would come down for a moment and go straight back up.
+      if (syncing) {
+        onBootPhase("library");
+        return;
+      }
+    }
+    onBootPhase("ready");
   }, [
     onBootPhase,
     hydrated,
+    syncing,
     tracks.length,
     libraryDir,
     loading,
@@ -1580,14 +1615,20 @@ export default function LibraryView({
           </>
         )}
       </button>
-      {/* Auto-sync indicator (incremental), left of the Duplicates button. */}
+      {/* The incremental sync, left of the Duplicates button.
+          Labelled, not a bare spinner. It appears unprompted — a file dropped
+          into the folder in Finder starts it — so there is no action for a user
+          to attribute it to, and an unattributable spinner between two buttons
+          reads as belonging to neither. Same treatment the scan button and the
+          pending-tags button already give their own status: icon plus what it
+          is, in muted text. */}
       {syncing && !loading && (
         <span
-          className="flex h-9 w-9 items-center justify-center text-fg-muted"
-          title="Updating library…"
-          aria-label="Updating library"
+          className="inline-flex items-center gap-1.5 px-1 text-sm text-fg-muted"
+          title="Reconciling the library folder with what is stored"
         >
           <SpinnerIcon />
+          Updating library…
         </span>
       )}
       {/* Purely a way into the result — the search itself is a scan phase now,

@@ -10,6 +10,13 @@ contain incompatible changes.
 ## [Unreleased]
 
 ### Added
+- **The first scan of a new library can be watched and paused like any other.**
+  Pointing the app at a folder for the first time used to be the one run that
+  told you nothing: an empty table, a spinner in the corner with no label, and
+  no way to stop it — several minutes of that on a large collection. It now goes
+  through the same job as every other scan, so it counts the files as it goes,
+  the rows fill in while it runs, and the scan button holds it and lets it
+  continue.
 - **The app is tested by driving it, not only by testing its pieces.** Seven
   flows — first run, scan, convert, duplicates, metadata, undo, Bandcamp — now
   run the real frontend against a fake backend wired in where the app talks to
@@ -18,6 +25,12 @@ contain incompatible changes.
   through a real window and checks the files afterwards: the detected tempo
   really does land in the file, and a conversion really is written over its
   source. See [docs/TESTING.md](docs/TESTING.md).
+
+### Changed
+- **The spinner that appears while the library folder is being checked now says
+  so.** It shows up on its own — putting a file into the folder in Finder starts
+  it — so an unlabelled spinner between two buttons belonged to neither of them
+  as far as anyone could tell.
 
 ### Fixed
 - **A library database that cannot be opened no longer leaves the app stuck.**

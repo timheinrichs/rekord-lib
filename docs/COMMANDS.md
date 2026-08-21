@@ -47,9 +47,11 @@ this section exists to prevent.
 
 `analyze_files` is the blocking path: it probes, evaluates compatibility, reads
 tags and optionally detects a tempo, and it returns only when the whole list is
-done. It is what the incremental sync uses for newly appeared files, which is
-also why the first population of a library cannot be paused (**C5a** in
-[TODO.md](../TODO.md)).
+done. Its remaining caller is the import of files dragged in from outside the
+library, which are handled one at a time and have no folder to sweep. The
+incremental sync used to use it for newly appeared files too, which is why the
+first population of a library could not be paused; those now go to `start_scan`
+as a targeted run.
 
 `stored_waveforms` answers from the database and never decodes; `waveform`
 decodes when it has to. `src/lib/api.ts` asks the stored one first, which is
