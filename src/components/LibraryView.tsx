@@ -79,7 +79,11 @@ import { STAGE_ANALYZING } from "../types";
 import MetadataEditor from "./MetadataEditor";
 import BulkMetadataEditor, { type BulkPatch } from "./BulkMetadataEditor";
 import CoverThumb, { forgetCoverThumbs } from "./CoverThumb";
+import PlaylistMenu from "./PlaylistMenu";
+import AddToPlaylist from "./AddToPlaylist";
 import { usePlayer, type PlayerTrack } from "../lib/player";
+import { usePlaylists } from "../lib/usePlaylists";
+import { buildPlaylistGroups } from "../lib/playlists";
 import MarqueeText from "./MarqueeText";
 import DuplicatesModal from "./DuplicatesModal";
 import SkippedModal from "./SkippedModal";
@@ -932,6 +936,28 @@ export default function LibraryView({
     [grouping, visibleTracks, libraryDir],
   );
 
+  // Playlists: the list, their contents, and every way of changing them.
+  const playlists = usePlaylists();
+  /** What is being dragged, and the row it is currently hovering in front of. */
+  const [playlistDrag, setPlaylistDrag] = useState<{
+    id: number;
+    paths: string[];
+  } | null>(null);
+  const [dragOver, setDragOver] = useState<{ id: number; before: string } | null>(
+    null,
+  );
+
+  // Dragging a row that is part of the selection moves the whole selection;
+  // dragging an unselected row moves just that one, which is what every list
+  // that does this behaves like.
+  const playlistGroups = useMemo(
+    () =>
+      grouping === "playlist"
+        ? buildPlaylistGroups(playlists.all, playlists.contents, visibleTracks)
+        : null,
+    [grouping, playlists.all, playlists.contents, visibleTracks],
+  );
+
   // Label tree of the visible tracks (label -> album -> tracks).
   const labelRoot = useMemo(
     () =>
@@ -943,6 +969,7 @@ export default function LibraryView({
 
   // Flat render order (including collapsed) for the shift selection.
   const renderOrder = useMemo(() => {
+    if (playlistGroups) return playlistGroups.flatMap((g) => g.tracks);
     if (folderRoot) return folderTrackList(folderRoot);
     if (labelRoot) return labelTrackList(labelRoot);
     if (!albumItems) return sortedFlat ?? visibleTracks;
@@ -952,7 +979,36 @@ export default function LibraryView({
       else arr.push(it.track);
     }
     return arr;
-  }, [folderRoot, labelRoot, albumItems, sortedFlat, visibleTracks]);
+  }, [playlistGroups, folderRoot, labelRoot, albumItems, sortedFlat, visibleTracks]);
+
+  /**
+   * The selected tracks' paths, in the order the table shows them — a playlist
+   * built from a selection should come out in the order the user was looking
+   * at, not in the order a `Set` happens to iterate.
+   */
+  const selectedPaths = useCallback(
+    () => renderOrder.filter((t) => selected.has(t.id)).map((t) => t.path),
+    [renderOrder, selected],
+  );
+
+  const startPlaylistDrag = useCallback(
+    (id: number, track: TrackAnalysis) => {
+      const paths = selected.has(track.id) ? selectedPaths() : [track.path];
+      setPlaylistDrag({ id, paths });
+    },
+    [selected, selectedPaths],
+  );
+
+  const dropPlaylistDrag = useCallback(
+    async (before: string | null) => {
+      const drag = playlistDrag;
+      setPlaylistDrag(null);
+      setDragOver(null);
+      if (!drag) return;
+      await playlists.move(drag.id, drag.paths, before);
+    },
+    [playlistDrag, playlists],
+  );
 
   // Audio player: build a queue entry from an (edit-aware) track.
   const player = usePlayer();
@@ -1721,6 +1777,19 @@ export default function LibraryView({
           >
             {converting ? "Converting…" : `Convert selection (${selected.size})`}
           </button>
+          <AddToPlaylist
+            playlists={playlists.all}
+            count={selected.size}
+            disabled={converting || writing}
+            onAdd={(id) => void playlists.add(id, selectedPaths())}
+            onCreate={(name) => {
+              void (async () => {
+                const id = await playlists.create(name);
+                if (id != null) await playlists.add(id, selectedPaths());
+              })();
+            }}
+            suggestName={playlists.suggestName}
+          />
           <button
             onClick={() =>
               void confirmAndDelete(
@@ -1981,6 +2050,8 @@ export default function LibraryView({
                   prog: ConvertProgress | undefined,
                   result: ConvertResult | undefined,
                   fromBandcamp: boolean,
+                  /** 1-based place in a playlist, where the row is in one. */
+                  position?: number,
                 ): ReactNode => {
                   const pad = "px-4 py-3";
                   switch (c.id) {
@@ -2006,9 +2077,19 @@ export default function LibraryView({
                         </td>
                       );
                     case "expand":
-                      // A track has nothing to expand; the cell keeps the
-                      // columns aligned with the group rows above it.
-                      return <td key={c.id} className="px-1 py-3" />;
+                      // A track has nothing to expand, so the cell exists to
+                      // keep the columns aligned with the group rows above it —
+                      // which makes it exactly the space a playlist position
+                      // belongs in. In a playlist that number is what the row
+                      // *is*, and it sits where the chevron would.
+                      return (
+                        <td
+                          key={c.id}
+                          className="px-1 py-3 text-right text-xs tabular-nums text-fg-subtle"
+                        >
+                          {position ?? ""}
+                        </td>
+                      );
                     case "cover":
                       return (
                         <td key={c.id} className={pad}>
@@ -2196,19 +2277,65 @@ export default function LibraryView({
                   t: TrackAnalysis,
                   index: number,
                   depth = 0,
+                  /**
+                   * Set only in the playlists grouping. It carries the place the
+                   * row holds and makes it draggable — nowhere else is a row's
+                   * order the user's to change, so nowhere else is it draggable.
+                   */
+                  inPlaylist?: { id: number; position: number },
                 ) => {
                 const prog = progress[t.id];
                 const result = results[t.id];
                 const fromBandcamp = !!originById[t.id];
                 // Show confirmed edits in the list immediately.
                 const md = edits[t.id]?.metadata ?? t.metadata;
+                const dropHere =
+                  inPlaylist &&
+                  dragOver?.id === inPlaylist.id &&
+                  dragOver.before === t.path;
                 return (
                   <tr
                     key={t.id}
                     onClick={() => setEditingId(t.id)}
-                    className="group cursor-pointer border-b border-border last:border-0 hover:bg-surface-2"
+                    draggable={!!inPlaylist}
+                    onDragStart={
+                      inPlaylist
+                        ? () => startPlaylistDrag(inPlaylist.id, t)
+                        : undefined
+                    }
+                    onDragOver={
+                      inPlaylist
+                        ? (e) => {
+                            e.preventDefault();
+                            setDragOver({ id: inPlaylist.id, before: t.path });
+                          }
+                        : undefined
+                    }
+                    onDrop={
+                      inPlaylist
+                        ? (e) => {
+                            e.preventDefault();
+                            void dropPlaylistDrag(t.path);
+                          }
+                        : undefined
+                    }
+                    className={`group cursor-pointer border-b border-border last:border-0 hover:bg-surface-2 ${
+                      dropHere ? "border-t-2 border-t-accent-500" : ""
+                    }`}
                   >
-                    {cols.map((c) => trackCell(c, t, index, depth, md, prog, result, fromBandcamp))}
+                    {cols.map((c) =>
+                      trackCell(
+                        c,
+                        t,
+                        index,
+                        depth,
+                        md,
+                        prog,
+                        result,
+                        fromBandcamp,
+                        inPlaylist?.position,
+                      ),
+                    )}
                   </tr>
                 );
                 };
@@ -2540,7 +2667,48 @@ export default function LibraryView({
                   });
                 };
 
-                if (labelRoot) {
+                if (playlistGroups) {
+                  const idxRef = { i: 0 };
+                  for (const group of playlistGroups) {
+                    const key = `playlist-${group.id}`;
+                    const expanded = expandedLabels.has(key);
+                    renderGroupHeader({
+                      id: key,
+                      title: group.playlist
+                        ? group.name
+                        : "Unsorted — not in any playlist",
+                      depth: 0,
+                      tracks: group.tracks,
+                      expanded,
+                      onToggle: () => toggleLabel(key),
+                      actions: group.playlist ? (
+                        <PlaylistMenu
+                          playlist={group.playlist}
+                          onRename={(name) =>
+                            void playlists.rename(group.id, name)
+                          }
+                          onDelete={() => void playlists.remove(group.id)}
+                        />
+                      ) : undefined,
+                    });
+                    if (!expanded) {
+                      idxRef.i += group.tracks.length;
+                      continue;
+                    }
+                    group.tracks.forEach((t, i) => {
+                      rows.push(
+                        renderTrackRow(
+                          t,
+                          idxRef.i++,
+                          1,
+                          group.playlist
+                            ? { id: group.id, position: i + 1 }
+                            : undefined,
+                        ),
+                      );
+                    });
+                  }
+                } else if (labelRoot) {
                   const idxRef = { i: 0 };
                   for (const node of labelRoot) renderLabelNode(node, idxRef);
                 } else if (folderRoot) {

@@ -1,11 +1,14 @@
 import { describe, expect, it } from "vitest";
 import {
   addToPlaylist,
+  buildPlaylistGroups,
+  UNSORTED_ID,
   movePlaylistItem,
   movePlaylistItems,
   removeFromPlaylist,
   uniquePlaylistName,
 } from "./playlists";
+import { makeTrack } from "../test/factories";
 import type { Playlist } from "../types";
 
 const A = "/lib/a.aiff";
@@ -117,5 +120,61 @@ describe("uniquePlaylistName", () => {
 
   it("falls back to a name at all", () => {
     expect(uniquePlaylistName([], "   ")).toBe("Playlist");
+  });
+});
+
+describe("buildPlaylistGroups", () => {
+  const tracks = [A, B, C].map((path) => makeTrack({ path, id: path }));
+
+  it("puts the tracks in the playlist's order, not the table's", () => {
+    // The order is the content. Every other grouping sorts its rows; this one
+    // must not, which is also why the position is worth a column.
+    const groups = buildPlaylistGroups(
+      [playlist("Warmup", 1)],
+      { 1: [C, A] },
+      tracks,
+    );
+    expect(groups[0].tracks.map((t) => t.path)).toEqual([C, A]);
+  });
+
+  it("collects what is in no playlist, and says so even when empty", () => {
+    // It is where a track lands when it is taken out of a playlist. A bucket
+    // that appears only sometimes is one nobody learns to look in.
+    const groups = buildPlaylistGroups([playlist("Set", 1)], { 1: [A] }, tracks);
+    const unsorted = groups[groups.length - 1];
+    expect(unsorted.id).toBe(UNSORTED_ID);
+    expect(unsorted.tracks.map((t) => t.path)).toEqual([B, C]);
+
+    const all = buildPlaylistGroups([playlist("Set", 1)], { 1: [A, B, C] }, tracks);
+    expect(all[all.length - 1].tracks).toEqual([]);
+  });
+
+  it("skips a path with no track on screen", () => {
+    // Filtered out, or the file is gone and the row already pruned. Either way
+    // there is nothing to draw, and the count follows what is visible.
+    const groups = buildPlaylistGroups(
+      [playlist("Set", 1)],
+      { 1: [A, "/lib/vanished.aiff", B] },
+      tracks,
+    );
+    expect(groups[0].tracks.map((t) => t.path)).toEqual([A, B]);
+  });
+
+  it("keeps a track that is in two playlists in both", () => {
+    const groups = buildPlaylistGroups(
+      [playlist("One", 1), playlist("Two", 2)],
+      { 1: [A], 2: [A, B] },
+      tracks,
+    );
+    expect(groups[0].tracks.map((t) => t.path)).toEqual([A]);
+    expect(groups[1].tracks.map((t) => t.path)).toEqual([A, B]);
+    // And out of the unsorted bucket, which asks "in *any* playlist".
+    expect(groups[2].tracks.map((t) => t.path)).toEqual([C]);
+  });
+
+  it("is just the unsorted bucket when there are no playlists", () => {
+    const groups = buildPlaylistGroups([], {}, tracks);
+    expect(groups).toHaveLength(1);
+    expect(groups[0].tracks).toHaveLength(3);
   });
 });

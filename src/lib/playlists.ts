@@ -1,4 +1,4 @@
-import type { Playlist } from "../types";
+import type { Playlist, TrackAnalysis } from "../types";
 
 /**
  * What a playlist's order does when somebody edits it.
@@ -114,4 +114,69 @@ export function uniquePlaylistName(existing: Playlist[], base: string): string {
     if (!taken.has(candidate.toLowerCase())) return candidate;
   }
   return trimmed;
+}
+
+/** Key of the bucket holding everything that is in no playlist. */
+export const UNSORTED_ID = -1;
+
+/** One head in the playlists grouping, with the tracks under it. */
+export interface PlaylistGroup {
+  /** The playlist, or null for the unsorted bucket. */
+  playlist: Playlist | null;
+  /** Stable expand key, and what the drag handlers key off. */
+  id: number;
+  name: string;
+  /** In playlist order for a real playlist; in list order for unsorted. */
+  tracks: TrackAnalysis[];
+}
+
+/**
+ * The playlists grouping: one group per playlist, in the order they were made,
+ * plus everything that is in none of them.
+ *
+ * Two things it has to get right, and both come from the same place — the
+ * playlist stores *paths*, and the table shows the tracks the filter left over:
+ *
+ * - **Order comes from the playlist, not from the sort.** Every other grouping
+ *   sorts its rows; this one must not, because the order is the content. That is
+ *   also why the position is worth a column.
+ * - **A path with no visible track is skipped, not drawn empty.** It may be
+ *   filtered out, or the file may be gone and the row already pruned. Either
+ *   way there is nothing to show, and the count reflects what is on screen.
+ */
+export function buildPlaylistGroups(
+  playlists: Playlist[],
+  contents: Record<number, string[]>,
+  tracks: TrackAnalysis[],
+): PlaylistGroup[] {
+  const byPath = new Map(tracks.map((t) => [t.path, t]));
+  const spoken = new Set<string>();
+
+  const groups: PlaylistGroup[] = playlists.map((playlist) => {
+    const paths = contents[playlist.id] ?? [];
+    const inOrder: TrackAnalysis[] = [];
+    for (const path of paths) {
+      const track = byPath.get(path);
+      if (!track) continue;
+      inOrder.push(track);
+      spoken.add(path);
+    }
+    return {
+      playlist,
+      id: playlist.id,
+      name: playlist.name,
+      tracks: inOrder,
+    };
+  });
+
+  // Always present, even when empty: it is where a track lands when it is taken
+  // out of a playlist, and a bucket that appears only sometimes is a bucket
+  // nobody learns to look in.
+  groups.push({
+    playlist: null,
+    id: UNSORTED_ID,
+    name: "Unsorted",
+    tracks: tracks.filter((t) => !spoken.has(t.path)),
+  });
+  return groups;
 }

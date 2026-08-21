@@ -20,6 +20,7 @@ import type {
   ScanPatch,
   ScanProgress,
   ScanStatus,
+  Playlist,
   ScanTracks,
   SkippedFile,
   TrackAnalysis,
@@ -318,6 +319,42 @@ export function onConvertProgress(
  */
 export function suggestMetadata(path: string): Promise<MetadataSuggestions> {
   return invoke<MetadataSuggestions>("suggest_metadata", { path });
+}
+
+// --- playlists ---------------------------------------------------------------
+
+/** Every playlist with its track count, in the order they were made. */
+export function loadPlaylists(): Promise<Playlist[]> {
+  return invoke<Playlist[]>("playlists_load");
+}
+
+/**
+ * Every playlist's contents, keyed by id. One call rather than one per
+ * playlist: the table groups by playlist and needs all of them for one screen.
+ */
+export function loadPlaylistContents(): Promise<Record<number, string[]>> {
+  return invoke<Record<number, string[]>>("playlist_contents");
+}
+
+/** Creates a playlist and returns its id. */
+export function createPlaylist(name: string): Promise<number> {
+  return invoke<number>("playlist_create", { name });
+}
+
+export function renamePlaylist(id: number, name: string): Promise<void> {
+  return invoke("playlist_rename", { id, name });
+}
+
+export function deletePlaylist(id: number): Promise<void> {
+  return invoke("playlist_delete", { id });
+}
+
+/**
+ * Replaces a playlist's contents with exactly `paths`, in that order — the
+ * order is the payload, and `lib/playlists.ts` has already decided what it is.
+ */
+export function setPlaylistPaths(id: number, paths: string[]): Promise<void> {
+  return invoke("playlist_set", { id, paths });
 }
 
 /** Whether Discogs credentials are stored, and whether the Keychain answered. */

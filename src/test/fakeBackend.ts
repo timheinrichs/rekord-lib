@@ -77,6 +77,9 @@ export interface FakeState {
    * `rekord-lib.json`, and a test that puts them back there proves nothing.
    */
   discogs: { key: string; secret: string } | null;
+  /** Playlists, and their contents in order — the two tables, as the app sees them. */
+  playlists: { id: number; name: string; created_ms: number; updated_ms: number }[];
+  playlistContents: Record<number, string[]>;
   /** Thumbnails per path, for the cover cache's invalidation. */
   covers: Record<string, string | null>;
   /** Non-null makes the app report a broken ffmpeg/ffprobe at startup. */
@@ -108,6 +111,8 @@ function defaults(): FakeState {
     account: null,
     collection: [],
     discogs: null,
+    playlists: [],
+    playlistContents: {},
     covers: {},
     sidecarError: null,
     dbAvailable: true,
@@ -234,6 +239,45 @@ export function installFakeBackend(
     },
     library_dir_available: () => true,
     allow_library_playback: () => null,
+
+    // --- playlists ---
+    playlists_load: () =>
+      state.playlists.map((p) => ({
+        ...p,
+        // Counted rather than stored, exactly as the query does it.
+        track_count: (state.playlistContents[p.id] ?? []).length,
+      })),
+    playlist_contents: () => state.playlistContents,
+    playlist_create: (args) => {
+      const id = state.playlists.length + 1;
+      state.playlists.push({
+        id,
+        name: args.name as string,
+        created_ms: id,
+        updated_ms: id,
+      });
+      state.playlistContents[id] = [];
+      return id;
+    },
+    playlist_rename: (args) => {
+      const pl = state.playlists.find((p) => p.id === args.id);
+      if (pl) pl.name = args.name as string;
+      return null;
+    },
+    playlist_delete: (args) => {
+      state.playlists = state.playlists.filter((p) => p.id !== args.id);
+      delete state.playlistContents[args.id as number];
+      return null;
+    },
+    playlist_set: (args) => {
+      // Like the real one: a path the library no longer holds is dropped rather
+      // than failing the whole write.
+      const known = new Set(state.tracks.map((t) => t.path));
+      state.playlistContents[args.id as number] = (args.paths as string[]).filter(
+        (p) => known.has(p),
+      );
+      return null;
+    },
     // The Discogs credentials live in the Keychain, so the fake keeps them in
     // one place too — and, like the real thing, never hands the secret back.
     discogs_credentials: () => ({
@@ -418,6 +462,12 @@ export function installFakeBackend(
     "undo_peek",
     "undo_last",
     "stored_waveforms",
+    "playlists_load",
+    "playlist_contents",
+    "playlist_create",
+    "playlist_rename",
+    "playlist_delete",
+    "playlist_set",
   ]);
 
   /** The plugin channels, which are `invoke` calls like any other. */

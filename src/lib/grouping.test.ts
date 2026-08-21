@@ -346,6 +346,9 @@ describe("GROUPINGS", () => {
       "album",
       "label",
       "folder",
+      // Last: the other three fold the library into a different shape, this
+      // one shows an order the user made.
+      "playlist",
     ]);
   });
 

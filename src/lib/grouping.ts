@@ -2,7 +2,7 @@ import type { DuplicateGroup, TrackAnalysis, TrackEdit } from "../types";
 
 /** Column the top-level list (collapsed albums + single tracks) is sorted by. */
 /** How the library list is grouped. */
-export type Grouping = "flat" | "album" | "folder" | "label";
+export type Grouping = "flat" | "album" | "folder" | "label" | "playlist";
 
 /**
  * The grouping switch, in display order.
@@ -17,6 +17,10 @@ export const GROUPINGS: readonly (readonly [Grouping, string])[] = [
   ["album", "Album"],
   ["label", "Label"],
   ["folder", "Folder"],
+  // Last, and unlike the three before it this one does not fold the library
+  // into a different shape — it shows an order the user made, plus everything
+  // that is not in one yet.
+  ["playlist", "Playlists"],
 ];
 
 export const DEFAULT_GROUPING: Grouping = "flat";
