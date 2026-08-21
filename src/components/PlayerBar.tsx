@@ -133,7 +133,7 @@ export default function PlayerBar() {
           </button>
           <button
             onClick={toggle}
-            className="flex h-11 w-11 items-center justify-center rounded-full bg-accent-600 text-fg hover:bg-accent-500"
+            className="flex h-9 w-9 items-center justify-center rounded-full bg-accent-600 text-fg hover:bg-accent-500"
             title={playing ? "Pause" : "Play"}
             aria-label={playing ? "Pause" : "Play"}
           >

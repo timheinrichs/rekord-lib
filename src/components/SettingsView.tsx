@@ -244,7 +244,7 @@ export default function SettingsView({
             </span>
             <button
               onClick={disconnect}
-              className="ml-auto rounded-lg border border-border-strong px-3 py-1.5 hover:border-danger-500 hover:text-danger-500"
+              className="h-9 inline-flex items-center justify-center ml-auto rounded-md border border-border-strong px-3 hover:border-danger-500 hover:text-danger-500"
             >
               Disconnect
             </button>
@@ -257,14 +257,14 @@ export default function SettingsView({
             </span>
             <button
               onClick={openLogin}
-              className="rounded-lg bg-accent-600 px-4 py-2 text-sm font-medium hover:bg-accent-500"
+              className="h-9 inline-flex items-center justify-center rounded-md bg-accent-600 px-4 text-sm font-medium hover:bg-accent-500"
             >
               1 · Sign in to Bandcamp
             </button>
             <button
               onClick={connect}
               disabled={busy}
-              className="rounded-lg bg-accent-600 px-4 py-2 text-sm font-medium enabled:hover:bg-accent-500 disabled:bg-surface-2 disabled:text-fg-disabled"
+              className="h-9 inline-flex items-center justify-center rounded-md bg-accent-600 px-4 text-sm font-medium enabled:hover:bg-accent-500 disabled:bg-surface-2 disabled:text-fg-disabled"
             >
               {busy ? "Connecting…" : "2 · Connect"}
             </button>
@@ -287,7 +287,7 @@ export default function SettingsView({
         </p>
         <button
           onClick={chooseLibrary}
-          className="mt-4 w-full truncate rounded-lg border border-border-strong bg-surface-2 px-3 py-2 text-left text-sm hover:border-accent-500"
+          className="h-9 inline-flex items-center justify-center mt-4 w-full truncate rounded-md border border-border-strong bg-surface-2 px-3 text-left text-sm hover:border-accent-500"
           title={settings.library_dir ?? "Choose folder"}
         >
           {settings.library_dir ?? "Choose folder…"}
@@ -420,7 +420,7 @@ export default function SettingsView({
                 onRedetectBpm();
               }}
               disabled={!trackCount || !!scan || starting}
-              className="mt-3 rounded-lg border border-border-strong px-3 py-2 text-sm enabled:hover:border-accent-500 disabled:border-border disabled:text-fg-disabled"
+              className="h-9 inline-flex items-center justify-center mt-3 rounded-md border border-border-strong px-3 text-sm enabled:hover:border-accent-500 disabled:border-border disabled:text-fg-disabled"
             >
               {scan
                 ? scan.stage.startsWith("Detecting")
@@ -508,7 +508,7 @@ export default function SettingsView({
             <button
               onClick={forgetDiscogs}
               disabled={discogsBusy}
-              className="ml-auto rounded-lg border border-border-strong px-3 py-1.5 enabled:hover:border-danger-500 enabled:hover:text-danger-500 disabled:border-border disabled:text-fg-disabled"
+              className="h-9 inline-flex items-center justify-center ml-auto rounded-md border border-border-strong px-3 enabled:hover:border-danger-500 enabled:hover:text-danger-500 disabled:border-border disabled:text-fg-disabled"
             >
               Remove
             </button>
@@ -540,7 +540,7 @@ export default function SettingsView({
                 disabled={
                   discogsBusy || !discogsKey.trim() || !discogsSecret.trim()
                 }
-                className="rounded-lg bg-accent-600 px-4 py-2 text-sm font-medium enabled:hover:bg-accent-500 disabled:bg-surface-2 disabled:text-fg-disabled"
+                className="h-9 inline-flex items-center justify-center rounded-md bg-accent-600 px-4 text-sm font-medium enabled:hover:bg-accent-500 disabled:bg-surface-2 disabled:text-fg-disabled"
               >
                 {discogsBusy ? "Saving…" : "Save to Keychain"}
               </button>
@@ -582,7 +582,7 @@ export default function SettingsView({
                 <button
                   onClick={runUpdate}
                   disabled={installing}
-                  className="ml-auto rounded-lg bg-accent-600 px-4 py-2 text-sm font-medium enabled:hover:bg-accent-500 disabled:bg-surface-2 disabled:text-fg-disabled"
+                  className="h-9 inline-flex items-center justify-center ml-auto rounded-md bg-accent-600 px-4 text-sm font-medium enabled:hover:bg-accent-500 disabled:bg-surface-2 disabled:text-fg-disabled"
                 >
                   {installLabel}
                 </button>
@@ -614,7 +614,7 @@ export default function SettingsView({
                 <button
                   onClick={runUpdate}
                   disabled={installing}
-                  className="rounded-lg bg-accent-600 px-4 py-2 text-sm font-medium enabled:hover:bg-accent-500 disabled:bg-surface-2 disabled:text-fg-disabled"
+                  className="h-9 inline-flex items-center justify-center rounded-md bg-accent-600 px-4 text-sm font-medium enabled:hover:bg-accent-500 disabled:bg-surface-2 disabled:text-fg-disabled"
                 >
                   {installLabel}
                 </button>
@@ -634,7 +634,7 @@ export default function SettingsView({
             <button
               onClick={checkUpdates}
               disabled={checking}
-              className="rounded-lg border border-border-strong px-3 py-1.5 text-sm enabled:hover:border-accent-500 disabled:border-border disabled:text-fg-disabled"
+              className="h-9 inline-flex items-center justify-center rounded-md border border-border-strong px-3 text-sm enabled:hover:border-accent-500 disabled:border-border disabled:text-fg-disabled"
             >
               {checking ? "Checking…" : "Check for updates"}
             </button>
@@ -650,7 +650,7 @@ export default function SettingsView({
         <div className="mt-4 flex flex-wrap items-center gap-3 border-t border-border pt-4">
           <button
             onClick={() => void openUrl(DONATE_URL)}
-            className="inline-flex items-center gap-1.5 rounded-lg border border-border-strong px-3 py-1.5 text-sm enabled:hover:border-accent-500 enabled:hover:text-accent-400"
+            className="h-9 justify-center inline-flex items-center gap-1.5 rounded-md border border-border-strong px-3 text-sm enabled:hover:border-accent-500 enabled:hover:text-accent-400"
           >
             <HeartIcon />
             Donate

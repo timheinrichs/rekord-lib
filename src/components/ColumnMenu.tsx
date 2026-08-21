@@ -73,7 +73,7 @@ export default function ColumnMenu({ hidden, onChange }: Props) {
           {someHidden && (
             <button
               onClick={() => onChange([])}
-              className="mt-1 w-full rounded-md px-2 py-1.5 text-left text-sm text-fg-muted hover:bg-surface-2 hover:text-fg"
+              className="h-9 inline-flex items-center justify-center mt-1 w-full rounded-md px-2 text-left text-sm text-fg-muted hover:bg-surface-2 hover:text-fg"
             >
               Show all
             </button>

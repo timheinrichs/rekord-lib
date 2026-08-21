@@ -68,7 +68,7 @@ export default function PlaylistMenu({ playlist, onRename, onDelete }: Props) {
               setOpen(false);
               setRenaming(true);
             }}
-            className="block w-full px-3 py-1.5 text-left text-sm hover:bg-surface hover:text-accent-400"
+            className="h-9 inline-flex items-center justify-center block w-full px-3 text-left text-sm hover:bg-surface hover:text-accent-400"
           >
             Rename
           </button>
@@ -79,14 +79,14 @@ export default function PlaylistMenu({ playlist, onRename, onDelete }: Props) {
                 setConfirming(false);
                 onDelete();
               }}
-              className="block w-full px-3 py-1.5 text-left text-sm text-danger-500 hover:bg-surface"
+              className="h-9 inline-flex items-center justify-center block w-full px-3 text-left text-sm text-danger-500 hover:bg-surface"
             >
               Delete “{playlist.name}”?
             </button>
           ) : (
             <button
               onClick={() => setConfirming(true)}
-              className="block w-full px-3 py-1.5 text-left text-sm hover:bg-surface hover:text-danger-500"
+              className="h-9 inline-flex items-center justify-center block w-full px-3 text-left text-sm hover:bg-surface hover:text-danger-500"
             >
               Delete
             </button>

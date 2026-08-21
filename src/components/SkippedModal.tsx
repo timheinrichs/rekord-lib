@@ -38,14 +38,14 @@ export default function SkippedModal({ files, onClose }: Props) {
           <div className="flex items-center gap-3">
             <button
               onClick={() => void copy()}
-              className="rounded-md border border-border-strong px-3 py-1.5 text-sm hover:border-accent-500"
+              className="h-9 inline-flex items-center justify-center rounded-md border border-border-strong px-3 text-sm hover:border-accent-500"
               title="Copy the list with the reasons"
             >
               {copied ? "Copied" : "Copy"}
             </button>
             <button
               onClick={onClose}
-              className="text-fg-muted hover:text-fg"
+              className="flex h-9 w-9 items-center justify-center rounded-md text-fg-muted hover:text-fg"
               aria-label="Close"
             >
               ✕

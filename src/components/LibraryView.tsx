@@ -1668,17 +1668,17 @@ export default function LibraryView({
               ? "Hold the scan — whatever is being analyzed right now still finishes"
               : undefined
         }
-        className={`inline-flex items-center gap-1.5 rounded-lg border px-3 py-2 text-sm ${
-          scanState === "finished"
-            ? // "Done" is a state, so it takes the state colour — success, the
-              // same green as the converted-track tick. Deliberately no
-              // disabled: rule in this branch: a disabled: variant is a class
-              // plus a pseudo-class and so outranks a bare status colour, which
-              // left the label and icon grey inside an already-green outline
-              // until the button happened to re-enable.
-              "border-success-500 text-success-500"
-            : "border-border-strong enabled:hover:border-accent-500 disabled:border-border disabled:text-fg-disabled"
-        }`}
+        className={`h-9 justify-center inline-flex items-center gap-1.5 rounded-md border px-3 text-sm ${
+ scanState === "finished"
+ ? // "Done" is a state, so it takes the state colour — success, the
+ // same green as the converted-track tick. Deliberately no
+ // disabled: rule in this branch: a disabled: variant is a class
+ // plus a pseudo-class and so outranks a bare status colour, which
+ // left the label and icon grey inside an already-green outline
+ // until the button happened to re-enable.
+ "border-success-500 text-success-500"
+ : "border-border-strong enabled:hover:border-accent-500 disabled:border-border disabled:text-fg-disabled"
+ }`}
       >
         {scanRunning ? (
           <span className="grid">
@@ -1750,7 +1750,7 @@ export default function LibraryView({
         <button
           onClick={() => setDupOpen(true)}
           disabled={converting}
-          className="inline-flex items-center gap-1.5 rounded-lg border border-border-strong px-3 py-2 text-sm enabled:hover:border-accent-500 disabled:border-border disabled:text-fg-disabled"
+          className="h-9 justify-center inline-flex items-center gap-1.5 rounded-md border border-border-strong px-3 text-sm enabled:hover:border-accent-500 disabled:border-border disabled:text-fg-disabled"
           title="Show the duplicate tracks found across all formats"
         >
           {`Duplicates (${dupGroups.length})`}
@@ -1759,7 +1759,7 @@ export default function LibraryView({
       {skippedLabel(skipped) && (
         <button
           onClick={() => setSkippedOpen(true)}
-          className="inline-flex items-center gap-1.5 rounded-lg border border-warning-500/40 px-3 py-2 text-sm text-warning-500 hover:border-warning-500"
+          className="h-9 justify-center inline-flex items-center gap-1.5 rounded-md border border-warning-500/40 px-3 text-sm text-warning-500 hover:border-warning-500"
           title="Files the analysis could not use — see why"
         >
           {skippedLabel(skipped)}
@@ -1778,7 +1778,7 @@ export default function LibraryView({
         <button
           onClick={() => void undoLastWrite()}
           disabled={writing}
-          className="inline-flex items-center gap-1.5 rounded-lg border border-border-strong px-3 py-2 text-sm enabled:hover:border-accent-500 disabled:border-border disabled:text-fg-disabled"
+          className="h-9 justify-center inline-flex items-center gap-1.5 rounded-md border border-border-strong px-3 text-sm enabled:hover:border-accent-500 disabled:border-border disabled:text-fg-disabled"
           title={`Undo the last tag write (${undoEntry.label})`}
         >
           <UndoIcon />
@@ -1789,7 +1789,7 @@ export default function LibraryView({
         <button
           onClick={flushPendingEdits}
           disabled={writing || converting}
-          className="inline-flex items-center gap-1.5 rounded-lg border border-warning-500/40 px-3 py-2 text-sm text-warning-500 enabled:hover:border-warning-500 disabled:text-fg-disabled"
+          className="h-9 justify-center inline-flex items-center gap-1.5 rounded-md border border-warning-500/40 px-3 text-sm text-warning-500 enabled:hover:border-warning-500 disabled:text-fg-disabled"
           title="Write metadata changes made earlier (not yet saved to the files) into the files"
         >
           {writing ? (
@@ -1809,14 +1809,14 @@ export default function LibraryView({
           <button
             onClick={() => setBulkOpen(true)}
             disabled={converting || writing}
-            className="rounded-lg border border-border-strong px-3 py-2 text-sm enabled:hover:border-accent-500 disabled:border-border disabled:text-fg-disabled"
+            className="h-9 inline-flex items-center justify-center rounded-md border border-border-strong px-3 text-sm enabled:hover:border-accent-500 disabled:border-border disabled:text-fg-disabled"
           >
             Edit metadata ({selected.size})
           </button>
           <button
             onClick={convertSelected}
             disabled={converting}
-            className="rounded-lg bg-accent-600 px-4 py-2 text-sm font-medium enabled:hover:bg-accent-500 disabled:bg-surface-2 disabled:text-fg-disabled"
+            className="h-9 inline-flex items-center justify-center rounded-md bg-accent-600 px-4 text-sm font-medium enabled:hover:bg-accent-500 disabled:bg-surface-2 disabled:text-fg-disabled"
           >
             {converting ? "Converting…" : `Convert selection (${selected.size})`}
           </button>
@@ -1842,7 +1842,7 @@ export default function LibraryView({
               )
             }
             disabled={converting}
-            className="rounded-lg border border-border-strong px-3 py-2 text-sm enabled:hover:border-danger-500 enabled:hover:text-danger-500 disabled:border-border disabled:text-fg-disabled"
+            className="h-9 inline-flex items-center justify-center rounded-md border border-border-strong px-3 text-sm enabled:hover:border-danger-500 enabled:hover:text-danger-500 disabled:border-border disabled:text-fg-disabled"
           >
             Delete ({selected.size})
           </button>
@@ -1865,7 +1865,7 @@ export default function LibraryView({
             </p>
             <button
               onClick={onOpenSettings}
-              className="mt-2 rounded-lg bg-accent-600 px-4 py-2 text-sm font-medium hover:bg-accent-500"
+              className="h-9 inline-flex items-center justify-center mt-2 rounded-md bg-accent-600 px-4 text-sm font-medium hover:bg-accent-500"
             >
               Open settings
             </button>
@@ -1913,7 +1913,7 @@ export default function LibraryView({
           </div>
           <button
             onClick={() => void relocateTo()}
-            className="ml-auto shrink-0 rounded-md border border-border-strong px-3 py-1.5 hover:border-accent-500"
+            className="h-9 inline-flex items-center justify-center ml-auto shrink-0 rounded-md border border-border-strong px-3 hover:border-accent-500"
             title="Point the library at the folder's new location, keeping every track's edits and analysis"
           >
             Locate folder…
@@ -1954,11 +1954,11 @@ export default function LibraryView({
               <button
                 key={key}
                 onClick={() => setGrouping(key)}
-                className={`whitespace-nowrap rounded-full px-3 py-1.5 text-sm transition-colors ${
-                  grouping === key
-                    ? "bg-accent-600 text-fg"
-                    : "text-fg-muted hover:text-fg"
-                }`}
+                className={`h-9 inline-flex items-center justify-center whitespace-nowrap rounded-full px-3 text-sm transition-colors ${
+ grouping === key
+ ? "bg-accent-600 text-fg"
+ : "text-fg-muted hover:text-fg"
+ }`}
               >
                 {label}
               </button>
@@ -1986,7 +1986,7 @@ export default function LibraryView({
           <button
             onClick={runExport}
             disabled={exporting || counts.total === 0}
-            className="order-last ml-2 shrink-0 whitespace-nowrap rounded-lg border border-border-strong px-3 py-1.5 text-sm enabled:hover:border-accent-500 disabled:border-border disabled:text-fg-disabled"
+            className="h-9 inline-flex items-center justify-center order-last ml-2 shrink-0 whitespace-nowrap rounded-md border border-border-strong px-3 text-sm enabled:hover:border-accent-500 disabled:border-border disabled:text-fg-disabled"
             title="Write a rekordbox.xml with every track, its tempo, key and beat grid, and the playlists"
           >
             {exporting ? "Exporting…" : "Export for Rekordbox"}
@@ -2335,7 +2335,7 @@ export default function LibraryView({
                           <button
                             onClick={() => convertOne(t)}
                             disabled={converting}
-                            className="rounded-md bg-accent-600 px-2 py-1 text-xs font-medium enabled:hover:bg-accent-500 disabled:bg-surface-2 disabled:text-fg-disabled"
+                            className="h-9 inline-flex items-center justify-center rounded-md bg-accent-600 px-2 text-xs font-medium enabled:hover:bg-accent-500 disabled:bg-surface-2 disabled:text-fg-disabled"
                             title="Convert to target format"
                           >
                             Convert

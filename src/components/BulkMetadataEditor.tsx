@@ -90,7 +90,7 @@ export default function BulkMetadataEditor({
           </h2>
           <button
             onClick={onClose}
-            className="text-fg-muted hover:text-fg"
+            className="flex h-9 w-9 items-center justify-center rounded-md text-fg-muted hover:text-fg"
           >
             ✕
           </button>
@@ -145,14 +145,14 @@ export default function BulkMetadataEditor({
         <footer className="flex justify-end gap-3 border-t border-border px-5 py-3">
           <button
             onClick={onClose}
-            className="rounded-lg border border-border-strong px-4 py-2 text-sm hover:border-border-strong"
+            className="h-9 inline-flex items-center justify-center rounded-md border border-border-strong px-4 text-sm hover:border-border-strong"
           >
             Cancel
           </button>
           <button
             onClick={handleApply}
             disabled={!anyEnabled}
-            className="rounded-lg bg-accent-600 px-4 py-2 text-sm font-medium enabled:hover:bg-accent-500 disabled:bg-surface-2 disabled:text-fg-disabled"
+            className="h-9 inline-flex items-center justify-center rounded-md bg-accent-600 px-4 text-sm font-medium enabled:hover:bg-accent-500 disabled:bg-surface-2 disabled:text-fg-disabled"
           >
             Apply
           </button>

@@ -144,11 +144,18 @@ import '@fontsource/jetbrains-mono/700.css';
 
 ## 5. Shape & layout
 
-- **Radius:** controls `rounded-md` (8 px), cards `rounded-lg` (12 px), pills `rounded-full`. One-sided border accents (only `border-l`) → `rounded-none`.
+- **Radius:** controls `rounded-md` (8 px) — every button, without exception except the two shapes below; cards `rounded-lg` (12 px), pills and circular transport controls `rounded-full`. One-sided border accents (only `border-l`) → `rounded-none`.
 - **Border:** default `border border-border` (hairline). No double frame + shadow on the same surface.
 - **Elevation:** subtle, `shadow-md` for popover/dialog, otherwise flat. Depth comes from `surface` levels, not from shadows.
-- **Density:** compact (power-user tool). Tight line height in lists, padding `px-3 py-2` for rows, `px-4 py-2.5` for buttons.
-- **Icons:** stroke icons `stroke-width 2`, glyph 18–20 px. Place icon-only buttons in a **click target of at least 32 px** (`h-8 w-8`, centered), never just a bare glyph. Very small decorative icons (16 px) only without a click function.
+- **Control height: one number, `h-9` (36 px), for every button.** Set as a
+  height, never left to padding — a label is 20 px tall, an icon 16 and a cover
+  40, so padding gives a different height to every control that carries
+  something different. Icon-only buttons are square at the same number
+  (`h-9 w-9`, centered, never a bare glyph), which also clears the 32 px click
+  target. Horizontal padding is free to vary with the label: `px-4` normally,
+  `px-3` where a row of controls is tight.
+- **Density:** compact (power-user tool). Tight line height in lists, padding `px-3 py-2` for rows.
+- **Icons:** stroke icons `stroke-width 2`, glyph 18–20 px. Very small decorative icons (16 px) only without a click function.
 - **Window:** dark title bar; if using a custom title bar, `bg-surface` + `border-b border-border`.
 
 ---
@@ -157,14 +164,14 @@ import '@fontsource/jetbrains-mono/700.css';
 
 Primary button
 ```html
-<button class="font-mono text-sm rounded-md px-4 py-2.5 bg-accent-600 hover:bg-accent-500 text-white transition-colors">
+<button class="font-mono text-sm h-9 rounded-md px-4 bg-accent-600 hover:bg-accent-500 text-white transition-colors">
   Convert
 </button>
 ```
 
 Secondary button
 ```html
-<button class="font-mono text-sm rounded-md px-4 py-2.5 bg-surface-2 hover:bg-graphite-700 text-fg border border-border transition-colors">
+<button class="font-mono text-sm h-9 rounded-md px-4 bg-surface-2 hover:bg-graphite-700 text-fg border border-border transition-colors">
   Cancel
 </button>
 ```

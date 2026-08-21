@@ -75,7 +75,7 @@ export default function HeaderNav({
           attention. */}
       <button
         onClick={onOpenEventLog}
-        className="relative flex shrink-0 items-center justify-center rounded-lg border border-border-strong p-2 text-fg-muted hover:border-accent-500 hover:text-accent-400"
+        className="relative flex h-9 w-9 shrink-0 items-center justify-center rounded-md border border-border-strong text-fg-muted hover:border-accent-500 hover:text-accent-400"
         title="Event log"
         aria-label="Event log"
       >
@@ -97,7 +97,7 @@ export default function HeaderNav({
         <div ref={downloadsRef} className="relative shrink-0">
           <button
             onClick={() => setDownloadsOpen((o) => !o)}
-            className="relative flex items-center justify-center rounded-lg border border-border-strong p-2 text-fg-muted hover:border-accent-500 hover:text-accent-400"
+            className="relative flex h-9 w-9 items-center justify-center rounded-md border border-border-strong text-fg-muted hover:border-accent-500 hover:text-accent-400"
             title="Downloads"
             aria-label="Downloads"
           >
@@ -123,7 +123,7 @@ export default function HeaderNav({
                   )}
                   <button
                     onClick={() => setDownloadsOpen(false)}
-                    className="text-fg-subtle hover:text-fg"
+                    className="flex h-9 w-9 items-center justify-center rounded-md text-fg-subtle hover:text-fg"
                     aria-label="Close"
                   >
                     ✕
@@ -152,7 +152,7 @@ export default function HeaderNav({
                           {d.state === "loading" && (
                             <button
                               onClick={() => onCancelDownload(d.key)}
-                              className="text-fg-subtle hover:text-danger-500"
+                              className="flex h-9 w-9 items-center justify-center rounded-md text-fg-subtle hover:text-danger-500"
                               title="Cancel download"
                               aria-label="Cancel download"
                             >
@@ -193,7 +193,7 @@ export default function HeaderNav({
 
       <button
         onClick={onOpenSettings}
-        className="relative shrink-0 rounded-lg border border-border-strong p-2 text-fg-muted hover:border-accent-500 hover:text-accent-400"
+        className="relative flex h-9 w-9 shrink-0 items-center justify-center rounded-md border border-border-strong text-fg-muted hover:border-accent-500 hover:text-accent-400"
         title={updateAvailable ? settingsHint(updateSeverity, " · ") : "Settings"}
         aria-label={
           updateAvailable ? settingsHint(updateSeverity, ", ") : "Settings"
@@ -241,11 +241,11 @@ function TabButton({
   return (
     <button
       onClick={onClick}
-      className={`rounded-md px-3 py-1.5 text-sm transition-colors ${
-        active
-          ? "bg-accent-600/20 text-accent-200"
-          : "text-fg-muted hover:text-fg"
-      }`}
+      className={`h-9 inline-flex items-center justify-center rounded-md px-3 text-sm transition-colors ${
+ active
+ ? "bg-accent-600/20 text-accent-200"
+ : "text-fg-muted hover:text-fg"
+ }`}
     >
       {label}
     </button>

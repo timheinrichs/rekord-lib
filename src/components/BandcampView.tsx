@@ -85,7 +85,7 @@ export default function BandcampView({
           <button
             onClick={onDownloadAll}
             disabled={!canAct || collection.length === 0}
-            className="rounded-lg border border-border-strong px-3 py-2 text-sm enabled:hover:border-accent-500 disabled:border-border disabled:text-fg-disabled"
+            className="h-9 inline-flex items-center justify-center rounded-md border border-border-strong px-3 text-sm enabled:hover:border-accent-500 disabled:border-border disabled:text-fg-disabled"
             title="Download every album and track into the library folder"
           >
             {bulk?.kind === "all"
@@ -95,7 +95,7 @@ export default function BandcampView({
           <button
             onClick={onSyncLibrary}
             disabled={!canAct || missingCount === 0}
-            className="rounded-lg bg-accent-600 px-4 py-2 text-sm font-medium enabled:hover:bg-accent-500 disabled:bg-surface-2 disabled:text-fg-disabled"
+            className="h-9 inline-flex items-center justify-center rounded-md bg-accent-600 px-4 text-sm font-medium enabled:hover:bg-accent-500 disabled:bg-surface-2 disabled:text-fg-disabled"
             title="Download only purchases that are missing locally"
           >
             {bulk?.kind === "sync"
@@ -121,7 +121,7 @@ export default function BandcampView({
             </p>
             <button
               onClick={onOpenSettings}
-              className="mt-2 rounded-lg bg-accent-600 px-4 py-2 text-sm font-medium hover:bg-accent-500"
+              className="h-9 inline-flex items-center justify-center mt-2 rounded-md bg-accent-600 px-4 text-sm font-medium hover:bg-accent-500"
             >
               Open settings
             </button>
@@ -136,7 +136,7 @@ export default function BandcampView({
               <button
                 onClick={onRefresh}
                 disabled={refreshing}
-                className="ml-auto rounded-lg border border-border-strong px-3 py-1.5 text-sm text-fg-muted enabled:hover:border-accent-500 enabled:hover:text-accent-400 disabled:border-border disabled:text-fg-disabled"
+                className="h-9 inline-flex items-center justify-center ml-auto rounded-md border border-border-strong px-3 text-sm text-fg-muted enabled:hover:border-accent-500 enabled:hover:text-accent-400 disabled:border-border disabled:text-fg-disabled"
               >
                 {refreshing ? "Refreshing…" : "Refresh"}
               </button>
@@ -244,7 +244,7 @@ function BandcampRow({
       <button
         onClick={onDownload}
         disabled={!item.download_page_url || disabled || state === "loading"}
-        className="shrink-0 rounded-lg bg-accent-600 px-3 py-1.5 text-xs font-medium enabled:hover:bg-accent-500 disabled:bg-surface-2 disabled:text-fg-disabled"
+        className="h-9 inline-flex items-center justify-center shrink-0 rounded-md bg-accent-600 px-3 text-xs font-medium enabled:hover:bg-accent-500 disabled:bg-surface-2 disabled:text-fg-disabled"
       >
         {downloadLabel(state)}
       </button>
@@ -288,7 +288,7 @@ function BandcampCard({
         <button
           onClick={onDownload}
           disabled={!item.download_page_url || disabled || state === "loading"}
-          className="mt-1 w-full rounded-lg bg-accent-600 px-3 py-1.5 text-xs font-medium enabled:hover:bg-accent-500 disabled:bg-surface-2 disabled:text-fg-disabled"
+          className="h-9 inline-flex items-center justify-center mt-1 w-full rounded-md bg-accent-600 px-3 text-xs font-medium enabled:hover:bg-accent-500 disabled:bg-surface-2 disabled:text-fg-disabled"
         >
           {downloadLabel(state)}
         </button>
@@ -324,7 +324,7 @@ function ViewToggle({
       title={label}
       aria-label={label}
       aria-pressed={active}
-      className={`flex h-7 w-7 items-center justify-center rounded-md ${
+      className={`flex h-9 w-9 items-center justify-center rounded-md ${
         active ? "bg-accent-600/20 text-accent-200" : "text-fg-muted hover:text-fg"
       }`}
     >

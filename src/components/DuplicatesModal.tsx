@@ -98,7 +98,7 @@ export default function DuplicatesModal({
               </span>
             )}
           </h2>
-          <button onClick={onClose} className="text-fg-muted hover:text-fg" aria-label="Close">
+          <button onClick={onClose} className="flex h-9 w-9 items-center justify-center rounded-md text-fg-muted hover:text-fg" aria-label="Close">
             ✕
           </button>
         </header>
@@ -136,7 +136,7 @@ export default function DuplicatesModal({
                           <button
                             onClick={() => a.tracks.forEach((g) => onDismissGroup(g.id))}
                             title="These albums are not duplicates – remove them from the list"
-                            className="ml-auto shrink-0 rounded-md border border-border-strong px-2 py-1 text-xs text-fg-muted hover:border-warning-500 hover:text-warning-500"
+                            className="h-9 inline-flex items-center justify-center ml-auto shrink-0 rounded-md border border-border-strong px-2 text-xs text-fg-muted hover:border-warning-500 hover:text-warning-500"
                           >
                             Not a duplicate
                           </button>
@@ -214,7 +214,7 @@ export default function DuplicatesModal({
                             <button
                               onClick={() => void runDelete(del)}
                               disabled={busy || del.length === 0}
-                              className="rounded-lg bg-danger-500 px-3 py-1.5 text-xs font-medium text-white enabled:hover:bg-danger-500/90 disabled:bg-surface-2 disabled:text-fg-disabled"
+                              className="h-9 inline-flex items-center justify-center rounded-md bg-danger-500 px-3 text-xs font-medium text-white enabled:hover:bg-danger-500/90 disabled:bg-surface-2 disabled:text-fg-disabled"
                             >
                               Keep selected · delete others
                             </button>
@@ -268,7 +268,7 @@ export default function DuplicatesModal({
                           <button
                             onClick={() => onDismissGroup(g.id)}
                             title="This group is not a duplicate – remove it from the list"
-                            className="rounded-md border border-border-strong px-2 py-1 text-xs text-fg-muted hover:border-warning-500 hover:text-warning-500"
+                            className="h-9 inline-flex items-center justify-center rounded-md border border-border-strong px-2 text-xs text-fg-muted hover:border-warning-500 hover:text-warning-500"
                           >
                             Not a duplicate
                           </button>
@@ -346,14 +346,14 @@ export default function DuplicatesModal({
             )}
             <button
               onClick={onClose}
-              className="rounded-lg border border-border-strong px-4 py-2 text-sm hover:border-border-strong"
+              className="h-9 inline-flex items-center justify-center rounded-md border border-border-strong px-4 text-sm hover:border-border-strong"
             >
               Close
             </button>
             <button
               onClick={() => void runDelete(toDelete.paths)}
               disabled={busy || toDelete.paths.length === 0}
-              className="rounded-lg bg-danger-500 px-4 py-2 text-sm font-medium text-white enabled:hover:bg-danger-500/90 disabled:bg-surface-2 disabled:text-fg-disabled"
+              className="h-9 inline-flex items-center justify-center rounded-md bg-danger-500 px-4 text-sm font-medium text-white enabled:hover:bg-danger-500/90 disabled:bg-surface-2 disabled:text-fg-disabled"
             >
               {busy ? "Moving…" : `All tracks not kept (${toDelete.paths.length})`}
             </button>
@@ -368,7 +368,7 @@ export default function DuplicatesModal({
             )}
             <button
               onClick={onClose}
-              className="rounded-lg border border-border-strong px-4 py-2 text-sm hover:border-border-strong"
+              className="h-9 inline-flex items-center justify-center rounded-md border border-border-strong px-4 text-sm hover:border-border-strong"
             >
               Close
             </button>

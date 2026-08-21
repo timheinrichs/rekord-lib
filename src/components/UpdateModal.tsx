@@ -119,14 +119,14 @@ export default function UpdateModal({ update, onClose }: Props) {
             <button
               onClick={onClose}
               disabled={installing}
-              className="rounded-lg border border-border-strong px-3 py-1.5 text-sm enabled:hover:border-accent-500 disabled:border-border disabled:text-fg-disabled"
+              className="h-9 inline-flex items-center justify-center rounded-md border border-border-strong px-3 text-sm enabled:hover:border-accent-500 disabled:border-border disabled:text-fg-disabled"
             >
               Cancel
             </button>
             <button
               onClick={() => void install()}
               disabled={installing}
-              className="rounded-lg bg-accent-600 px-4 py-1.5 text-sm font-medium enabled:hover:bg-accent-500 disabled:bg-surface-2 disabled:text-fg-disabled"
+              className="h-9 inline-flex items-center justify-center rounded-md bg-accent-600 px-4 text-sm font-medium enabled:hover:bg-accent-500 disabled:bg-surface-2 disabled:text-fg-disabled"
             >
               {installing
                 ? pct != null

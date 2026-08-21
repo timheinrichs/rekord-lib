@@ -69,7 +69,7 @@ export default function EventLogModal({ events, onClose, onCleared }: Props) {
               <>
                 <button
                   onClick={() => void copy()}
-                  className="rounded-md border border-border-strong px-3 py-1.5 text-sm hover:border-accent-500"
+                  className="h-9 inline-flex items-center justify-center rounded-md border border-border-strong px-3 text-sm hover:border-accent-500"
                   title="Copy the whole log as text"
                 >
                   {copied ? "Copied" : "Copy"}
@@ -77,7 +77,7 @@ export default function EventLogModal({ events, onClose, onCleared }: Props) {
                 <button
                   onClick={() => void clear()}
                   disabled={busy}
-                  className="rounded-md border border-border-strong px-3 py-1.5 text-sm text-fg-muted enabled:hover:border-danger-500 enabled:hover:text-danger-500 disabled:text-fg-disabled"
+                  className="h-9 inline-flex items-center justify-center rounded-md border border-border-strong px-3 text-sm text-fg-muted enabled:hover:border-danger-500 enabled:hover:text-danger-500 disabled:text-fg-disabled"
                   title="Empty the log"
                 >
                   Clear
@@ -86,7 +86,7 @@ export default function EventLogModal({ events, onClose, onCleared }: Props) {
             )}
             <button
               onClick={onClose}
-              className="text-fg-muted hover:text-fg"
+              className="flex h-9 w-9 items-center justify-center rounded-md text-fg-muted hover:text-fg"
               aria-label="Close"
             >
               ✕

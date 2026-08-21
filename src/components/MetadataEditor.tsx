@@ -245,7 +245,7 @@ export default function MetadataEditor({
           <h2 className="text-lg font-medium">Metadata</h2>
           <button
             onClick={onClose}
-            className="text-fg-muted hover:text-fg"
+            className="flex h-9 w-9 items-center justify-center rounded-md text-fg-muted hover:text-fg"
           >
             ✕
           </button>
@@ -286,7 +286,7 @@ export default function MetadataEditor({
                       <button
                         onClick={() => set(key, guess!)}
                         title={`Apply suggestion: ${guess}`}
-                        className="max-w-[40%] truncate rounded-lg border border-accent-600/40 bg-accent-600/10 px-2 py-1 text-xs text-accent-300 hover:bg-accent-600/20"
+                        className="h-9 inline-flex items-center justify-center max-w-[40%] truncate rounded-md border border-accent-600/40 bg-accent-600/10 px-2 text-xs text-accent-300 hover:bg-accent-600/20"
                       >
                         ↩ {guess}
                       </button>
@@ -307,7 +307,7 @@ export default function MetadataEditor({
                             key={v}
                             onClick={() => set(key, v)}
                             title={`Use "${v}"`}
-                            className="max-w-full truncate rounded-full border border-accent-600/40 bg-accent-600/10 px-2 py-0.5 text-xs text-accent-300 hover:bg-accent-600/20"
+                            className="h-9 inline-flex items-center justify-center max-w-full truncate rounded-full border border-accent-600/40 bg-accent-600/10 px-2 text-xs text-accent-300 hover:bg-accent-600/20"
                           >
                             {v}
                           </button>
@@ -332,7 +332,7 @@ export default function MetadataEditor({
                 />
                 <button
                   onClick={() => void revealItemInDir(track.path)}
-                  className="shrink-0 rounded-lg border border-border-strong px-3 py-2 text-xs text-fg-muted hover:border-accent-500 hover:text-accent-400"
+                  className="h-9 inline-flex items-center justify-center shrink-0 rounded-md border border-border-strong px-3 text-xs text-fg-muted hover:border-accent-500 hover:text-accent-400"
                 >
                   Open in Finder
                 </button>
@@ -434,7 +434,7 @@ export default function MetadataEditor({
                     <button
                       onClick={() => setEditingBpm(true)}
                       title="Edit BPM"
-                      className="-mx-2 w-fit rounded-md px-2 py-0.5 text-left text-fg hover:bg-surface-2"
+                      className="h-9 inline-flex items-center justify-center -mx-2 w-fit rounded-md px-2 text-left text-fg hover:bg-surface-2"
                     >
                       {form.bpm.trim() || "–"}
                     </button>
@@ -507,7 +507,7 @@ export default function MetadataEditor({
               <button
                 key={i}
                 onClick={() => applyCandidate(c)}
-                className="flex items-center justify-between gap-3 rounded-lg border border-border px-3 py-2 text-left text-sm hover:border-accent-600 hover:bg-accent-600/5"
+                className="h-9 flex items-center justify-between gap-3 rounded-md border border-border px-3 text-left text-sm hover:border-accent-600 hover:bg-accent-600/5"
               >
                 <span className="truncate">
                   <span className="text-fg">{c.artist ?? "?"}</span>
@@ -534,14 +534,14 @@ export default function MetadataEditor({
           )}
           <button
             onClick={onClose}
-            className="rounded-lg border border-border-strong px-4 py-2 text-sm hover:border-border-strong"
+            className="h-9 inline-flex items-center justify-center rounded-md border border-border-strong px-4 text-sm hover:border-border-strong"
           >
             Cancel
           </button>
           <button
             onClick={handleSave}
             disabled={!canSave}
-            className="rounded-lg bg-accent-600 px-4 py-2 text-sm font-medium enabled:hover:bg-accent-500 disabled:bg-surface-2 disabled:text-fg-disabled"
+            className="h-9 inline-flex items-center justify-center rounded-md bg-accent-600 px-4 text-sm font-medium enabled:hover:bg-accent-500 disabled:bg-surface-2 disabled:text-fg-disabled"
           >
             Confirm
           </button>

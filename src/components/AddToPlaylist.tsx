@@ -44,7 +44,7 @@ export default function AddToPlaylist({
       <button
         onClick={() => setOpen((v) => !v)}
         disabled={disabled}
-        className="rounded-lg border border-border-strong px-3 py-2 text-sm enabled:hover:border-accent-500 disabled:border-border disabled:text-fg-disabled"
+        className="h-9 inline-flex items-center justify-center rounded-md border border-border-strong px-3 text-sm enabled:hover:border-accent-500 disabled:border-border disabled:text-fg-disabled"
       >
         Add to playlist ({count})
       </button>
@@ -64,7 +64,7 @@ export default function AddToPlaylist({
                   onAdd(p.id);
                 }}
                 disabled={gain === 0}
-                className="flex w-full items-baseline justify-between gap-2 px-3 py-1.5 text-left text-sm enabled:hover:bg-surface enabled:hover:text-accent-400 disabled:text-fg-disabled"
+                className="h-9 items-center flex w-full items-baseline justify-between gap-2 px-3 text-left text-sm enabled:hover:bg-surface enabled:hover:text-accent-400 disabled:text-fg-disabled"
               >
                 <span className="min-w-0 truncate">{p.name}</span>
                 <span className="shrink-0 text-xs text-fg-subtle">
@@ -98,7 +98,7 @@ export default function AddToPlaylist({
           ) : (
             <button
               onClick={() => setCreating(true)}
-              className="block w-full px-3 py-1.5 text-left text-sm text-accent-400 hover:bg-surface"
+              className="h-9 inline-flex items-center justify-center block w-full px-3 text-left text-sm text-accent-400 hover:bg-surface"
             >
               New playlist…
             </button>
