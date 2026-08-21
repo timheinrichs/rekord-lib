@@ -25,9 +25,18 @@ describe("badgeLevel", () => {
     expect(badgeLevel(events, 2)).toBeNull();
   });
 
-  it("stays quiet for unread info entries", () => {
-    // A log full of "scan finished" must not sit on the header as a dot.
-    expect(badgeLevel([event(3, "info"), event(2, "info")], 0)).toBeNull();
+  it("reports an unread ordinary message too", () => {
+    // The dot answers "did anything happen while I was not looking", and a
+    // finished export is an answer. It used to ignore `info` entirely, which
+    // left the one action that writes a file outside the library with no way
+    // of saying so.
+    expect(badgeLevel([event(3, "info"), event(2, "info")], 0)).toBe("info");
+  });
+
+  it("lets the loudest unread level win", () => {
+    const mixed = [event(3, "info"), event(2, "warn"), event(1, "error")];
+    expect(badgeLevel(mixed, 0)).toBe("error");
+    expect(badgeLevel([event(2, "info"), event(1, "warn")], 0)).toBe("warn");
   });
 
   it("reports a warning, and lets an error outrank it", () => {
@@ -37,8 +46,10 @@ describe("badgeLevel", () => {
 
   it("only counts what is newer than the marker", () => {
     const events = [event(3, "info"), event(2, "error"), event(1, "warn")];
-    // The error and the warning are both already read.
-    expect(badgeLevel(events, 2)).toBeNull();
+    // The error and the warning are both already read; the info entry is not,
+    // and now says so in its own colour rather than not at all.
+    expect(badgeLevel(events, 2)).toBe("info");
+    expect(badgeLevel(events, 3)).toBeNull();
     expect(badgeLevel(events, 1)).toBe("error");
   });
 

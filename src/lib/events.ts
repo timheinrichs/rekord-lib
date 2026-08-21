@@ -31,19 +31,27 @@ export function onEventLogged(cb: () => void): Promise<UnlistenFn> {
 }
 
 /**
- * How loud the badge should be, or `null` for no badge.
+ * The level the badge should show, or `null` when everything has been read.
  *
- * Only unread entries count, and only ones the user could act on: a log full of
- * "scan finished" must not put a dot on the header forever. An error outranks a
- * warning, because the badge has room for one answer.
+ * Every unread entry counts, including `info`. It used to ignore those, on the
+ * grounds that a log full of "scan finished" should not put a dot on the header
+ * forever — but the dot is not a warning, it is the answer to "did anything
+ * happen while I was not looking", and something that finished *is* an answer.
+ * An export that wrote a file to the Desktop had no way of saying so at all
+ * under the old rule.
+ *
+ * The colour carries the difference instead: an error outranks a warning
+ * outranks an ordinary message, because the badge has room for one answer and
+ * the loudest one is the one worth having.
  */
 export function badgeLevel(
   events: AppEvent[],
   seenId: number,
-): Exclude<EventLevel, "info"> | null {
+): EventLevel | null {
   const unread = events.filter((e) => e.id > seenId);
   if (unread.some((e) => e.level === "error")) return "error";
   if (unread.some((e) => e.level === "warn")) return "warn";
+  if (unread.length) return "info";
   return null;
 }
 

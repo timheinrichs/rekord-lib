@@ -23,6 +23,14 @@ contain incompatible changes.
   the app has no concept of one, and inventing empty marks would put them in a
   player where nobody set them.
 
+### Changed
+- **The dot on the event log marks every unread message, in its own colour.**
+  It only appeared for a warning or an error, so anything that merely worked —
+  a finished export, a completed scan — passed silently and the log looked
+  empty when it was not. An ordinary message now shows in the accent colour, a
+  warning in yellow and an error in red, so the dot says both that something
+  happened and how much it matters.
+
 ## [0.7.5] - 2026-08-21
 
 ### Changed

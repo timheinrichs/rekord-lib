@@ -3,6 +3,7 @@ import { formatBytes } from "../lib/format";
 import { useDismiss } from "../lib/useDismiss";
 import type { DownloadEntry } from "../lib/useBandcamp";
 import type { Severity } from "../lib/changelog";
+import type { EventLevel } from "../types";
 import { DownloadIcon, GearIcon, LogIcon } from "./icons";
 
 export type MainView = "library" | "bandcamp";
@@ -21,8 +22,12 @@ interface Props {
    * fix should not look like a nice-to-have.
    */
   updateSeverity?: Severity | null;
-  /** Loudest unread level in the event log, or null for nothing to flag. */
-  eventBadge?: "warn" | "error" | null;
+  /**
+   * Loudest unread level in the event log, or null for nothing to flag. `info`
+   * takes the accent — the dot answers "did something happen", and the colour
+   * says how much it matters.
+   */
+  eventBadge?: EventLevel | null;
   onOpenEventLog: () => void;
 }
 
@@ -78,7 +83,11 @@ export default function HeaderNav({
         {eventBadge && (
           <span
             className={`absolute -right-0.5 -top-0.5 h-2 w-2 rounded-full ${
-              eventBadge === "error" ? "bg-danger-500" : "bg-warning-500"
+              eventBadge === "error"
+                ? "bg-danger-500"
+                : eventBadge === "warn"
+                  ? "bg-warning-500"
+                  : "bg-accent-500"
             }`}
           />
         )}
