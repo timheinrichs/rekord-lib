@@ -105,6 +105,39 @@ not, and it comes back exactly once. Rewriting dismissal keys inside
 **What would change that** — a group id that is not a path. See
 [docs/DUPLICATES.md](docs/DUPLICATES.md).
 
+### A1a · A replacing conversion drops the track out of its playlists
+
+**What** — convert with "replace source" and the original is trashed, the row is
+pruned by the next sweep, and `playlist_items` cascades away with it. The
+converted file arrives under a new path as a new row, in no playlist. So
+"fix the sample rate on this whole set" empties the set it was run on.
+
+**Why not now** — the fix is not a line, it is a decision: whether a replacing
+conversion is a *move* of the track (keep the row, rewrite its path, let the
+next scan re-probe it, carry the memberships along the way `relocate_tracks`
+does) or a delete-and-add that has to copy the memberships across afterwards.
+The first is the more coherent model and touches the fingerprint cache, which is
+keyed by path and would no longer describe the audio behind it. Not something to
+decide inside a release.
+
+**What would change that** — the first user who converts a playlist. Until then,
+the workaround is to convert first and build the playlist afterwards.
+
+### A2a · The export writes tags, not pending edits
+
+**What** — `export_rekordbox_xml` reads the rows, and the `edits` table is not
+consulted. A user who fixes artists in the metadata editor without applying them
+sees the new values in the table and the old ones in `rekordbox.xml`.
+
+**Why not now** — the backend deliberately never interprets the frontend's
+`TrackEdit` JSON (`db::load_edits` returns it opaque), so overlaying the edits in
+the export would break that boundary for one caller. The other end — refusing or
+warning before the export — is a UI question about an amount of state the export
+button does not have.
+
+**What would change that** — a typed edit payload the backend can read, which
+several other items would also use.
+
 ### The beat grid is stored and exported, but not drawn
 
 **What** — `tracks.beat_offset_secs` plus the tempo is a full grid, and A2 writes
