@@ -134,14 +134,33 @@ pub async fn finalize(
     cover: &CoverInput,
     clear_empty: bool,
 ) -> AppResult<()> {
-    // 1. Obtain the cover and prepare it for CDJ.
-    let cover_jpeg = match resolve_cover(source, cover).await? {
-        Some(bytes) => Some(artwork::process_cover(&bytes)?),
+    finalize_cover(output, source, metadata, cover, clear_empty, false).await
+}
+
+/// [`finalize`], plus the undo path's promise: `verbatim` embeds the resolved
+/// bytes exactly as they are.
+///
+/// Undo captures the artwork a write is about to replace, and that artwork is
+/// whatever the file held — a 3000 px PNG as easily as a cover this app made.
+/// Re-encoding it would put back something that only looks the same, which is
+/// the one thing undo may not do.
+pub async fn finalize_cover(
+    output: &str,
+    source: &str,
+    metadata: &Option<TrackMetadata>,
+    cover: &CoverInput,
+    clear_empty: bool,
+    verbatim: bool,
+) -> AppResult<()> {
+    // 1. Obtain the cover and prepare it for CDJ — unless it already is, or
+    //    unless it must not be touched at all.
+    let cover_image = match resolve_cover(source, cover).await? {
+        Some(bytes) => Some(prepare_cover(bytes, verbatim)?),
         None => None,
     };
 
     // Nothing to do if neither metadata nor cover is written.
-    if metadata.is_none() && cover_jpeg.is_none() && !matches!(cover, CoverInput::None) {
+    if metadata.is_none() && cover_image.is_none() && !matches!(cover, CoverInput::None) {
         // No cover found and no metadata -> nothing to write.
         return Ok(());
     }
@@ -215,7 +234,7 @@ pub async fn finalize(
     }
 
     // 4. Embed the cover, or strip it when the write asks for no cover.
-    apply_cover(tag, cover_jpeg, cover);
+    apply_cover(tag, cover_image, cover);
 
     // 5. Save.
     tag.save_to_path(output, WriteOptions::default())
@@ -230,13 +249,49 @@ pub async fn finalize(
 /// Stripping removes *every* picture, not just `CoverFront`: [`read_cover_bytes`]
 /// falls back to the first picture of any type, so a leftover picture would keep
 /// showing up as the track's cover and "no cover" would look like a no-op.
-fn apply_cover(tag: &mut Tag, cover_jpeg: Option<Vec<u8>>, cover: &CoverInput) {
-    match cover_jpeg {
-        Some(bytes) => {
+/// The cover as it will be embedded: the bytes, and what they actually are.
+type CoverImage = (Vec<u8>, MimeType);
+
+/// Decides whether a cover still has to go through the encoder.
+///
+/// Three cases, and only the first is new work: bytes that must not be touched
+/// (an undo restoring what the file held), bytes that are already exactly what
+/// the encoder would produce, and everything else.
+fn prepare_cover(bytes: Vec<u8>, verbatim: bool) -> AppResult<CoverImage> {
+    if verbatim {
+        // The mime has to be read off the bytes rather than assumed: what a file
+        // held before a write is not necessarily a JPEG, and claiming otherwise
+        // would embed a PNG that players then refuse to draw.
+        if let Some(mime) = mime_of(&bytes) {
+            return Ok((bytes, mime));
+        }
+        // Not an image we can name. Better a re-encoded cover than a picture
+        // labelled as something it is not.
+    } else if artwork::already_cdj_shaped(&bytes) {
+        return Ok((bytes, MimeType::Jpeg));
+    }
+    Ok((artwork::process_cover(&bytes)?, MimeType::Jpeg))
+}
+
+/// The image format of some bytes, by magic number. `None` for anything else,
+/// which the caller treats as a reason to re-encode rather than to guess.
+fn mime_of(bytes: &[u8]) -> Option<MimeType> {
+    if bytes.starts_with(&[0xFF, 0xD8]) {
+        Some(MimeType::Jpeg)
+    } else if bytes.starts_with(b"\x89PNG\r\n\x1a\n") {
+        Some(MimeType::Png)
+    } else {
+        None
+    }
+}
+
+fn apply_cover(tag: &mut Tag, cover_image: Option<CoverImage>, cover: &CoverInput) {
+    match cover_image {
+        Some((bytes, mime)) => {
             tag.remove_picture_type(PictureType::CoverFront);
             tag.push_picture(Picture::new_unchecked(
                 PictureType::CoverFront,
-                Some(MimeType::Jpeg),
+                Some(mime),
                 None,
                 bytes,
             ));
@@ -273,6 +328,38 @@ fn bpm_key(tag_type: TagType) -> ItemKey {
         TagType::VorbisComments => ItemKey::Bpm,
         _ => ItemKey::IntegerBpm,
     }
+}
+
+/// Fixtures shared with other modules' tests.
+#[cfg(test)]
+pub(crate) mod testing {
+    /// Smallest WAV lofty will parse: 16-bit mono PCM with a handful of samples.
+    pub fn wav_bytes() -> Vec<u8> {
+        let samples = [0u8; 64];
+        let mut fmt = Vec::new();
+        fmt.extend_from_slice(&1u16.to_le_bytes()); // PCM
+        fmt.extend_from_slice(&1u16.to_le_bytes()); // mono
+        fmt.extend_from_slice(&44_100u32.to_le_bytes());
+        fmt.extend_from_slice(&88_200u32.to_le_bytes());
+        fmt.extend_from_slice(&2u16.to_le_bytes());
+        fmt.extend_from_slice(&16u16.to_le_bytes());
+
+        let mut body = Vec::new();
+        body.extend_from_slice(b"WAVE");
+        body.extend_from_slice(b"fmt ");
+        body.extend_from_slice(&(fmt.len() as u32).to_le_bytes());
+        body.extend_from_slice(&fmt);
+        body.extend_from_slice(b"data");
+        body.extend_from_slice(&(samples.len() as u32).to_le_bytes());
+        body.extend_from_slice(&samples);
+
+        let mut wav = Vec::new();
+        wav.extend_from_slice(b"RIFF");
+        wav.extend_from_slice(&(body.len() as u32).to_le_bytes());
+        wav.extend_from_slice(&body);
+        wav
+    }
+
 }
 
 #[cfg(test)]
@@ -369,32 +456,7 @@ mod tests {
         assert_eq!(clean(&None), None);
     }
 
-    /// Smallest WAV lofty will parse: 16-bit mono PCM with a handful of samples.
-    fn wav_bytes() -> Vec<u8> {
-        let samples = [0u8; 64];
-        let mut fmt = Vec::new();
-        fmt.extend_from_slice(&1u16.to_le_bytes()); // PCM
-        fmt.extend_from_slice(&1u16.to_le_bytes()); // mono
-        fmt.extend_from_slice(&44_100u32.to_le_bytes());
-        fmt.extend_from_slice(&88_200u32.to_le_bytes());
-        fmt.extend_from_slice(&2u16.to_le_bytes());
-        fmt.extend_from_slice(&16u16.to_le_bytes());
-
-        let mut body = Vec::new();
-        body.extend_from_slice(b"WAVE");
-        body.extend_from_slice(b"fmt ");
-        body.extend_from_slice(&(fmt.len() as u32).to_le_bytes());
-        body.extend_from_slice(&fmt);
-        body.extend_from_slice(b"data");
-        body.extend_from_slice(&(samples.len() as u32).to_le_bytes());
-        body.extend_from_slice(&samples);
-
-        let mut wav = Vec::new();
-        wav.extend_from_slice(b"RIFF");
-        wav.extend_from_slice(&(body.len() as u32).to_le_bytes());
-        wav.extend_from_slice(&body);
-        wav
-    }
+    use super::testing::wav_bytes;
 
     fn picture(kind: PictureType, data: &[u8]) -> Picture {
         Picture::new_unchecked(kind, Some(MimeType::Jpeg), None, data.to_vec())
@@ -433,7 +495,7 @@ mod tests {
 
         apply_cover(
             &mut tag,
-            Some(b"new".to_vec()),
+            Some((b"new".to_vec(), MimeType::Jpeg)),
             &CoverInput::File { path: "cover.jpg".into() },
         );
 
@@ -472,6 +534,105 @@ mod tests {
             read_cover_bytes(&path).is_none(),
             "the cover survived a no-cover write"
         );
+    }
+
+    /// Embeds `bytes` as the front cover the way a write does, and returns what
+    /// is in the file afterwards.
+    fn round_trip_cover(audio: &std::path::Path, image: CoverImage) -> Option<Vec<u8>> {
+        let mut tagged = read_from_path(audio).unwrap();
+        if tagged.primary_tag().is_none() {
+            let tag_type = tagged.file_type().primary_tag_type();
+            tagged.insert_tag(Tag::new(tag_type));
+        }
+        let tag = tagged.primary_tag_mut().unwrap();
+        apply_cover(tag, Some(image), &CoverInput::Keep);
+        tag.save_to_path(audio, WriteOptions::default()).unwrap();
+        read_cover_bytes(&audio.to_string_lossy())
+    }
+
+    fn jpeg(w: u32, h: u32) -> Vec<u8> {
+        let img = image::RgbImage::from_fn(w, h, |x, y| {
+            image::Rgb([(x % 256) as u8, (y % 256) as u8, 7])
+        });
+        let mut buf = std::io::Cursor::new(Vec::new());
+        image::DynamicImage::ImageRgb8(img)
+            .write_to(&mut buf, image::ImageFormat::Jpeg)
+            .unwrap();
+        buf.into_inner()
+    }
+
+    #[test]
+    fn an_undo_puts_the_original_bytes_back() {
+        // The claim undo makes, and the only one that matters here: not a
+        // picture that looks the same, the same file (C8). The original is
+        // deliberately *not* CDJ-shaped — it is whatever the user's file held.
+        let dir = tempfile::tempdir().unwrap();
+        let audio = dir.path().join("track.wav");
+        fs::write(&audio, wav_bytes()).unwrap();
+
+        let original = jpeg(1400, 1400);
+        let embedded = round_trip_cover(&audio, prepare_cover(original.clone(), true).unwrap());
+        assert_eq!(embedded.as_deref(), Some(&original[..]));
+
+        // A write replaces it, re-encoding as it should for a new cover.
+        let replacement = jpeg(1000, 1000);
+        let after_write =
+            round_trip_cover(&audio, prepare_cover(replacement.clone(), false).unwrap()).unwrap();
+        assert_ne!(after_write, replacement, "a new cover is CDJ-shaped");
+
+        // The undo hands back the bytes it captured before that write.
+        let restored = round_trip_cover(&audio, prepare_cover(original.clone(), true).unwrap());
+        assert_eq!(
+            restored.as_deref(),
+            Some(&original[..]),
+            "undo returned a re-encoded likeness instead of the file's cover"
+        );
+    }
+
+    #[test]
+    fn a_restored_png_stays_a_png_and_says_so() {
+        // What a file held before a write is not necessarily a JPEG, and a
+        // picture labelled as one it is not would be a cover players refuse.
+        let png = {
+            let img = image::RgbImage::from_fn(8, 8, |_, _| image::Rgb([1, 2, 3]));
+            let mut buf = std::io::Cursor::new(Vec::new());
+            image::DynamicImage::ImageRgb8(img)
+                .write_to(&mut buf, image::ImageFormat::Png)
+                .unwrap();
+            buf.into_inner()
+        };
+        let (bytes, mime) = prepare_cover(png.clone(), true).unwrap();
+        assert_eq!(bytes, png);
+        assert_eq!(mime, MimeType::Png);
+
+        // Without the verbatim flag the same PNG is converted, which is what
+        // "CDJ-shaped" means for an ordinary write.
+        let (converted, mime) = prepare_cover(png, false).unwrap();
+        assert_eq!(mime, MimeType::Jpeg);
+        assert!(converted.starts_with(&[0xFF, 0xD8]));
+    }
+
+    #[test]
+    fn an_ordinary_write_stops_re_encoding_a_cover_that_is_already_right() {
+        // `Keep` resolves to the cover already in the file, and every write used
+        // to send it through the encoder again — the same picture, one
+        // generation worse, on every edit.
+        let shaped = artwork::process_cover(&jpeg(1200, 1200)).unwrap();
+        let (once, _) = prepare_cover(shaped.clone(), false).unwrap();
+        assert_eq!(once, shaped, "an already CDJ-shaped cover was re-encoded");
+
+        // And an oversized one still is.
+        let big = jpeg(1200, 1200);
+        let (processed, _) = prepare_cover(big.clone(), false).unwrap();
+        assert_ne!(processed, big);
+    }
+
+    #[test]
+    fn verbatim_falls_back_to_the_encoder_for_bytes_it_cannot_name() {
+        // Better a re-encoded cover than a picture embedded under a mime type
+        // that was guessed. Undecodable bytes then fail the write, which is the
+        // honest outcome — there is no image here.
+        assert!(prepare_cover(b"not an image".to_vec(), true).is_err());
     }
 
     #[test]

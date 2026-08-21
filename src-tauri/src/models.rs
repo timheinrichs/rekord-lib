@@ -227,6 +227,16 @@ pub struct WriteMetadataItem {
     pub metadata: TrackMetadata,
     #[serde(default)]
     pub cover: Option<CoverInput>,
+    /// Embed the cover bytes exactly as given, without the CDJ re-encode.
+    ///
+    /// Set only by the undo snapshot, whose whole promise is that the file ends
+    /// up where it started — and re-encoding the artwork it captured would put
+    /// back a picture that merely looks the same. An added field rather than a
+    /// `CoverInput` variant on purpose: serde ignores a field it does not know,
+    /// so an older build reading a newer undo entry falls back to the behaviour
+    /// it always had, where a new variant would fail to deserialize outright.
+    #[serde(default)]
+    pub cover_verbatim: bool,
 }
 
 /// One group of files written together, and therefore undone together.

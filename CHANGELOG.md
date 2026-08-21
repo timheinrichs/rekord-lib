@@ -9,6 +9,23 @@ contain incompatible changes.
 
 ## [Unreleased]
 
+### Fixed
+- **A changed cover shows up straight away.** Replacing or removing a track's
+  artwork left the old thumbnail in the row until the app was restarted: the row
+  itself was re-read, but the image came from a cache that nothing ever cleared,
+  so a write that had worked looked like one that had done nothing. The cache
+  now says what invalidates it — a thumbnail is good until the file behind it is
+  written — and it is dropped for a tag write, an undo, a conversion, and for a
+  file that changed on disk behind the app's back.
+- **Undo gives the cover back, instead of re-creating it.** The artwork an undo
+  restores went through the encoder again like any new cover, so it came back at
+  the same size and dimensions but never as the same file, and each round cost
+  one more JPEG generation. The captured bytes are now put back exactly as they
+  were taken — including a PNG or an oversized original, because what undo owes
+  is the file before the write, not a tidied version of it. Ordinary writes stop
+  re-encoding too when the cover is already what the encoder would produce, so
+  repeatedly editing a track's tags no longer degrades its artwork.
+
 ## [0.7.3] - 2026-08-21
 
 ### Security

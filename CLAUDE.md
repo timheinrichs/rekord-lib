@@ -107,8 +107,10 @@ Two rules that keep the caches honest:
   the file's mtime+size match (`db::needs_reanalysis`) and the app version is
   unchanged (`db::invalidate_on_version_change`); a fingerprint additionally
   depends on `fingerprint::ALGO_VERSION` — **bump that** when the decode window,
-  sample rate or chromaprint config changes. A new cache needs the same
-  treatment plus tests for its invalidation.
+  sample rate or chromaprint config changes. The cover thumbnails in
+  `src/lib/coverCache.ts` are valid until the file behind them is written, which
+  is why anything that rewrites a file calls `forgetCoverThumbs`. A new cache
+  needs the same treatment plus tests for its invalidation.
 
 The legacy `library` key in `rekord-lib.json` is imported once
 (`db::migrate`) and then left in place deliberately, so a downgrade still finds

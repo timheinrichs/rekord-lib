@@ -105,35 +105,6 @@ not, and it comes back exactly once. Rewriting dismissal keys inside
 **What would change that** — a group id that is not a path. See
 [docs/DUPLICATES.md](docs/DUPLICATES.md).
 
-### C7 · The cover thumbnail cache never invalidates
-
-**What** — `CoverThumb` keeps a module-wide `Map<path, dataURL>` and nothing
-ever evicts an entry, so a tag write that changes or removes artwork leaves the
-old thumbnail on screen until the app restarts.
-
-**Why not** — the row itself is correct; only the image is stale, and it was
-found while testing something else.
-
-**What would change that** — nothing, really: this one should just be done. It
-is the only cache in the app that does not state what invalidates it, which
-`CLAUDE.md` requires of every cache, and the write result already names the
-paths it touched.
-
-### C8 · Undo re-encodes the cover instead of restoring the bytes
-
-**What** — the snapshot stores the previous cover as bytes, and the restore
-hands them to `process_cover` like any new cover, which decodes and re-encodes a
-JPEG.
-
-**Why not** — nothing looks wrong: the dimensions and the size come back the
-same. The bytes differ, and every undo round costs one more JPEG generation.
-
-**What would change that** — a path that embeds captured bytes verbatim. Bytes
-that came out of a file this app processed are already CDJ-shaped, so the second
-trip through the encoder buys nothing. Undo is the one operation whose whole
-promise is that the file ends up where it started. See
-[docs/METADATA.md](docs/METADATA.md).
-
 ### The legacy `library` key in `rekord-lib.json`
 
 **What** — the pre-SQLite library, imported once by `db::migrate` and then left

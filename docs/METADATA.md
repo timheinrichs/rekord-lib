@@ -125,11 +125,29 @@ button forever.
 `undo_last` restores and drops the entry in one step, so a failed restore does
 not also lose the entry.
 
-**Undo still re-encodes the cover.** The captured bytes go back in through
-`process_cover` like any new cover, so the dimensions and the size come back the
-same but the bytes differ, and every undo round costs one more JPEG generation.
-That is **C8** in [TODO.md](../TODO.md) — the one place where undo does not
-quite keep its promise of putting the file back where it started.
+**Undo puts the bytes back, not a likeness of them.** The captured item carries
+`cover_verbatim`, and `finalize` then embeds exactly what it was given, with the
+mime type read off the bytes rather than assumed — what a file held before a
+write is not necessarily a JPEG, and a PNG labelled as one is a cover players
+refuse to draw. Restoring a 3000 px original is *correct here*: undo's contract
+is the state before the write, not a CDJ-shaped approximation of it. Bytes that
+cannot be identified as an image fall back to the encoder rather than being
+embedded on a guess.
+
+An added field rather than a new `CoverInput` variant, deliberately: serde
+ignores a field it does not know, so an older build reading a newer undo entry
+behaves the way it always did, where an unknown variant would fail to
+deserialize outright.
+
+**An ordinary write no longer re-encodes a cover that is already right.**
+`Keep` resolves to the artwork already in the file, and every write used to send
+it through `process_cover` again — the same picture, one generation worse, on
+every edit. `artwork::already_cdj_shaped` answers whether the bytes are already
+what the encoder would produce (a JPEG inside the 800 px edge and 100 KB budget,
+judged from the JPEG frame header rather than a decode) and the encode is
+skipped when they are. Narrow on purpose: a PNG is still converted, because that
+conversion is part of what CDJ-shaped means, and anything unreadable takes the
+old path.
 
 ### Writing is per item, and reports per item
 
@@ -180,7 +198,10 @@ credentials again, never a fallback to a plaintext copy.
 | … · `capture_undo`, `undo_cover_for`, `store_undo`, `undo_last`, `undo_peek` | the snapshot and the restore |
 | `src-tauri/src/db/mod.rs` · `push_undo`, `latest_undo`, `drop_undo`, `MAX_UNDO_ENTRIES` | the history, its depth and its pruning |
 | `src/components/MetadataEditor.tsx`, `BulkMetadataEditor.tsx` | the editors |
-| `src/components/CoverThumb.tsx` | the thumbnail cache — the one cache with no invalidation (**C7**) |
+| `src/lib/coverCache.ts` · `createCoverCache`, `forget` | the thumbnail cache and the rule that invalidates it |
+| `src/components/CoverThumb.tsx` · `forgetCoverThumbs` | the row's thumbnail, and what the write path calls to drop it |
+| `src-tauri/src/metadata/write.rs` · `prepare_cover`, `mime_of`, `finalize_cover` | re-encode, embed verbatim, or skip an encode that would change nothing |
+| `src-tauri/src/metadata/artwork.rs` · `already_cdj_shaped`, `jpeg_size` | whether the bytes are already what the encoder would produce |
 | `src/lib/writeResults.ts` | folding write results back into the list |
 
 ## Verification links
@@ -197,6 +218,10 @@ credentials again, never a fallback to a plaintext copy.
 | Undo captures cover bytes only when it has to | `commands.rs` · `keep_over_an_embedded_cover_needs_no_bytes`, `a_replaced_cover_is_captured_as_bytes`, `keep_without_an_embedded_cover_undoes_to_none`, `removing_a_cover_that_was_never_there_undoes_to_none`, `an_unset_cover_is_treated_as_keep` |
 | An entry round-trips, the newest is undone first, dropping exposes the one below | `db/mod.rs` · `an_undo_entry_comes_back_exactly_as_it_went_in`, `the_newest_write_is_the_one_undone_next`, and the drop test beside them |
 | The filename guess handles the real patterns | `suggest.rs` · `parse_track_artist_title_with_number` and the sibling cases |
+| Undo returns the file's own cover bytes, not a re-encode | `write.rs` · `an_undo_puts_the_original_bytes_back`, `a_restored_png_stays_a_png_and_says_so` |
+| The snapshot asks for that | `commands.rs` · `a_captured_item_restores_its_cover_verbatim` |
+| An already CDJ-shaped cover survives an ordinary write untouched | `write.rs` · `an_ordinary_write_stops_re_encoding_a_cover_that_is_already_right`, `artwork.rs` · `process_cover_produces_something_it_then_recognises` |
+| A written file's thumbnail is re-read instead of served from the cache | `coverCache.test.ts` · "re-asks for a forgotten path a row is still showing", `CoverThumb.test.tsx` · "shows the new artwork after the file was written, without remounting", `metadata.e2e.test.tsx` · "re-reads the thumbnail of a file it wrote" |
 | The dev build cannot reach the installed app's credentials | `secrets.rs` · `service_is_per_bundle_identifier` |
 | Only a complete pair is migrated out of the JSON store | `secrets.rs` · `legacy_pair_takes_only_a_complete_credential` |
 | A dropped settings key cannot be written back | `settings.test.ts` · `does not carry the Discogs credentials any more` |
@@ -205,15 +230,19 @@ credentials again, never a fallback to a plaintext copy.
 
 ## Keeping this honest
 
-- **`finalize` has no end-to-end test** — `apply_cover` and the field mapping
-  do, and `artwork.rs` has none at all. Both are in [TODO.md](../TODO.md). This
-  is the code that rewrites the user's files, so a change here earns a real file
-  in a temporary folder, not only a unit test.
-- **`CoverThumb`'s cache has no invalidation** (**C7**), so a changed cover can
-  keep showing the old thumbnail until a restart. It is the one cache in the app
-  that does not state what invalidates it, which `CLAUDE.md` requires.
-- **Undo re-encodes rather than restoring bytes** (**C8**). Worth knowing before
-  claiming undo is byte-exact.
+- **`finalize` has no end-to-end test** — `apply_cover`, `prepare_cover` and the
+  field mapping do, against a real file in a temporary folder, and `artwork.rs`
+  now covers `process_cover` and `already_cdj_shaped`. What is still untested is
+  `finalize` itself, top to bottom; it is in [TODO.md](../TODO.md). This is the
+  code that rewrites the user's files, so a change here earns a real file rather
+  than only a unit test.
+- **The thumbnail cache states what invalidates it**, like every other cache
+  here: a thumbnail is valid until the file behind it is written.
+  `src/lib/coverCache.ts` holds the rule, and `forgetCoverThumbs` is called for
+  a tag write, an undo, a conversion, and a file the scan really re-probed
+  (`scan://tracks` names those in `fresh`; the same batch also carries rows it
+  reused unchanged, and forgetting those would re-decode a thumbnail per visible
+  row on every scan). Anything new that rewrites a file has to call it too.
 - A new metadata field touches `TrackMetadata`, the `ItemKey` list in
   `finalize`, the schema and `TRACK_COLUMNS`, the editors, and — if it should be
   required — `is_complete`. The column has to go at the end of the schema; see

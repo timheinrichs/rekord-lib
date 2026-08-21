@@ -218,6 +218,12 @@ export interface WriteMetadataItem {
   path: string;
   metadata: TrackMetadata;
   cover?: CoverInput;
+  /**
+   * Embed the cover bytes as they are, skipping the CDJ re-encode. Produced
+   * only by the undo history, never by the editor — an undo has to give the
+   * file back, not a re-encoded likeness of it.
+   */
+  cover_verbatim?: boolean;
 }
 
 /** Result of writing one file's tags (re-analyzed track on success). */

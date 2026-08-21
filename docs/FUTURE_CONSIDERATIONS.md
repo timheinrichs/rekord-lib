@@ -356,6 +356,10 @@ was never measured, which is what B3 would need.
 
 ## C — Robustness and data safety
 
+**Closed.** Every entry in this tier has shipped. What was split off when one of
+them landed lives in [TODO.md](../TODO.md) as `C1a`, `C1b` and `C2a`, each with
+the condition that would revive it.
+
 ### C1 · Backup and undo before destructive writes — **done**
 
 **What shipped** — three things, after checking what was actually already in
@@ -565,37 +569,57 @@ visible through failing operations.
 
 *Size: S*
 
-### C7 · Invalidate the cover thumbnail cache after a write
+### C7 · Invalidate the cover thumbnail cache after a write — **done**
 
-**What** — give `CoverThumb`'s cache something that invalidates it. It is a
-module-wide `Map<path, dataURL>` keyed by the path alone
-(`src/components/CoverThumb.tsx`), and nothing ever evicts an entry.
+**What shipped** — the cache moved out of `CoverThumb` into
+`src/lib/coverCache.ts`, which states the rule it was missing: *a thumbnail is
+valid until the file behind it is written.* `forgetCoverThumbs(paths)` is the
+counterpart, in the shape `RowWaveform`'s `forgetRowWaveforms` already had.
 
-**Why** — a tag write that changes or removes the artwork leaves the old
-thumbnail on screen until the app restarts. The row itself is fine — a written
-file comes back re-analyzed, so `has_cover` is current — but the image is
-rendered from the cache regardless of it, so a correct write looks like one that
-did nothing. Found while clicking through the "no cover" fix. It is also the one
-cache in the app that does not say what invalidates it, which `CLAUDE.md`
-requires of every cache. The write result already names the paths it touched, so
-dropping exactly those entries is enough.
+**Dropping the entry was not enough**, which the entry did not say. A row that is
+already on screen asked once and will not ask again until it remounts, so
+clearing its entry leaves exactly the stale image the fix is about. `forget`
+therefore re-asks for every path a mounted row is still listening to, and only
+drops the rest.
+
+**Four things invalidate, not one.** The entry named the write result; a
+conversion re-embeds the cover too (and an in-place one keeps the path, which is
+precisely when a cached thumbnail outlives its file), and a file that changed on
+disk comes back through the scan's `scan://tracks`. An undo needs no separate
+hook — it returns through the same `applyWriteResults` as a write.
+
+**A read already in flight is discarded**, not just unsubscribed: it describes
+the file as it was *before* the write, and letting it land would restore the old
+thumbnail by a longer route. Each path carries an epoch that `forget` bumps.
 
 *Size: S*
 
-### C8 · Undo should restore the original cover bytes
+### C8 · Undo should restore the original cover bytes — **done**
 
-**What** — let an undo put back the artwork it captured, byte for byte.
-Today the snapshot stores the previous cover as `CoverInput::Data`, and the
-restore hands it to `artwork::process_cover` like any other new cover
-(`src-tauri/src/metadata/write.rs`), which decodes it and re-encodes a JPEG at
-quality 90.
+**What shipped** — the undo snapshot marks its items `cover_verbatim`, and
+`finalize` then embeds the captured bytes exactly as they are, with the mime type
+read off the bytes instead of assumed to be JPEG. Restoring a 3000 px PNG
+verbatim is the correct outcome here: undo's contract is the state before the
+write, not a CDJ-shaped approximation of it. Bytes it cannot identify as an image
+fall back to the encoder rather than being embedded on a guess.
 
-**Why** — the dimensions and the file size come back the same, so nothing looks
-wrong, but the bytes differ and every undo round costs one more JPEG generation.
-Undo is the one operation whose whole promise is that the file ends up where it
-started; everything else about it already keeps that promise. Bytes that came
-out of a file this app processed are already CDJ-shaped, so the fix is a path
-that embeds them verbatim rather than a second trip through the encoder.
+**A field rather than a `CoverInput` variant.** Serde ignores an unknown field,
+so an older build reading a newer undo entry re-encodes the way it always did; a
+new variant would fail to deserialize there instead. This repo keeps downgrades
+working on purpose — the legacy `library` key is kept for the same reason.
+
+**The same trip through the encoder was happening on every ordinary write**,
+which the entry did not mention: `Keep` resolves to the artwork already in the
+file, so each edit re-encoded it — the same picture, one generation worse, for
+nothing. `artwork::already_cdj_shaped` answers whether bytes are already what
+`process_cover` would produce, reading the size from the JPEG frame header rather
+than decoding, and the encode is skipped when they are. Narrow on purpose: a PNG
+is still converted, because that is part of what CDJ-shaped means here.
+
+**It also closed a test gap.** `artwork.rs` had no tests at all; it now has the
+round trip that matters — what the encoder produces is recognised as not needing
+the encoder again — and `write.rs` proves the undo claim against a real file
+rather than a mock: write a cover, replace it, restore, compare the bytes.
 
 *Size: S*
 

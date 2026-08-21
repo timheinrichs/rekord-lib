@@ -1396,6 +1396,7 @@ mod tests {
                 ..Default::default()
             },
             cover: Some(crate::models::CoverInput::Keep),
+            cover_verbatim: false,
         }
     }
 
