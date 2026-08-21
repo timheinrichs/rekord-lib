@@ -9,6 +9,8 @@ contain incompatible changes.
 
 ## [Unreleased]
 
+## [0.7.4] - 2026-08-21
+
 ### Fixed
 - **A changed cover shows up straight away.** Replacing or removing a track's
   artwork left the old thumbnail in the row until the app was restarted: the row
@@ -687,6 +689,7 @@ tool for a CDJ/XDJ- and Rekordbox-compatible library.
   ffmpeg/ffprobe sidecar, first analysis/conversion pipeline.
 
 [Unreleased]: https://github.com/timheinrichs/rekord-lib/compare/v0.7.2...HEAD
+[0.7.4]: https://github.com/timheinrichs/rekord-lib/compare/v0.7.3...v0.7.4
 [0.7.3]: https://github.com/timheinrichs/rekord-lib/compare/v0.7.2...v0.7.3
 [0.7.2]: https://github.com/timheinrichs/rekord-lib/compare/v0.7.1...v0.7.2
 [0.7.1]: https://github.com/timheinrichs/rekord-lib/compare/v0.7.0...v0.7.1
