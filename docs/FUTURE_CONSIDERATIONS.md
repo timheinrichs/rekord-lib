@@ -135,7 +135,7 @@ emits the `<TEMPO>` marker and is where a `<POSITION_MARK>` per cue would go.
 That is the small end. The storage is the larger one: cues are their own table
 next to `playlist_items` — a position and a colour per mark, keyed the way that
 table is keyed, by `path` rather than by a track id — and a new table is a
-`SCHEMA_VERSION` step, currently 9. `tracks` is the wrong home: a track has one
+`SCHEMA_VERSION` step, currently 10. `tracks` is the wrong home: a track has one
 beat grid but any number of marks.
 
 Two things this needs beyond storage and UI. The round trip that keeps the writer

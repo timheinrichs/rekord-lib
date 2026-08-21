@@ -31,6 +31,9 @@ styleguide, not ad-hoc design:
   `font-sans` (Inter) only for longer descriptive/help text. Sentence case,
   no Title Case / ALL CAPS. Weights only 400/500.
 - **Shape:** controls `rounded-md`, cards `rounded-lg`, pills `rounded-full`.
+  **Every button is `h-9` (36 px)** — stated as a height, never left to
+  padding, and square (`h-9 w-9`) when it is icon-only.
+  `src/components/buttonShape.test.ts` enforces both.
   Border = hairline `border border-border`. Depth via `surface` levels, not
   via shadows. No gradients/glow, **one** accent.
 - **Dark is the default** (`<html data-theme="dark">`).

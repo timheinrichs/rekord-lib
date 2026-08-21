@@ -31,6 +31,36 @@ contain incompatible changes.
   warning in yellow and an error in red, so the dot says both that something
   happened and how much it matters.
 
+### Fixed
+- **The same files are no longer analysed at every start — the other half.** The
+  fix that stopped re-analysing tracks with no findable tempo did not cover
+  tracks with no findable *beat grid*, and those went back into the queue at
+  every launch for the same reason: an empty column cannot say whether anyone
+  has looked. Ambient tracks, spoken intros and anything whose tempo tag
+  disagrees with what the detector hears are now left alone until the file
+  changes or a new version brings a different detector.
+- **Moving the library no longer fails when you have a playlist.** Re-pointing
+  the app at a moved library folder carried the pending edits and cached
+  fingerprints across but not the playlist memberships, and the database
+  rejected the whole move because of it — with an error, in exactly the
+  situation the feature exists to recover from.
+- **A track that is in two playlists is drawn as two rows**, each with its own
+  position and its own drag handle, instead of the two collapsing into one.
+- **The position in a playlist is the real one.** With a search or filter
+  active, a row showed its place among the visible rows rather than in the
+  playlist, so a track could show "1 of 1" and refuse to move at all.
+- **A playlist write that fails says so**, instead of reporting success after
+  having emptied the playlist it was rewriting. A cancelled drag also lets go of
+  the row it was hovering.
+
+### Changed
+- **Every button is the same height, and every button has the same corner.** The
+  event log button was 34 px next to 36 px neighbours, and a lot of controls
+  used the card radius instead of the control radius — both because the size
+  came out of padding rather than being chosen. Buttons are 36 px throughout,
+  icon-only buttons square at the same size, which also gives the small ✕
+  closers a proper click target.
+
 ## [0.7.5] - 2026-08-21
 
 ### Changed

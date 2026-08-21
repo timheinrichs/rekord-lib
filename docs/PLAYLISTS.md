@@ -168,6 +168,11 @@ comes from a native panel the user drove.
 | A playlist keeps the order it was given, across a reorder | `db/mod.rs` · `a_playlist_keeps_the_order_it_was_given` |
 | Deleting a track or a playlist leaves no orphans, and no files | `db/mod.rs` · `deleting_a_track_takes_it_out_of_every_playlist`, `deleting_a_playlist_takes_its_rows_and_leaves_the_tracks` |
 | A path the library no longer holds is dropped, not fatal | `db/mod.rs` · `a_path_the_library_no_longer_holds_is_dropped_rather_than_fatal` |
+| …and nothing else is | `db/mod.rs` · `a_playlist_write_forgives_a_missing_track_and_nothing_else` |
+| A relocation carries the memberships with it | `db/mod.rs` · `relocate_keeps_identity_including_edits_fingerprints_and_playlists` |
+| A row is numbered by the playlist, not by the filter | `playlists.test.ts` · "numbers a row by the playlist, not by what the filter left over", "counts a path the library no longer holds, and does not draw it" |
+| A track in two playlists is two rows | `playlists.e2e.test.tsx` · "draws a track that is in two playlists as two rows" |
+| A refused write puts the row back | `playlists.e2e.test.tsx` · "puts a row back where the database has it when a write fails" |
 | Step and drag are the same move | `playlists.test.ts` · "agrees with the drag, which is the point of sharing its rule" |
 | A move that cannot happen writes nothing | `playlists.test.ts` · "moves the last track down to nowhere, and the first up to nowhere" |
 | The grouping shows the playlist's order and an Unsorted bucket | `playlists.test.ts` · `buildPlaylistGroups` cases |
@@ -188,3 +193,11 @@ comes from a native panel the user drove.
   originally for. It is stored and exported now; the drawing is what is left.
 - **A playlist cannot hold a track twice, and there are no folders of
   playlists.** The XML format supports both. Neither has been asked for.
+- **A conversion that replaces its source empties the playlists the track was
+  in** (`A1a` in [`TODO.md`](../TODO.md)). The original is trashed, the row is
+  pruned, the membership cascades, and the converted file arrives as a new row
+  in no playlist. Build the playlist after converting, not before, until that
+  entry is closed.
+- **The export writes the tags in the files, not the edits still pending in the
+  editor** (`A2a`). What is on screen and what is in the XML can differ for a
+  track whose edit has not been applied.

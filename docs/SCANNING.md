@@ -65,6 +65,7 @@ to stay honest, and `CLAUDE.md` requires every new cache to state its own.
 | A `fingerprints` row | mtime, size and `fingerprint::ALGO_VERSION` match |
 | A `waveforms` row | mtime, size and `waveform::ALGO_VERSION` match |
 | `tracks.bpm_absent_at` — "listened, no tempo" | the stamped app version is the running one; a re-probe overwrites the row anyway |
+| `tracks.grid_absent_at` — "listened, no beat grid" | the same, for the phase |
 
 **"No tempo" is an answer, and it is stored as one.** `bpm IS NULL` cannot say
 whether a file has been analysed, so the backlog that runs at every start
@@ -87,7 +88,22 @@ does not decode them either. **"Re-detect BPM" still does** — that is the
 deliberate second opinion, and it is the one button whose whole purpose is to
 overrule what is stored.
 
-Two things never earn the mark, and both are in `tempo_verdict`: a file that was
+**And the same thing happened again, one column along.** A track with a tempo
+but no `beat_offset_secs` is asked for one, because a library built before the
+grid existed can only grow one that way. But NULL is also what the column holds
+when the detector *did* listen: `beats::detect_beats` finds no phase in anything
+without a clear pulse, and a phase is refused outright when the tempo it was
+measured against disagrees with the tag another program wrote — which on an
+imported library is the common case, not the rare one. So those files went back
+into the backlog at every launch, which is the identical fault to the one above
+wearing a different column's name.
+
+`grid_absent_at` is the same answer: the version that looked, stamped on the row,
+derived into `TrackAnalysis::grid_absent` on read, expiring with the release. It
+is deliberately *not* shared with `bpm_absent` — a row can have a perfectly good
+tempo and no findable phase, and one mark cannot say both.
+
+Two things never earn either mark, and both are in `tempo_verdict`: a file that was
 analysed only for its waveform — nobody asked about its tempo — and an analysis
 that never returned. An unreadable file, a sidecar that could not start, an
 external drive that went away mid-scan: none of that says anything about the
@@ -227,7 +243,8 @@ import that fails and an invalidation that fails are all logged and carried past
 | … · `row_to_track`, `load_track_cache`, `upsert_tracks`, `retain_tracks` | reading, recomputing, writing, pruning |
 | … · `waveforms_load`, `waveform_save`, `fingerprints_load`, `fingerprint_put` | the two content-keyed caches |
 | `src-tauri/src/db/schema.rs` | `SCHEMA_VERSION` and the version history; the note on derived columns and why a new one goes at the end |
-| `src-tauri/src/commands.rs` · `detect_bpm_pass`, `item_wanted_tempo` | where an empty tempo result becomes `bpm_absent` — and only when the tempo was actually asked for |
+| `src-tauri/src/commands.rs` · `detect_bpm_pass`, `item_wanted_tempo` | where an empty tempo result becomes `bpm_absent` or `grid_absent` — and only when the tempo was actually asked for |
+| `src-tauri/src/commands.rs` · `wants_tempo` | the three reasons to listen again, and the two marks that end them |
 | `src-tauri/src/db/migrate.rs` | the one-time JSON import and when the legacy keys are shed |
 | `src/lib/librarySync.ts` | `diffAudioFiles` (`null` ≠ empty), `mergeScanned`, `applyPatch`, `pathsMissingBpm` |
 | `src/lib/scanPatchBatch.ts` | the 250 ms window, and the per-path merge |
@@ -258,6 +275,7 @@ Events and their payloads are tabulated in [COMMANDS.md](COMMANDS.md).
 | Finding a tempo takes the mark off | `db/mod.rs` · `finding_a_tempo_takes_the_mark_off_again` |
 | The backlog skips those files | `librarySync.test.ts` · "leaves out what the detector has already listened to", `scan.e2e.test.tsx` · "does not send a tempo-less file to the detector again" |
 | So does the pass, unless forced | `commands.rs` · `a_file_already_listened_to_is_not_asked_again` |
+| A grid nobody can find is not hunted at every start | `commands.rs` · `a_track_whose_grid_cannot_be_found_is_not_hunted_forever`, `db/mod.rs` · `a_grid_that_cannot_be_found_is_remembered_the_same_way` |
 | A failed analysis is not an answer | `commands.rs` · `an_analysis_that_never_ran_says_nothing_about_the_file`, `a_tempo_nobody_asked_about_is_not_answered`, `the_verdict_describes_the_row_and_not_the_attempt` |
 | A migrated database looks like a fresh one | `db/mod.rs` · `a_migrated_database_has_the_same_tracks_schema_as_a_fresh_one`, `the_v5_migration_keeps_the_tracks_and_their_fingerprints` |
 | The width is the smaller of cores and memory, capped | `workers.rs` · `cores_bind_on_a_machine_with_memory_to_spare`, `memory_binds_on_a_high_core_low_ram_machine`, `the_cap_holds_even_when_the_host_could_do_more`, `never_returns_zero` |
