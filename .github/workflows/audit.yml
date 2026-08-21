@@ -1,0 +1,50 @@
+name: Audit
+
+# Dependency advisories, on a schedule rather than on a push: an advisory is
+# published against code that has not changed, so a check that only runs on a
+# diff never sees it. Monday morning, and on demand.
+on:
+  schedule:
+    - cron: "0 6 * * 1"
+  workflow_dispatch:
+  # Plus whenever the dependencies themselves move.
+  pull_request:
+    paths:
+      - package-lock.json
+      - src-tauri/Cargo.lock
+      - .github/workflows/audit.yml
+
+jobs:
+  npm:
+    name: npm audit
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - run: npm ci
+      # Runtime dependencies only, and only what is actually actionable: a
+      # low-severity advisory in a build tool is not a reason to fail a job
+      # nobody asked for. `--omit=dev` matches what ends up in the bundle.
+      - name: npm audit
+        run: npm audit --omit=dev --audit-level=high
+
+  cargo:
+    name: cargo audit
+    # Ubuntu, unlike the backend job in ci.yml: this reads Cargo.lock, so it
+    # needs neither macOS nor the aarch64 sidecars.
+    runs-on: ubuntu-latest
+    # The action reports through a check run, and opens an issue for a
+    # scheduled finding — neither of which the default read-only token can do.
+    permissions:
+      contents: read
+      checks: write
+      issues: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: rustsec/audit-check@v2
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          working-directory: src-tauri
