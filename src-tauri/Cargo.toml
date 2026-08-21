@@ -80,9 +80,10 @@ stratum-dsp = { version = "1", default-features = false }
 sha2 = "0.10"
 unicode-normalization = "0.1"
 
-# Abhängigkeiten auch im Dev-Build optimieren – macht die Chromaprint-/FFT-
-# Berechnung der Duplikatsuche im Dev-Modus um ein Vielfaches schneller,
-# ohne die Kompilierzeit des eigenen Codes zu erhöhen.
+# Optimise dependencies in a dev build as well. It makes the chromaprint and FFT
+# work behind the duplicate search several times faster in a dev run, and it
+# costs nothing in compile time for our own code — which is the only code that
+# gets recompiled on a change.
 [profile.dev.package."*"]
 opt-level = 3
 
