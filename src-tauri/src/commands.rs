@@ -1881,12 +1881,16 @@ fn capture_undo(items: &[WriteMetadataItem]) -> Vec<WriteMetadataItem> {
         .iter()
         .filter_map(|item| {
             let metadata = read_metadata(&item.path).ok()?;
+            let cover = undo_cover(&item.path, item.cover.as_ref());
             Some(WriteMetadataItem {
-                cover: Some(undo_cover(&item.path, item.cover.as_ref())),
-                // The captured bytes go back exactly as they came out. Undo's
+                // The captured bytes go back exactly as they came out — undo's
                 // whole promise is the file it started from, and a re-encode
-                // would return a likeness of it instead (C8).
-                cover_verbatim: true,
+                // would return a likeness of it instead (C8). Only where bytes
+                // were actually captured, though: `Keep` resolves against the
+                // file as it is at undo time and `None` embeds nothing, and a
+                // flag set where it does nothing reads like a rule later.
+                cover_verbatim: matches!(cover, CoverInput::Data { .. }),
+                cover: Some(cover),
                 path: item.path.clone(),
                 metadata,
             })
@@ -2206,21 +2210,48 @@ mod tests {
             // undo hands back a likeness instead of the file (C8).
             let dir = tempfile::tempdir().unwrap();
             let audio = dir.path().join("track.wav");
-            fs::write(&audio, crate::metadata::write::testing::wav_bytes()).unwrap();
+            crate::metadata::write::testing::wav_with_cover(&audio, b"\xFF\xD8\xFF-artwork");
             let path = audio.to_string_lossy().to_string();
 
             let captured = capture_undo(&[WriteMetadataItem {
                 path: path.clone(),
                 metadata: TrackMetadata::default(),
+                // A write that replaces the artwork: the previous bytes are
+                // what has to come back.
                 cover: Some(CoverInput::None),
                 cover_verbatim: false,
             }]);
 
             assert_eq!(captured.len(), 1, "a readable file must be capturable");
             assert!(
+                matches!(captured[0].cover, Some(CoverInput::Data { .. })),
+                "the bytes were not captured at all"
+            );
+            assert!(
                 captured[0].cover_verbatim,
                 "the snapshot did not ask for its bytes back unchanged"
             );
+        }
+
+        #[test]
+        fn a_capture_with_nothing_to_restore_does_not_claim_verbatim() {
+            // `Keep` resolves against the file as it is at undo time and `None`
+            // embeds nothing — neither is a byte-for-byte restore, and marking
+            // them as one would read like a rule that does not exist.
+            let dir = tempfile::tempdir().unwrap();
+            let audio = dir.path().join("track.wav");
+            fs::write(&audio, crate::metadata::write::testing::wav_bytes()).unwrap();
+
+            let captured = capture_undo(&[WriteMetadataItem {
+                path: audio.to_string_lossy().to_string(),
+                metadata: TrackMetadata::default(),
+                cover: Some(CoverInput::None),
+                cover_verbatim: false,
+            }]);
+
+            assert_eq!(captured.len(), 1);
+            assert!(matches!(captured[0].cover, Some(CoverInput::None)));
+            assert!(!captured[0].cover_verbatim);
         }
     }
 

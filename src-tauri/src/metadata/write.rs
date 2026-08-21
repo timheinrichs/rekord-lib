@@ -333,6 +333,27 @@ fn bpm_key(tag_type: TagType) -> ItemKey {
 /// Fixtures shared with other modules' tests.
 #[cfg(test)]
 pub(crate) mod testing {
+    use super::*;
+
+    /// A WAV with `cover` embedded as its front picture, the way a write leaves
+    /// one — so a test elsewhere has something to capture.
+    pub fn wav_with_cover(path: &std::path::Path, cover: &[u8]) {
+        std::fs::write(path, wav_bytes()).unwrap();
+        let mut tagged = read_from_path(path).unwrap();
+        if tagged.primary_tag().is_none() {
+            let tag_type = tagged.file_type().primary_tag_type();
+            tagged.insert_tag(Tag::new(tag_type));
+        }
+        let tag = tagged.primary_tag_mut().unwrap();
+        tag.push_picture(Picture::new_unchecked(
+            PictureType::CoverFront,
+            Some(MimeType::Jpeg),
+            None,
+            cover.to_vec(),
+        ));
+        tag.save_to_path(path, WriteOptions::default()).unwrap();
+    }
+
     /// Smallest WAV lofty will parse: 16-bit mono PCM with a handful of samples.
     pub fn wav_bytes() -> Vec<u8> {
         let samples = [0u8; 64];

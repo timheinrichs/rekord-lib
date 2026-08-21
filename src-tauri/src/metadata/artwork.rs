@@ -66,15 +66,25 @@ fn jpeg_frame(bytes: &[u8]) -> Option<JpegFrame> {
             return None;
         }
         let marker = bytes[i + 1];
-        // Fill bytes between segments, and the standalone markers that carry no
-        // length field.
-        if marker == 0xFF {
-            i += 1;
-            continue;
-        }
-        if (0xD0..=0xD9).contains(&marker) {
-            i += 2;
-            continue;
+        match marker {
+            // Fill bytes between segments.
+            0xFF => {
+                i += 1;
+                continue;
+            }
+            // The standalone markers: TEM, the restart markers, SOI and EOI.
+            // They carry no length field, and reading one where a real decoder
+            // reads none is how a parser ends up walking a different file than
+            // the decoder does — far enough into an `APPn` or comment payload to
+            // find a frame header somebody put there.
+            0x01 | 0xD0..=0xD9 => {
+                i += 2;
+                continue;
+            }
+            // A stuffed zero is not a marker at all, and 0x02..=0xBF are
+            // reserved. Either means this is not a file worth guessing about.
+            0x00 | 0x02..=0xBF => return None,
+            _ => {}
         }
         let len = u16::from_be_bytes([bytes[i + 2], bytes[i + 3]]) as usize;
         if len < 2 {
@@ -85,11 +95,17 @@ fn jpeg_frame(bytes: &[u8]) -> Option<JpegFrame> {
         let is_frame = matches!(marker, 0xC0..=0xCF) && !matches!(marker, 0xC4 | 0xC8 | 0xCC);
         if is_frame {
             let seg = bytes.get(i + 4..i + 4 + 6)?;
+            let components = seg[5];
+            // A frame header is its own 8 bytes plus 3 per component. A length
+            // that disagrees means this is not the frame it claims to be.
+            if len != 8 + 3 * components as usize {
+                return None;
+            }
             return Some(JpegFrame {
                 marker,
                 height: u16::from_be_bytes([seg[1], seg[2]]) as u32,
                 width: u16::from_be_bytes([seg[3], seg[4]]) as u32,
-                components: seg[5],
+                components,
             });
         }
         // The entropy-coded data starts here, so there was no frame header
@@ -305,6 +321,28 @@ mod tests {
         let sof = cmyk.windows(2).position(|w| w == [0xFF, 0xC0]).unwrap();
         cmyk[sof + 9] = 4;
         assert!(!already_cdj_shaped(&cmyk));
+    }
+
+    #[test]
+    fn jpeg_frame_walks_the_file_the_way_a_decoder_does() {
+        // Two ways a parser can end up reading a different file than the
+        // decoder reads, and both would let a progressive JPEG through as
+        // baseline: treating a standalone marker as if it had a length, and
+        // trusting a frame header whose length does not fit its components.
+        let mut with_tem = jpeg(64, 64);
+        with_tem.splice(2..2, [0xFF, 0x01]); // TEM, which carries no length
+        let frame = jpeg_frame(&with_tem).expect("TEM must not derail the walk");
+        assert_eq!((frame.width, frame.height), (64, 64));
+
+        let mut bad_len = jpeg(64, 64);
+        let sof = bad_len.windows(2).position(|w| w == [0xFF, 0xC0]).unwrap();
+        bad_len[sof + 3] = 0x30; // a length no frame header has
+        assert!(jpeg_frame(&bad_len).is_none());
+
+        // A reserved marker is not something to guess about either.
+        let mut reserved = jpeg(64, 64);
+        reserved.splice(2..2, [0xFF, 0x02]);
+        assert!(jpeg_frame(&reserved).is_none());
     }
 
     #[test]

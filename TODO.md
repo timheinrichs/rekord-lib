@@ -189,13 +189,15 @@ because each of these is now *exercised* by a passing suite without being
 | Untested | Why it matters | What G1 changed |
 | --- | --- | --- |
 | `metadata::write::finalize` | end to end. Only `apply_cover` and the field mapping are tested, and this is the code that rewrites tags | runs on every metadata flow test and on the e2e scan, so a panic would be caught — a wrong tag would not |
-| `metadata/artwork.rs` | no tests at all — `process_cover` decides what every embedded cover looks like | unchanged: the fixture deliberately has covers on only some files, and no assertion looks at the bytes |
+| ~~`metadata/artwork.rs`~~ | *closed with C8.* `process_cover` and `already_cdj_shaped` are tested against generated images, including the round trip that says the encoder's own output is not re-encoded, and `write.rs` checks the restored bytes against a real file | — |
 | `audio::dedupe::find_duplicates` | no test; it needs an `AppHandle` | the e2e run reaches it with real audio, but nothing asserts the tiers, so the `meta_matches` mirror can still drift |
 | `convert_file`'s three cleanup branches | the failure paths that decide whether a half-written file is left behind | still unreachable: they need ffmpeg to fail mid-run, which no fixture provokes |
 
 **Why not act** — each of these needs the failure *provoked*, not just the path
 walked. A corrupt file that ffprobe accepts and ffmpeg chokes on would cover the
-cleanup branches; a cover with known bytes would cover `process_cover`.
+cleanup branches. (The cover row is struck through rather than removed because
+the table is G1's record of what it left behind; what closed it was C8, which
+needed those bytes for its own reasons.)
 
 **What would change that** — a fixture built to fail. `dev-library.py` generates
 files that work, on purpose; a second, smaller set built to break in a specific

@@ -126,7 +126,9 @@ button forever.
 not also lose the entry.
 
 **Undo puts the bytes back, not a likeness of them.** The captured item carries
-`cover_verbatim`, and `finalize` then embeds exactly what it was given, with the
+`cover_verbatim` — set only where bytes were really captured, since `Keep`
+resolves against the file as it is at undo time and `None` embeds nothing — and
+`finalize` then embeds exactly what it was given, with the
 mime type read off the bytes rather than assumed — what a file held before a
 write is not necessarily a JPEG, and a PNG labelled as one is a cover players
 refuse to draw. Restoring a 3000 px original is *correct here*: undo's contract
