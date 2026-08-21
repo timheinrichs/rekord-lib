@@ -35,7 +35,9 @@ start_scan  (single-flight; a second call while one runs returns false)
 ```
 
 The frontend never polls. `LibraryView` merges `scan://tracks` and
-`scan://patch` into its list, and a reloaded window reattaches to a run in
+`scan://patch` into its list — a batch carries both freshly probed rows and rows
+reused from the database, and names the fresh ones in `fresh`, which is what
+lets a per-file cache tell "this changed" from "this was already known" — and a reloaded window reattaches to a run in
 progress through `scan_status`. Progress, stage and the pause flag all travel in
 `scan://progress`, which is why the scan button survives a reload mid-scan.
 

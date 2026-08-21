@@ -1,9 +1,22 @@
 import { useEffect, useRef, useState } from "react";
 import { coverThumbnail } from "../lib/api";
+import { createCoverCache } from "../lib/coverCache";
 import { PauseIcon, PlayIcon } from "./icons";
 
-/** Module-wide cache: path → data URL (or null = no cover). */
-const cache = new Map<string, string | null>();
+/**
+ * One cache for the whole table, created once. Module scope rather than a
+ * context, for the same reason as the waveform batcher: every row wants the
+ * same thing from the same place.
+ */
+const covers = createCoverCache(coverThumbnail);
+
+/**
+ * Called for the files a write, an undo, a conversion or the scan just changed,
+ * so their rows show the new artwork instead of the one from before.
+ */
+export function forgetCoverThumbs(paths: string[]) {
+  covers.forget(paths);
+}
 
 interface Props {
   path: string;
@@ -31,13 +44,16 @@ export default function CoverThumb({
   playing,
   onToggle,
 }: Props) {
-  const [url, setUrl] = useState<string | null>(() => cache.get(path) ?? null);
-  const [visible, setVisible] = useState(() => cache.has(path));
+  const [visible, setVisible] = useState(() => covers.get(path) !== undefined);
+  // A counter rather than the value: the cache owns the answer, this only needs
+  // to know it changed — including when it changes to a *different* cover after
+  // a write, which is what the old local copy could not see.
+  const [, bump] = useState(0);
   const ref = useRef<HTMLDivElement>(null);
 
   // Observe visibility (only load what is actually shown).
   useEffect(() => {
-    if (cache.has(path) || !hasCover) return;
+    if (covers.get(path) !== undefined || !hasCover) return;
     const el = ref.current;
     if (!el) return;
     const io = new IntersectionObserver(
@@ -53,26 +69,13 @@ export default function CoverThumb({
     return () => io.disconnect();
   }, [path, hasCover]);
 
-  // Load the thumbnail once visible.
+  // Ask once visible, and stay subscribed: the answer can change under us.
   useEffect(() => {
     if (!visible || !hasCover) return;
-    if (cache.has(path)) {
-      setUrl(cache.get(path) ?? null);
-      return;
-    }
-    let active = true;
-    coverThumbnail(path)
-      .then((u) => {
-        cache.set(path, u);
-        if (active) setUrl(u);
-      })
-      .catch(() => {
-        cache.set(path, null);
-      });
-    return () => {
-      active = false;
-    };
+    return covers.request(path, () => bump((n) => n + 1));
   }, [visible, path, hasCover]);
+
+  const url = covers.get(path) ?? null;
 
   // Something is on its way: pulse rather than show the empty-cover icon, which
   // would otherwise flicker in just before the artwork replaces it.

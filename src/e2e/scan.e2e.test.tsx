@@ -13,7 +13,15 @@
  */
 import { cleanup, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import {
+  afterEach,
+  beforeEach,
+  describe,
+  expect,
+  it,
+  onTestFinished,
+  vi,
+} from "vitest";
 import App from "../App";
 import { libraryView } from "../test/appDom";
 import { makeMetadata, makeTrack } from "../test/factories";
@@ -223,6 +231,49 @@ describe("the scan", () => {
       expect(fake.argsFor("set_scan_paused")[1].paused).toBe(false),
     );
     expect(fake.called("cancel_scan")).toBe(false);
+  });
+
+  it("only re-reads the thumbnail of a file it really re-probed", async () => {
+    // A scan batch carries both: rows the analysis produced and rows it reused
+    // from the database unchanged. Only the first kind can have new artwork, and
+    // treating them alike would re-decode a thumbnail for every visible row on
+    // every scan — a flicker, and work for nothing.
+    class Intersecting {
+      constructor(private cb: IntersectionObserverCallback) {}
+      observe() {
+        this.cb(
+          [{ isIntersecting: true } as IntersectionObserverEntry],
+          this as unknown as IntersectionObserver,
+        );
+      }
+      unobserve() {}
+      disconnect() {}
+    }
+    onTestFinished(() => {
+      vi.unstubAllGlobals();
+    });
+    vi.stubGlobal("IntersectionObserver", Intersecting);
+
+    render(<App />);
+    await waitFor(() => expect(fake.called("cover_thumbnail")).toBe(true));
+    const before = fake.argsFor("cover_thumbnail").length;
+
+    // Both tracks come back in one batch; only the first was re-probed.
+    await fake.emit("scan://tracks", {
+      generation: 1,
+      tracks: seededTracks(),
+      fresh: [CLICK_090],
+    });
+
+    await waitFor(() =>
+      expect(fake.argsFor("cover_thumbnail").length).toBeGreaterThan(before),
+    );
+    const asked = fake
+      .argsFor("cover_thumbnail")
+      .slice(before)
+      .map((a) => a.path);
+    expect(asked).toContain(CLICK_090);
+    expect(asked).not.toContain(CLICK_128);
   });
 
   it("makes a skipped file visible instead of quietly missing", async () => {

@@ -77,7 +77,7 @@ import type {
 import { STAGE_ANALYZING } from "../types";
 import MetadataEditor from "./MetadataEditor";
 import BulkMetadataEditor, { type BulkPatch } from "./BulkMetadataEditor";
-import CoverThumb from "./CoverThumb";
+import CoverThumb, { forgetCoverThumbs } from "./CoverThumb";
 import { usePlayer, type PlayerTrack } from "../lib/player";
 import MarqueeText from "./MarqueeText";
 import DuplicatesModal from "./DuplicatesModal";
@@ -496,6 +496,11 @@ export default function LibraryView({
       group.add(
         await onScanTracks((t) => {
           setTracks((prev) => mergeScanned(prev, t.tracks));
+          // Only the files this batch really re-probed: those changed on disk,
+          // and another app may have rewritten their artwork. The batch also
+          // carries rows reused from the database, and forgetting those would
+          // re-decode a thumbnail per visible row on every scan, for nothing.
+          forgetCoverThumbs(t.fresh);
         }),
       );
       // The tempo/key/waveform pass reports every file on its own, so a row
@@ -741,6 +746,9 @@ export default function LibraryView({
         // place — an in-place convert keeps the same path, which the disk diff
         // in incrementalSync() can't detect on its own.
         const outputs = convertedOutputs(res);
+        // A conversion re-embeds the cover, and an in-place one keeps the path,
+        // which is exactly when a cached thumbnail outlives the file it shows.
+        forgetCoverThumbs([...outputs, ...res.map((r) => r.source_path)]);
         if (outputs.length) {
           const analyzed = await analyzeFiles(
             outputs,
@@ -1145,6 +1153,10 @@ export default function LibraryView({
   // change isn't lost.
   const applyWriteResults = useCallback((results: WriteMetadataResult[]) => {
     setTracks((prev) => applyWrittenTracks(prev, results));
+    // The row is re-analyzed above, but the thumbnail is drawn from its own
+    // cache, which knows nothing about the write that just replaced or removed
+    // the artwork. Undo comes through here too, and needs the same.
+    forgetCoverThumbs(results.map((r) => r.path));
     const written = writtenIds(results);
     if (written.length) {
       setEdits((prev) => {

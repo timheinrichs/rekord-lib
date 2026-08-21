@@ -148,6 +148,11 @@ struct ScanDone {
 struct ScanTracks {
     generation: u64,
     tracks: Vec<TrackAnalysis>,
+    /// Of `tracks`, the paths that were really re-probed rather than served
+    /// from the database. The batch carries both, and the difference matters to
+    /// anything that caches per file: a reused row is the same file it was a
+    /// moment ago, while a fresh one may have new artwork in it.
+    fresh: Vec<String>,
 }
 
 /// How many tracks to collect before emitting a batch.
@@ -1049,9 +1054,10 @@ fn flush_scan_batch(
 ) {
     persist_tracks(app, dir, &fresh);
     let mut tracks: Vec<TrackAnalysis> = fresh.into_iter().map(|r| r.track).collect();
+    let fresh_paths: Vec<String> = tracks.iter().map(|t| t.path.clone()).collect();
     tracks.extend(reused);
     out.extend(tracks.iter().cloned());
-    emit_tracks(app, generation, tracks);
+    emit_tracks(app, generation, tracks, fresh_paths);
 }
 
 /// Runs the duplicate search over the whole library and publishes the result.
@@ -1344,11 +1350,23 @@ fn emit_progress(
     );
 }
 
-fn emit_tracks(app: &AppHandle, generation: u64, tracks: Vec<TrackAnalysis>) {
+fn emit_tracks(
+    app: &AppHandle,
+    generation: u64,
+    tracks: Vec<TrackAnalysis>,
+    fresh: Vec<String>,
+) {
     if tracks.is_empty() {
         return;
     }
-    let _ = app.emit("scan://tracks", ScanTracks { generation, tracks });
+    let _ = app.emit(
+        "scan://tracks",
+        ScanTracks {
+            generation,
+            tracks,
+            fresh,
+        },
+    );
 }
 
 /// One finished analysis, on its way to the row it belongs to.
@@ -1819,8 +1837,15 @@ async fn write_items(app: &AppHandle, items: Vec<WriteMetadataItem>) -> Vec<Writ
         let cover = item.cover.unwrap_or(CoverInput::Keep);
         // clear_empty = true: the caller sends the file's full intended tags, so
         // an empty field should clear the tag (enables a faithful undo).
-        match write::finalize(&item.path, &item.path, &Some(item.metadata), &cover, true)
-            .await
+        match write::finalize_cover(
+            &item.path,
+            &item.path,
+            &Some(item.metadata),
+            &cover,
+            true,
+            item.cover_verbatim,
+        )
+        .await
         {
             Ok(()) => {
                 // The write itself worked; only the re-read for the refreshed
@@ -1858,6 +1883,10 @@ fn capture_undo(items: &[WriteMetadataItem]) -> Vec<WriteMetadataItem> {
             let metadata = read_metadata(&item.path).ok()?;
             Some(WriteMetadataItem {
                 cover: Some(undo_cover(&item.path, item.cover.as_ref())),
+                // The captured bytes go back exactly as they came out. Undo's
+                // whole promise is the file it started from, and a re-encode
+                // would return a likeness of it instead (C8).
+                cover_verbatim: true,
                 path: item.path.clone(),
                 metadata,
             })
@@ -2168,6 +2197,30 @@ mod tests {
             // reads as `Keep` — the capture must agree with it.
             assert!(matches!(undo_cover_for(None, cover()), CoverInput::Keep));
             assert!(matches!(undo_cover_for(None, None), CoverInput::None));
+        }
+
+        #[test]
+        fn a_captured_item_restores_its_cover_verbatim() {
+            // The flag is what stops the restore from re-encoding the artwork it
+            // captured. Without it the bytes go through the encoder anyway and
+            // undo hands back a likeness instead of the file (C8).
+            let dir = tempfile::tempdir().unwrap();
+            let audio = dir.path().join("track.wav");
+            fs::write(&audio, crate::metadata::write::testing::wav_bytes()).unwrap();
+            let path = audio.to_string_lossy().to_string();
+
+            let captured = capture_undo(&[WriteMetadataItem {
+                path: path.clone(),
+                metadata: TrackMetadata::default(),
+                cover: Some(CoverInput::None),
+                cover_verbatim: false,
+            }]);
+
+            assert_eq!(captured.len(), 1, "a readable file must be capturable");
+            assert!(
+                captured[0].cover_verbatim,
+                "the snapshot did not ask for its bytes back unchanged"
+            );
         }
     }
 

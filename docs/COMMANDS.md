@@ -216,7 +216,7 @@ in `src/types.ts`.
 | Event | Payload | Emitted from |
 | --- | --- | --- |
 | `scan://progress` | `ScanProgress { generation, done, total, running, paused, stage }` | `commands.rs` `emit_progress` |
-| `scan://tracks` | `ScanTracks { generation, tracks }` — batched | `commands.rs` `emit_tracks` |
+| `scan://tracks` | `ScanTracks { generation, tracks, fresh }` — batched; `fresh` names the subset that was really re-probed rather than reused from the database | `commands.rs` `emit_tracks` |
 | `scan://patch` | `ScanPatch { generation, patch: TrackPatch }` — one per finished file | `commands.rs` `emit_patch` |
 | `scan://skipped` | `SkippedFile { path, file_name, reason }` | `commands.rs` `record_skip` |
 | `scan://done` | `ScanDone { generation, cancelled, full, tracks }` | `commands.rs` `start_scan` |

@@ -77,6 +77,8 @@ export interface FakeState {
    * `rekord-lib.json`, and a test that puts them back there proves nothing.
    */
   discogs: { key: string; secret: string } | null;
+  /** Thumbnails per path, for the cover cache's invalidation. */
+  covers: Record<string, string | null>;
   /** Non-null makes the app report a broken ffmpeg/ffprobe at startup. */
   sidecarError: string | null;
   /**
@@ -106,6 +108,7 @@ function defaults(): FakeState {
     account: null,
     collection: [],
     discogs: null,
+    covers: {},
     sidecarError: null,
     dbAvailable: true,
     dialogAnswer: null,
@@ -291,7 +294,16 @@ export function installFakeBackend(
       };
     },
     cover_preview: () => "data:image/jpeg;base64,",
-    cover_thumbnail: () => null,
+    // A data URL rather than null, so a test can tell a thumbnail that was
+    // re-read from one that was served from the cache.
+    cover_thumbnail: (args) => {
+      const path = args.path as string;
+      // `in`, not `??`: an explicit null is how a test says "this file has no
+      // cover", and it must not fall through to the default.
+      return path in state.covers
+        ? state.covers[path]
+        : "data:image/jpeg;base64,COVER";
+    },
     write_metadata: (args) => {
       const items = (args.items as WriteMetadataItem[]) ?? [];
       if (args.recordUndo !== false) {

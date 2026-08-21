@@ -14,7 +14,15 @@
  */
 import { cleanup, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import {
+  afterEach,
+  beforeEach,
+  describe,
+  expect,
+  it,
+  onTestFinished,
+  vi,
+} from "vitest";
 import App from "../App";
 import { libraryView, overlay } from "../test/appDom";
 import { makeMetadata, makeTrack } from "../test/factories";
@@ -109,6 +117,50 @@ describe("editing metadata", () => {
     // name back to the user.
     expect(args.recordUndo).toBe(true);
     expect(args.label).toBe("no-tags.aiff");
+  });
+
+  it("re-reads the thumbnail of a file it wrote", async () => {
+    // The row is re-analyzed after a write, but the thumbnail comes from its own
+    // cache. Without the invalidation the old artwork stays on screen until the
+    // app restarts, and a correct write looks like one that did nothing (C7).
+    //
+    // The shared setup's IntersectionObserver never intersects, so covers stay
+    // unloaded unless a test drives them — this one has to, because the load is
+    // the thing being counted.
+    class Intersecting {
+      constructor(private cb: IntersectionObserverCallback) {}
+      observe() {
+        this.cb(
+          [{ isIntersecting: true } as IntersectionObserverEntry],
+          this as unknown as IntersectionObserver,
+        );
+      }
+      unobserve() {}
+      disconnect() {}
+    }
+    // Cleanup in a hook, not at the end of the body: a failing assertion above
+    // would otherwise leak an always-intersecting observer into the tests after
+    // it, which are written against the shared stub that never intersects.
+    onTestFinished(() => {
+      vi.unstubAllGlobals();
+    });
+    vi.stubGlobal("IntersectionObserver", Intersecting);
+
+    const { container } = render(<App />);
+    await waitFor(() => expect(fake.called("cover_thumbnail")).toBe(true));
+    const before = fake.argsFor("cover_thumbnail").length;
+
+    const user = await openEditor(container);
+    await user.clear(field("Title"));
+    await user.type(field("Title"), "After");
+    await user.click(screen.getByRole("button", { name: /confirm/i }));
+
+    await waitFor(() => expect(fake.called("write_metadata")).toBe(true));
+    await waitFor(() =>
+      expect(fake.argsFor("cover_thumbnail").length).toBeGreaterThan(before),
+    );
+    const asked = fake.argsFor("cover_thumbnail");
+    expect(asked[asked.length - 1]).toEqual({ path: TRACK });
   });
 
   it("reports a per-file write failure without claiming success", async () => {

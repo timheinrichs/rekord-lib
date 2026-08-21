@@ -243,6 +243,12 @@ export interface SkippedFile {
 export interface ScanTracks {
   generation: number;
   tracks: TrackAnalysis[];
+  /**
+   * Of `tracks`, the paths that were really re-probed. The batch also carries
+   * rows the scan reused from the database unchanged, and a per-file cache has
+   * to tell them apart: a reused row is the same file it was a moment ago.
+   */
+  fresh: string[];
 }
 
 /**
