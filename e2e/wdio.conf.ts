@@ -36,7 +36,14 @@ export const config: WebdriverIO.Config = {
   // smoke spec last — and its whole job is to check that this run points at the
   // generated fixture and its own data directory *before* another spec converts
   // or trashes anything.
-  specs: ["./smoke.spec.ts", "./scan.spec.ts", "./convert.spec.ts"],
+  // Listed rather than globbed, so adding a file is a decision. Order matters
+  // only in that `playback` wants a library nothing has rewritten yet.
+  specs: [
+    "./smoke.spec.ts",
+    "./playback.spec.ts",
+    "./scan.spec.ts",
+    "./convert.spec.ts",
+  ],
   // One at a time. The specs convert files and write tags in one shared fixture
   // library, so two instances would race over the same folder.
   maxInstances: 1,
