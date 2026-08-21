@@ -136,6 +136,16 @@ export interface FakeBackend {
    * `write_metadata`, the deletes and `convert_tracks` actually use.
    */
   failItem(path: string, message: string): void;
+  /**
+   * Keep `cmd` from answering until the returned function is called.
+   *
+   * The long-running commands — `convert_tracks`, `analyze_files`,
+   * `bandcamp_download` — resolve only when their last job is done, and stream
+   * progress events in the meantime. A fake that answers at once has already
+   * finished before a test can emit anything, so the whole in-flight state
+   * would be untestable.
+   */
+  hold(cmd: string): () => void;
   /** Emit a backend event through the real `listen` machinery. */
   emit(event: string, payload: unknown): Promise<void>;
   /** Undo everything this installed. */
@@ -164,6 +174,8 @@ export function installFakeBackend(
   const calls: FakeCall[] = [];
   const rejections = new Map<string, string>();
   const itemErrors = new Map<string, string>();
+  const holds = new Map<string, Promise<void>>();
+  const releases = new Map<string, () => void>();
 
   const byPath = (path: string) => state.tracks.find((t) => t.path === path);
 
@@ -422,6 +434,7 @@ export function installFakeBackend(
         return Promise.reject(new Error(DB_UNAVAILABLE));
       }
 
+      const held = holds.get(cmd);
       const handler = commands[cmd] ?? plugins[cmd];
       if (!handler) {
         // Loud on purpose. A command the fake does not know is either a new one
@@ -432,7 +445,10 @@ export function installFakeBackend(
           `fakeBackend: no handler for "${cmd}". Add it here and to docs/COMMANDS.md.`,
         );
       }
-      return handler(payload, state);
+      // The handler runs now — so it sees the state the call was made in — but
+      // the answer waits, which is what a long-running command looks like.
+      const answer = handler(payload, state);
+      return held ? held.then(() => answer) : answer;
     },
     { shouldMockEvents: true },
   );
@@ -443,6 +459,20 @@ export function installFakeBackend(
     argsFor: (cmd) => calls.filter((c) => c.cmd === cmd).map((c) => c.args),
     called: (cmd) => calls.some((c) => c.cmd === cmd),
     fail: (cmd, message) => rejections.set(cmd, message),
+    hold: (cmd) => {
+      let release = () => {};
+      holds.set(
+        cmd,
+        new Promise<void>((resolve) => {
+          release = resolve;
+        }),
+      );
+      releases.set(cmd, release);
+      return () => {
+        releases.get(cmd)?.();
+        holds.delete(cmd);
+      };
+    },
     failItem: (path, message) => itemErrors.set(path, message),
     emit: async (event, payload) => {
       await emit(event, payload);
