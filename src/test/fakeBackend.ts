@@ -224,6 +224,7 @@ export function installFakeBackend(
       return before - state.tracks.length;
     },
     library_dir_available: () => true,
+    allow_library_playback: () => null,
     library_relocate: (): RelocateResult => ({ moved: state.tracks.length, skipped: 0 }),
     edits_load: () => state.edits,
     edit_set: (args) => {

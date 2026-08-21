@@ -13,6 +13,7 @@ import { PlayerProvider } from "./lib/player";
 import { CloseIcon } from "./components/icons";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { bandcampStatus, startScan } from "./lib/api";
+import { allowLibraryPlayback } from "./lib/library";
 import { syncCollection } from "./lib/bandcampSync";
 import {
   badgeLevel,
@@ -118,6 +119,15 @@ export default function App() {
       setReady(true);
     })();
   }, []);
+
+  // Open the library folder for playback whenever it is known or changes. The
+  // player reads files through `asset:`, whose scope is empty until this runs —
+  // and it is the whole feature that needs a scope at all, so nothing wider is
+  // ever granted.
+  useEffect(() => {
+    if (!settings.library_dir) return;
+    void allowLibraryPlayback(settings.library_dir).catch(() => {});
+  }, [settings.library_dir]);
 
   // Check for an app update on startup (silent; errors are treated as "up to date").
   useEffect(() => {

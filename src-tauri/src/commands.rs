@@ -373,9 +373,24 @@ pub async fn analyze_files(
     Ok(out)
 }
 
+/// Opens the library folder for playback (`asset:`), and nothing else.
+///
+/// The scope is runtime state rather than a line in `tauri.conf.json`, so it has
+/// to be granted again for a folder the user picks — and it is deliberately
+/// never revoked mid-run: a track that is playing when the folder changes would
+/// otherwise stop halfway. The next start begins from an empty scope.
+#[tauri::command]
+pub fn allow_library_playback(app: AppHandle, dir: String) {
+    if let Some(dir) = crate::assets::playable_dir(Some(&serde_json::json!({
+        "library_dir": dir
+    }))) {
+        crate::assets::allow(&app, &dir);
+    }
+}
+
 /// Is `path` inside `dir`? Used to keep an imported file's analysis out of the
 /// library table. Compared on the path text, which is what both sides carry.
-fn is_inside(dir: &str, path: &str) -> bool {
+pub(crate) fn is_inside(dir: &str, path: &str) -> bool {
     let dir = dir.trim_end_matches(std::path::MAIN_SEPARATOR);
     path.starts_with(dir)
         && path.len() > dir.len()

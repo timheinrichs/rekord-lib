@@ -33,6 +33,18 @@ export function isLibraryDirAvailable(dir: string): Promise<boolean> {
 }
 
 /**
+ * Lets the player read audio files in `dir`.
+ *
+ * The webview may read nothing at all through `asset:` until this says
+ * otherwise — the scope in `tauri.conf.json` is empty, and used to be the whole
+ * home folder. Called for the saved folder on startup and again whenever the
+ * user picks a different one; the backend grants it for this run only.
+ */
+export function allowLibraryPlayback(dir: string): Promise<void> {
+  return invoke("allow_library_playback", { dir });
+}
+
+/**
  * Re-points the library at `newDir`, keeping the identity of every track that
  * is actually there — and with it its pending edits and cached fingerprint.
  * Rows it cannot find stay where they are; this runs when the user is

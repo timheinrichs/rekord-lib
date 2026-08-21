@@ -1,6 +1,7 @@
 // Public so the DSP benchmark (tests/dsp_bench.rs) can drive the detector
 // directly, without a Tauri app around it.
 pub mod audio;
+mod assets;
 mod bandcamp;
 mod commands;
 mod db;
@@ -114,6 +115,11 @@ pub fn run() {
                 }
             });
 
+            // Let the player read the library folder — and nothing else. The
+            // frontend re-grants this whenever the folder changes; doing it here
+            // too means playback works before that first call arrives.
+            assets::allow_saved_library(app.handle());
+
             // Restore the saved Bandcamp session on startup.
             let state = app.state::<bandcamp::session::BandcampState>();
             bandcamp::session::restore(app.handle(), &state);
@@ -131,6 +137,7 @@ pub fn run() {
             commands::library_delete,
             commands::library_dir_available,
             commands::library_relocate,
+            commands::allow_library_playback,
             commands::set_scan_paused,
             commands::events_load,
             commands::events_mark_seen,
