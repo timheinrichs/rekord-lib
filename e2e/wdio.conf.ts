@@ -43,6 +43,9 @@ export const config: WebdriverIO.Config = {
     "./playback.spec.ts",
     "./scan.spec.ts",
     "./convert.spec.ts",
+    // Last: it selects every row and opens a menu, which touches no file, so
+    // nothing above it has to care what this one did.
+    "./menus.spec.ts",
   ],
   // One at a time. The specs convert files and write tags in one shared fixture
   // library, so two instances would race over the same folder.

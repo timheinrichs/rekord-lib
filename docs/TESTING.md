@@ -120,6 +120,14 @@ Stated here rather than papered over in a test:
 - **jsdom has no stylesheet.** Both main views stay mounted and one is hidden
   with a Tailwind class so a scan survives navigation, which means every query
   finds two of everything. `src/test/appDom.ts` narrows.
+- **jsdom has no layout either**, which is worse than it sounds:
+  `getBoundingClientRect` answers zero for everything, so *where* something
+  landed is not a question this level can be asked. "Add to playlist" opened
+  upward out of the header and was unreachable while its flow test clicked it
+  happily — the panel was in the DOM, and that is all jsdom knows. Placement is
+  therefore pinned twice, neither of them here: `menuPlacement.test.ts` reads
+  the source for the spellings that cannot be right, and `e2e/menus.spec.ts`
+  measures the real rectangle in the real window.
 
 ### Isolation: three bundle identifiers
 
@@ -214,6 +222,8 @@ costs less than a short one.
 | The tempo is detected and written into the real file | `e2e/scan.spec.ts` · "writes the detected tempo into the file, not only into the database" |
 | A conversion is renamed over its source, at the target rate and depth | `e2e/convert.spec.ts` · "rewrites the file in place, at the target rate and depth" |
 | The window may read the library folder over `asset:`, and nothing else | `e2e/playback.spec.ts` · "plays a track from the library folder", "will not read an audio file outside it" |
+| An opened menu is inside the window, below the header | `e2e/menus.spec.ts` · "puts the playlist panel inside the window, below the header" |
+| …and no component spells a placement that could not be | `menuPlacement.test.ts` · the three cases |
 | Nothing reaches the database without `db::require` | `commands.rs` · `nothing_reaches_the_database_without_require` |
 | A release cannot contain the automation server | `.github/workflows/e2e.yml` · "The release guard still guards" |
 

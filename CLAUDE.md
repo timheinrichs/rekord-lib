@@ -33,7 +33,11 @@ styleguide, not ad-hoc design:
 - **Shape:** controls `rounded-md`, cards `rounded-lg`, pills `rounded-full`.
   **Every button is `h-9` (36 px)** — stated as a height, never left to
   padding, and square (`h-9 w-9`) when it is icon-only.
-  `src/components/buttonShape.test.ts` enforces both.
+  `src/components/buttonShape.test.ts` enforces both. **A menu opens downward
+  and above the header** (`right-0 top-full mt-2 z-40`) — the actions sit in a
+  64 px sticky header, so `bottom-full` puts the panel off the top of the
+  window; `src/components/menuPlacement.test.ts` reads the source and
+  `e2e/menus.spec.ts` measures where the panel actually lands.
   Border = hairline `border border-border`. Depth via `surface` levels, not
   via shadows. No gradients/glow, **one** accent.
 - **Dark is the default** (`<html data-theme="dark">`).
