@@ -17,15 +17,57 @@
 //! `AverageBpm="0.00"` is what Rekordbox writes for "not analysed", and that is
 //! the honest value.
 //!
+//! **What is written is what the table shows.** A pending metadata edit — one
+//! made in the editor and not yet applied to the file — overrides the tags on
+//! the row it belongs to, because a user who has corrected an artist has
+//! corrected it, and an export that quietly carried the old value would be
+//! wrong in the one place nobody looks twice. Reading the payload is the
+//! export's own business: `db::load_edits` hands out opaque JSON deliberately,
+//! and [`edit_overlay`] is where — and the only place where — the backend
+//! interprets its shape.
+//!
 //! **Artwork is not in this format.** There is no attribute for it; Rekordbox
 //! reads the cover out of the file itself, once the track is imported into the
 //! collection rather than only browsed in the xml view. Nothing to write here,
 //! and nothing missing.
 
-use crate::models::{Playlist, TrackAnalysis};
+use crate::models::{Playlist, TrackAnalysis, TrackMetadata};
+use std::collections::HashMap;
 
 /// One playlist and the paths in it, in order.
 pub type PlaylistExport = (Playlist, Vec<String>);
+
+/// The one shape of the frontend's `TrackEdit` this module cares about.
+///
+/// The rest of the payload — `cover`, and anything a later version adds — is
+/// ignored by construction: there is no artwork in this format to write, and a
+/// reader that only names what it needs does not break when the writer grows a
+/// field.
+#[derive(serde::Deserialize)]
+struct EditOverlay {
+    metadata: TrackMetadata,
+}
+
+/// Pending edits as metadata to export, keyed by path.
+///
+/// **Lenient on purpose.** A payload that does not deserialize is skipped, not
+/// reported: that track exports the tags on its row, which is what happened
+/// before edits were consulted at all. An overlay nobody can read must not be
+/// able to take an export down.
+///
+/// The edit replaces the metadata rather than merging into it, which is what
+/// `metaOf` in `src/lib/grouping.ts` does — the xml then says what the table
+/// says, and that is the entire point.
+pub fn edit_overlay(edits: &HashMap<String, serde_json::Value>) -> HashMap<String, TrackMetadata> {
+    edits
+        .iter()
+        .filter_map(|(path, payload)| {
+            serde_json::from_value::<EditOverlay>(payload.clone())
+                .ok()
+                .map(|edit| (path.clone(), edit.metadata))
+        })
+        .collect()
+}
 
 /// The whole document, as a string.
 ///
@@ -36,10 +78,16 @@ pub type PlaylistExport = (Playlist, Vec<String>);
 /// size as part of the cache identity, not as something the UI shows — so the
 /// caller stats the files and hands them over. A path that is missing simply
 /// gets no `Size`, which is what an unreadable file deserves.
+///
+/// `edits` are the pending metadata edits, already read into
+/// [`TrackMetadata`] by [`edit_overlay`]; a path in it exports those values
+/// instead of the ones on its row. Empty is the ordinary case and costs a hash
+/// lookup per track.
 pub fn collection_xml(
     tracks: &[TrackAnalysis],
     playlists: &[PlaylistExport],
-    sizes: &std::collections::HashMap<String, u64>,
+    sizes: &HashMap<String, u64>,
+    edits: &HashMap<String, TrackMetadata>,
 ) -> String {
     // Rekordbox keys playlist entries by TrackID, so every track needs one that
     // is stable within the document. The index is exactly that, and nothing
@@ -48,7 +96,7 @@ pub fn collection_xml(
     // Indexed once rather than searched per entry: a linear scan here is
     // tracks × entries full path comparisons, which on a library where every
     // track is also in a playlist is quadratic in the size of the collection.
-    let ids: std::collections::HashMap<&str, i64> = tracks
+    let ids: HashMap<&str, i64> = tracks
         .iter()
         .enumerate()
         .map(|(i, t)| (t.path.as_str(), i as i64 + 1))
@@ -68,7 +116,12 @@ pub fn collection_xml(
         tracks.len()
     ));
     for (i, track) in tracks.iter().enumerate() {
-        out.push_str(&track_xml(track, i as i64 + 1, sizes.get(&track.path).copied()));
+        out.push_str(&track_xml(
+            track,
+            i as i64 + 1,
+            sizes.get(&track.path).copied(),
+            edits.get(&track.path),
+        ));
     }
     out.push_str("  </COLLECTION>\n");
 
@@ -94,8 +147,16 @@ pub fn collection_xml(
     out
 }
 
-fn track_xml(t: &TrackAnalysis, id: i64, size: Option<u64>) -> String {
-    let md = &t.metadata;
+fn track_xml(
+    t: &TrackAnalysis,
+    id: i64,
+    size: Option<u64>,
+    edit: Option<&TrackMetadata>,
+) -> String {
+    // Resolved once, here: everything below reads `md` and none of it needs to
+    // know whether the values came from the file's tags or from an edit the
+    // user has not applied yet.
+    let md = edit.unwrap_or(&t.metadata);
     let attr = |name: &str, value: &str| {
         if value.is_empty() {
             String::new()
@@ -305,8 +366,13 @@ mod tests {
     }
 
     /// No sizes, for the cases that are not about the size.
-    fn nothing() -> std::collections::HashMap<String, u64> {
-        std::collections::HashMap::new()
+    fn nothing() -> HashMap<String, u64> {
+        HashMap::new()
+    }
+
+    /// No pending edits, for the cases that are not about them.
+    fn unedited() -> HashMap<String, TrackMetadata> {
+        HashMap::new()
     }
 
     fn list(id: i64, name: &str) -> Playlist {
@@ -321,7 +387,7 @@ mod tests {
 
     #[test]
     fn a_track_carries_what_the_app_knows_about_it() {
-        let xml = collection_xml(&[track("/lib/a.aiff", "Opening")], &[], &nothing());
+        let xml = collection_xml(&[track("/lib/a.aiff", "Opening")], &[], &nothing(), &unedited());
         assert!(xml.contains("<DJ_PLAYLISTS Version=\"1.0.0\">"));
         assert!(xml.contains("TrackID=\"1\""));
         assert!(xml.contains("Name=\"Opening\""));
@@ -343,7 +409,7 @@ mod tests {
     fn a_track_with_no_grid_is_a_single_empty_element() {
         let mut t = track("/lib/a.aiff", "Opening");
         t.beat_offset_secs = None;
-        let xml = collection_xml(&[t], &[], &nothing());
+        let xml = collection_xml(&[t], &[], &nothing(), &unedited());
         assert!(!xml.contains("<TEMPO"));
         assert!(xml.contains("/>\n"), "{xml}");
     }
@@ -355,7 +421,7 @@ mod tests {
         let mut t = track("/lib/a.aiff", "Interlude");
         t.metadata.bpm = None;
         t.beat_offset_secs = None;
-        let xml = collection_xml(&[t], &[], &nothing());
+        let xml = collection_xml(&[t], &[], &nothing(), &unedited());
         assert!(xml.contains("AverageBpm=\"0.00\""), "{xml}");
     }
 
@@ -365,7 +431,7 @@ mod tests {
         // shows everywhere in this app.
         let mut t = track("/lib/no-tags.aiff", "");
         t.metadata.title = None;
-        let xml = collection_xml(&[t], &[], &nothing());
+        let xml = collection_xml(&[t], &[], &nothing(), &unedited());
         assert!(xml.contains("Name=\"no-tags.aiff\""), "{xml}");
     }
 
@@ -376,7 +442,7 @@ mod tests {
             list(1, "Warmup"),
             vec!["/lib/b.aiff".to_string(), "/lib/a.aiff".to_string()],
         )];
-        let xml = collection_xml(&tracks, &playlists, &nothing());
+        let xml = collection_xml(&tracks, &playlists, &nothing(), &unedited());
         assert!(xml.contains("<NODE Name=\"Warmup\" Type=\"1\" KeyType=\"0\" Entries=\"2\">"));
         // In playlist order, which is the whole point of storing an order.
         let first = xml.find("<TRACK Key=\"2\"/>").unwrap();
@@ -393,7 +459,7 @@ mod tests {
             list(1, "Set"),
             vec!["/lib/a.aiff".to_string(), "/lib/gone.aiff".to_string()],
         )];
-        let xml = collection_xml(&tracks, &playlists, &nothing());
+        let xml = collection_xml(&tracks, &playlists, &nothing(), &unedited());
         assert!(xml.contains("Entries=\"1\""), "{xml}");
     }
 
@@ -402,7 +468,7 @@ mod tests {
         let mut t = track("/lib/a.aiff", "Rock & \"Roll\" <mix>");
         t.metadata.artist = Some("A & B".into());
         let playlists = vec![(list(1, "Peak & Close"), vec!["/lib/a.aiff".to_string()])];
-        let xml = collection_xml(&[t], &playlists, &nothing());
+        let xml = collection_xml(&[t], &playlists, &nothing(), &unedited());
         assert!(xml.contains("Name=\"Rock &amp; &quot;Roll&quot; &lt;mix&gt;\""), "{xml}");
         assert!(xml.contains("Name=\"Peak &amp; Close\""));
         assert!(!xml.contains("& \""), "a bare ampersand would not parse");
@@ -418,7 +484,7 @@ mod tests {
         t.metadata.album = Some("Edge\u{fffe}case\u{ffff}".into());
         // Legal, and worth keeping: tab, newline, return and the rest of BMP.
         t.metadata.artist = Some("Two\tNames\u{fdd0}".into());
-        let xml = collection_xml(&[t], &[], &nothing());
+        let xml = collection_xml(&[t], &[], &nothing(), &unedited());
 
         assert!(xml.contains("Name=\"BellEnd\""), "{xml}");
         assert!(xml.contains("Album=\"Edgecase\""), "{xml}");
@@ -482,7 +548,7 @@ mod tests {
         a.metadata.bpm = Some(127.6);
         a.beat_offset_secs = Some(30.5);
         let b = track("/lib/b.aiff", "Beta");
-        std::fs::write(&xml_path, collection_xml(&[a, b], &[], &nothing())).unwrap();
+        std::fs::write(&xml_path, collection_xml(&[a, b], &[], &nothing(), &unedited())).unwrap();
 
         let script = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
             .parent()
@@ -516,7 +582,7 @@ mod tests {
         // Without them Rekordbox' summary reads "0 Byte, 0 kbps", which looks
         // like a broken file rather than a field we did not fill in.
         let sizes = std::collections::HashMap::from([("/lib/a.aiff".to_string(), 37_108_800u64)]);
-        let xml = collection_xml(&[track("/lib/a.aiff", "Opening")], &[], &sizes);
+        let xml = collection_xml(&[track("/lib/a.aiff", "Opening")], &[], &sizes, &unedited());
         assert!(xml.contains("Size=\"37108800\""), "{xml}");
         // 37,108,800 bytes over 210.4 s ≈ 1411 kbps, which is CD PCM.
         assert!(xml.contains("BitRate=\"1411\""), "{xml}");
@@ -524,7 +590,7 @@ mod tests {
 
     #[test]
     fn a_file_that_cannot_be_stated_is_exported_without_one() {
-        let xml = collection_xml(&[track("/lib/a.aiff", "Opening")], &[], &nothing());
+        let xml = collection_xml(&[track("/lib/a.aiff", "Opening")], &[], &nothing(), &unedited());
         assert!(!xml.contains("Size="));
         assert!(!xml.contains("BitRate="));
     }
@@ -534,6 +600,70 @@ mod tests {
         // Division by zero would otherwise reach the file as `inf`.
         assert_eq!(bitrate_kbps(1000, 0.0), None);
         assert_eq!(bitrate_kbps(1000, -1.0), None);
+    }
+
+    /// A payload shaped the way `src/lib/api.ts` writes one.
+    fn pending(metadata: serde_json::Value) -> serde_json::Value {
+        serde_json::json!({ "metadata": metadata, "cover": { "kind": "keep" } })
+    }
+
+    #[test]
+    fn a_pending_edit_is_what_gets_exported() {
+        let edits = HashMap::from([(
+            "/lib/a.aiff".to_string(),
+            pending(serde_json::json!({
+                "title": "Opening (corrected)",
+                "artist": "Testverse & Co",
+                "album": null,
+                "album_artist": null,
+                "genre": null,
+                "year": null,
+                "track_number": null,
+                "bpm": 124.5,
+                "has_cover": true
+            })),
+        )]);
+        let overlay = edit_overlay(&edits);
+        let xml = collection_xml(&[track("/lib/a.aiff", "Opening")], &[], &nothing(), &overlay);
+        assert!(xml.contains("Name=\"Opening (corrected)\""), "{xml}");
+        assert!(xml.contains("Artist=\"Testverse &amp; Co\""), "{xml}");
+        // The edit replaces the metadata rather than merging into it, so a
+        // field the editor cleared is cleared here too.
+        assert!(!xml.contains("Album="), "{xml}");
+        // And the grid follows the corrected tempo: the phase is still where
+        // the detector put it, the period is the one the user says is right.
+        assert!(xml.contains("AverageBpm=\"124.50\""), "{xml}");
+        assert!(
+            xml.contains("<TEMPO Inizio=\"30.250\" Bpm=\"124.50\" Metro=\"4/4\" Battito=\"1\"/>"),
+            "{xml}"
+        );
+    }
+
+    #[test]
+    fn an_edit_that_cannot_be_read_leaves_the_row_alone() {
+        // Lenient on purpose: the export falls back to the tags rather than
+        // failing over a payload some other version of the app wrote.
+        let edits = HashMap::from([
+            ("/lib/a.aiff".to_string(), serde_json::json!({ "metadata": "not an object" })),
+            ("/lib/b.aiff".to_string(), serde_json::json!(42)),
+        ]);
+        let overlay = edit_overlay(&edits);
+        assert!(overlay.is_empty());
+        let xml = collection_xml(&[track("/lib/a.aiff", "Opening")], &[], &nothing(), &overlay);
+        assert!(xml.contains("Name=\"Opening\""), "{xml}");
+    }
+
+    #[test]
+    fn an_edit_for_a_track_outside_the_collection_changes_nothing() {
+        // `load_edits` hands over every pending edit there is, including ones
+        // for a library folder this export is not about.
+        let overlay = edit_overlay(&HashMap::from([(
+            "/other/z.aiff".to_string(),
+            pending(serde_json::json!({ "title": "Elsewhere", "has_cover": false })),
+        )]));
+        let xml = collection_xml(&[track("/lib/a.aiff", "Opening")], &[], &nothing(), &overlay);
+        assert!(xml.contains("Name=\"Opening\""), "{xml}");
+        assert!(!xml.contains("Elsewhere"), "{xml}");
     }
 
     #[test]

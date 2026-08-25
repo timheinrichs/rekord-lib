@@ -466,7 +466,7 @@ pub async fn export_rekordbox_xml(app: AppHandle, dir: String, dest: String) -> 
         // database again — `events::record` does, to store the event — would
         // deadlock against this very guard. It froze the whole app after a
         // successful export, with the log line already printed.
-        let (tracks, playlists) = {
+        let (tracks, playlists, edits) = {
             let database = db::require(&handle)?;
             let conn = database.conn()?;
             let tracks = db::load_tracks(&conn, &dir)?;
@@ -479,7 +479,12 @@ pub async fn export_rekordbox_xml(app: AppHandle, dir: String, dest: String) -> 
                     (p, paths)
                 })
                 .collect();
-            (tracks, playlists)
+            // A metadata edit that has not been applied to the file yet is
+            // still what the user has decided the track is called, so it is
+            // what the export writes. `load_edits` stays opaque JSON; reading
+            // the shape is the export module's own business.
+            let edits = export::rekordbox::edit_overlay(&db::load_edits(&conn)?);
+            (tracks, playlists, edits)
         };
 
         // Stat'd here rather than carried on the row: the size is part of the
@@ -495,7 +500,7 @@ pub async fn export_rekordbox_xml(app: AppHandle, dir: String, dest: String) -> 
             })
             .collect();
 
-        let xml = export::rekordbox::collection_xml(&tracks, &playlists, &sizes);
+        let xml = export::rekordbox::collection_xml(&tracks, &playlists, &sizes, &edits);
         std::fs::write(&target, xml)?;
         Ok(tracks.len())
     })
