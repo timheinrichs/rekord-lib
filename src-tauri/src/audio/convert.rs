@@ -140,6 +140,14 @@ pub struct Converted {
     /// conversion (temp file) this differs from `output_path`; the caller
     /// must then move `written_path` -> `output_path` after finalizing.
     pub written_path: String,
+    /// Whether the target *is* the source file, as [`paths_equal`] decides it.
+    ///
+    /// Reported rather than left to the caller to re-derive, because comparing
+    /// the two path strings gives a different answer: macOS is case
+    /// insensitive, so `song.AIFF` converted to AIFF writes over itself while
+    /// the strings differ. A caller that trusts the strings there deletes the
+    /// file it has just written.
+    pub in_place: bool,
 }
 
 /// Converts a single file and streams progress via events.
@@ -214,6 +222,7 @@ pub async fn convert_file(
             Ok(Converted {
                 output_path: out_str,
                 written_path: write_str,
+                in_place,
             })
         }
         other => {

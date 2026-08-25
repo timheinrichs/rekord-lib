@@ -1909,9 +1909,15 @@ pub async fn convert_tracks(
                                 // goes to the trash, not to `remove_file`: this
                                 // is the user's own audio, and a conversion they
                                 // did not mean has to be recoverable.
-                                if options.replace_source
-                                    && converted.output_path != job.path
-                                {
+                                //
+                                // `in_place` rather than a comparison of the two
+                                // path strings, because the conversion decides
+                                // it by canonicalising and macOS is case
+                                // insensitive: converting `song.AIFF` to AIFF
+                                // writes over the same file while the strings
+                                // differ, and trusting them here trashes the
+                                // file that was just written.
+                                if options.replace_source && !converted.in_place {
                                     let _ = trash_ctx().delete(&job.path);
                                 }
                                 ConvertResult {
