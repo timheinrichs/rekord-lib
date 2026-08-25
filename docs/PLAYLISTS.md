@@ -105,6 +105,16 @@ Per track: the tags, `AverageBpm`, `Tonality`, `TotalTime`, `SampleRate`,
 `Kind`, `DateAdded`, a percent-encoded `file://localhost` `Location`, and one
 `<TEMPO>` marker where a beat grid exists.
 
+**A pending metadata edit is what gets written.** One made in the editor and not
+yet applied to the file overrides the tags on its row, so the xml says what the
+table says. `db::load_edits` still hands out opaque JSON; `export::rekordbox::
+edit_overlay` is the one place in the backend that reads its shape, it reads it
+leniently, and a payload it cannot parse exports the row's own tags rather than
+failing the run. The edit *replaces* the metadata rather than merging into it —
+the same rule as `metaOf` in `src/lib/grouping.ts` — so a field the editor
+cleared is cleared here too, and an edited tempo moves the `<TEMPO>` marker's
+period while keeping the detected phase.
+
 **What is deliberately absent.** Cue points — the app has no concept of one, and
 inventing empty ones would put marks in somebody's player that nobody set.
 `Size`, which a track row does not carry. And for a track with no tempo,
@@ -156,6 +166,7 @@ comes from a native panel the user drove.
 | `src-tauri/src/db/mod.rs` · `load_playlists`, `all_playlist_paths`, `set_playlist_paths` | reading the list, reading every membership at once, writing one whole order |
 | `src-tauri/src/commands.rs` · `playlist_*`, `export_rekordbox_xml` | the command surface |
 | `src-tauri/src/export/rekordbox.rs` · `collection_xml`, `track_xml`, `location_url`, `date_of_ms` | the document, and the two encodings that are easy to get wrong |
+| … · `edit_overlay`, `EditOverlay` | the one place the backend interprets a pending edit, and how leniently |
 | `src/lib/playlists.ts` | every ordering rule, pure |
 | `src/lib/usePlaylists.ts` | the state, and the optimistic-then-reconciled write |
 | `src/components/LibraryView.tsx` | the grouping, the drag, the row actions |
@@ -169,7 +180,8 @@ comes from a native panel the user drove.
 | Deleting a track or a playlist leaves no orphans, and no files | `db/mod.rs` · `deleting_a_track_takes_it_out_of_every_playlist`, `deleting_a_playlist_takes_its_rows_and_leaves_the_tracks` |
 | A path the library no longer holds is dropped, not fatal | `db/mod.rs` · `a_path_the_library_no_longer_holds_is_dropped_rather_than_fatal` |
 | …and nothing else is | `db/mod.rs` · `a_playlist_write_forgives_a_missing_track_and_nothing_else` |
-| A relocation carries the memberships with it | `db/mod.rs` · `relocate_keeps_identity_including_edits_fingerprints_and_playlists` |
+| A relocation carries the memberships, the edits, the fingerprints **and the waveforms** with it | `db/mod.rs` · `relocate_keeps_identity_including_edits_fingerprints_and_playlists` |
+| A replacing conversion carries them too, instead of emptying the playlist | `db/mod.rs` · `a_replacing_conversion_carries_the_row_and_its_playlists`; `convert.e2e.test.tsx` · "keeps a converted track in the playlist it was in" |
 | A row is numbered by the playlist, not by the filter | `playlists.test.ts` · "numbers a row by the playlist, not by what the filter left over", "counts a path the library no longer holds, and does not draw it" |
 | A track in two playlists is two rows | `playlists.e2e.test.tsx` · "draws a track that is in two playlists as two rows" |
 | A refused write puts the row back | `playlists.e2e.test.tsx` · "puts a row back where the database has it when a write fails" |
@@ -181,6 +193,7 @@ comes from a native panel the user drove.
 | The export goes where the dialog points, and nowhere on cancel | `playlists.e2e.test.tsx` · "exports the library where the save dialog points", "writes nothing when the save dialog is cancelled" |
 | What we write, Rekordbox's own reader reads back | `export/rekordbox.rs` · `what_we_write_is_read_back_by_the_reference_reader` |
 | Names that would break the document are escaped | `export/rekordbox.rs` · `names_that_would_break_the_document_are_escaped` |
+| A pending edit is exported, and an unreadable one is not fatal | `export/rekordbox.rs` · `a_pending_edit_is_what_gets_exported`, `an_edit_that_cannot_be_read_leaves_the_row_alone`, `an_edit_for_a_track_outside_the_collection_changes_nothing` |
 | The grid marker is on the track's clock | `audio/analysis.rs` · `the_beat_phase_is_reported_on_the_tracks_own_clock` |
 
 ## Keeping this honest
@@ -193,11 +206,8 @@ comes from a native panel the user drove.
   originally for. It is stored and exported now; the drawing is what is left.
 - **A playlist cannot hold a track twice, and there are no folders of
   playlists.** The XML format supports both. Neither has been asked for.
-- **A conversion that replaces its source empties the playlists the track was
-  in** (`A1a` in [`TODO.md`](../TODO.md)). The original is trashed, the row is
-  pruned, the membership cascades, and the converted file arrives as a new row
-  in no playlist. Build the playlist after converting, not before, until that
-  entry is closed.
-- **The export writes the tags in the files, not the edits still pending in the
-  editor** (`A2a`). What is on screen and what is in the XML can differ for a
-  track whose edit has not been applied.
+- **A conversion that replaces its source keeps the memberships, but the
+  merge case has only ever been tested against the database.** Converting onto
+  a path the library already holds folds two rows into one
+  (`db::replace_track`); no run against real files has produced that collision,
+  because it needs a library that already has both the source and its output.

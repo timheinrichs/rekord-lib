@@ -159,6 +159,22 @@ file whose tags were written but could not be **re-read** is reported through
 `scan://skipped` — the write succeeded, the row keeps its old values, and that
 is worth saying rather than showing stale data silently.
 
+### An unapplied edit is still an answer
+
+An edit lives in the `edits` table from the moment it is made and only reaches
+the file when it is applied, so between those two points the table shows one
+value and the file holds another. Everything that reads the library reads the
+edit: the grouping, the album and label trees, the conversion job — and, since
+0.8.1, the Rekordbox export, which used to read the rows alone and therefore
+wrote tags the user had already corrected. See
+[PLAYLISTS.md](PLAYLISTS.md#the-export) for how the export reads the payload
+without the rest of the backend learning its shape.
+
+The one place this is more than a copied value: an edited BPM moves the
+`<TEMPO>` marker's period while the phase stays where the detector put it. That
+is the right answer — a corrected tempo is a corrected grid — and it is the only
+field of an edit that changes something other than a tag.
+
 ### Suggestions
 
 `parse_filename` handles the patterns real purchases arrive in — `NN - Artist -

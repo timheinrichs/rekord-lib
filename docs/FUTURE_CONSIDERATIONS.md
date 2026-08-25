@@ -66,6 +66,13 @@ time. `stepPlaylistItem` expresses a step as the drag's own move, and a test
 asserts they agree; the trap is direction, since a track is lifted out before it
 is put back and moving down has to aim one row further than it looks.
 
+**The follow-up it shipped without is closed.** `A1a` — a replacing conversion
+dropped the track out of every playlist it was in, because the source row was
+pruned and `playlist_items` cascaded with it. 0.8.1 settled the question the
+entry deferred: a replacing conversion is a **move** of the track, not a delete
+and an add, so `db::replace_track` carries the row and its memberships to the
+file that replaced it. See [`CONVERSION.md`](CONVERSION.md).
+
 *Size: M · done*
 
 ### A2 · Rekordbox XML export — **done**
@@ -99,6 +106,15 @@ wrong.
 **What is still only provable by hand:** that Rekordbox itself likes the file.
 The round trip says the document parses and carries the values, not that the
 program on the other side accepts it. Import it once before trusting a change.
+
+**The follow-up it shipped without is closed.** `A2a` — the export read the
+rows and never the `edits` table, so a user who had corrected an artist without
+applying it saw the new value in the table and the old one in the xml. 0.8.1
+overlays the pending edits, and it does so without the boundary the entry was
+protecting: `db::load_edits` still hands out opaque JSON, and
+`export::rekordbox::edit_overlay` is the one place that reads its shape —
+leniently, so an unparseable payload costs that track its overlay and not the
+export.
 
 *Size: M · done*
 
@@ -499,9 +515,12 @@ app offers to follow it:
   evidence, an unreadable folder is not.
 - **Re-pointing keeps track identity.** `library_relocate` rewrites the stored
   paths from `oldRoot/relative` to `newRoot/relative` wherever the file is
-  really there, carrying the pending edits and cached fingerprints that hang off
-  the path (`PRAGMA defer_foreign_keys` for the duration, since
-  `fingerprints.path` references `tracks(path)`).
+  really there, carrying the pending edits and every cache that hangs off the
+  path — fingerprints, waveforms and playlist memberships (`PRAGMA
+  defer_foreign_keys` for the duration, since all three reference
+  `tracks(path)`). Forgetting one of them is not a lost cache but a failed
+  `COMMIT`: `playlist_items` was missed until 0.8.0 and `waveforms` until
+  0.8.1, and each time the whole relocation rolled back.
 - **It never deletes.** Rows whose file is not under the new root — or whose
   path another row already holds — stay exactly where they are and are reported
   as skipped. This runs when the user is recovering data, so a full scan is what

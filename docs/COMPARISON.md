@@ -46,9 +46,10 @@ Stated first, because it is the fastest way to find out this is the wrong tool.
 - **Playlists, and a Rekordbox collection to take them out in.** Playlists live
   in the app as an explicit order — the fifth grouping in the library table —
   and "Export for Rekordbox" writes a `rekordbox.xml` holding the whole library,
-  every playlist, and per track the tempo, the key and a beat grid marker.
-  Everything the app worked out arrives on the other side in one import instead
-  of being retyped. See [PLAYLISTS.md](PLAYLISTS.md).
+  every playlist, and per track the tempo, the key and a beat grid marker —
+  including the metadata corrections still pending in the editor, so what the
+  table shows is what the other side gets. Everything the app worked out
+  arrives on the other side in one import instead of being retyped. See [PLAYLISTS.md](PLAYLISTS.md).
 
 ## Against Rekordbox
 

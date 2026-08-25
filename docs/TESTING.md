@@ -204,6 +204,7 @@ costs less than a short one.
 | A skipped file becomes visible | … · "makes a skipped file visible instead of quietly missing" |
 | A library conversion asks for the source to be replaced | `convert.e2e.test.tsx` · "converts in place and asks for the source to be replaced" |
 | A failure inside a success is not shown as success | … · "reports a failure that arrives inside a successful return" |
+| A converted track is still in the playlist it was in | … · "keeps a converted track in the playlist it was in" |
 | The panel offers exactly one deletion, never the kept file | `duplicates.e2e.test.tsx` · "trashes only the file the panel offers to delete" |
 | A dismissal is stored apart and deletes nothing | … · "stores a dismissal apart from the result, and deletes nothing" |
 | A save records the edit *and* writes it | `metadata.e2e.test.tsx` · "records the edit and writes it, in that order" |

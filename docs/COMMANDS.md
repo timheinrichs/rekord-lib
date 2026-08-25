@@ -104,7 +104,10 @@ reachable through this API and no view passes `true`. Only `forceBpm` is, from
 
 `library_delete` forgets rows; it does not touch files. Deleting a file is
 `delete_files`. `library_relocate` re-points stored paths at a moved folder and
-never deletes: what it cannot find under the new root is reported as skipped.
+never deletes: what it cannot find under the new root is reported as skipped. It
+has to carry **every** table keyed by the path — edits, fingerprints, waveforms,
+playlist memberships — because a child left behind fails the `COMMIT` rather
+than the statement, and takes the whole relocation with it.
 
 `playlist_set` replaces a playlist's contents with exactly the list it is given,
 in that order — never a diff. The order is the payload, and `src/lib/playlists.ts`
@@ -114,7 +117,9 @@ groups by playlist and needs all of them to draw one screen.
 
 `export_rekordbox_xml` writes the whole library and its playlists to `dest`, a
 path the user named in a save dialog — the one file this app writes outside the
-library folder, and the reason `dialog:allow-save` is in the capability.
+library folder, and the reason `dialog:allow-save` is in the capability. It
+reads the `edits` table as well as the rows, so a metadata correction that has
+not been applied to its file is still what the document carries.
 
 `allow_library_playback` grants the webview read access to the **saved** library
 folder over the `asset:` protocol, for this run only — the static scope in
@@ -180,6 +185,12 @@ saying out loud rather than silently showing stale values. Details in
 | Command | Arguments | Returns | Emits |
 | --- | --- | --- | --- |
 | `convert_tracks` | `jobs`, `options` | `AppResult<ConvertResult[]>` | `convert://progress` |
+
+A conversion that replaces its source also **moves the track's row** to the
+output path, memberships included (`db::replace_track`); the command's own
+signature is unchanged, but its effect on the database is not. A failure there
+is logged as a warning rather than failing the run — the file is already
+converted by then.
 
 One command for the whole pipeline, and it runs the jobs strictly sequentially —
 the only pass in the app that is not width-budgeted, because ffmpeg saturates

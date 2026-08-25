@@ -7,6 +7,36 @@ and this project adheres to [Semantic Versioning](https://semver.org/)
 (`MAJOR.MINOR.PATCH`). As long as the version is at `0.x`, MINOR bumps may
 contain incompatible changes.
 
+## [Unreleased]
+
+### Fixed
+- **Converting a track no longer takes it out of its playlists.** Converting
+  with "replace source" trashed the original, and with it went the row and
+  every playlist the track was in — the converted file came back as a new,
+  unsorted one. So "fix the sample rate on this whole set" emptied the set it
+  was run on. A replacing conversion is now a *move*: the track keeps its
+  identity and its place in every playlist, under the file's new name.
+- **The Rekordbox export writes what the table shows.** A metadata correction
+  made in the editor and not yet applied to the file was visible everywhere in
+  the app and absent from `rekordbox.xml`, which carried the old tags without
+  saying so. Pending edits are now what gets exported — including a corrected
+  tempo, which moves the beat grid marker with it.
+- **Moving the library folder works again when a track has been played.**
+  Re-pointing the app at a moved library carried the rows, the edits, the
+  fingerprints and the playlists across — but not the stored waveforms, and the
+  database refused the whole move because of them. The waveform table has been
+  there since 0.6, so this failed for anyone who had ever opened a track, in
+  exactly the situation the feature exists to recover from.
+- **Converting a file whose extension is in capitals no longer deletes it.**
+  macOS treats `Song.AIFF` and `Song.aiff` as one file; the conversion knew
+  that and wrote over the original, while the step that cleans up afterwards
+  compared the two names as text, decided they were different files, and sent
+  the freshly converted one to the trash.
+- **The library no longer empties itself after a replacing conversion.** With
+  the source gone from the folder, the check that reconciles the list against
+  the disk was still comparing against the list from before the conversion, so
+  every remaining track read as deleted and the converted one as new.
+
 ## [0.8.0] - 2026-08-22
 
 ### Added

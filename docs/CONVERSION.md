@@ -29,7 +29,8 @@ convert          convert_tracks(jobs, options), strictly one job after another
                  │  progress from ffmpeg's -progress pipe, clamped to 99 %
                  ├─ lofty: re-apply tags and cover (stage "Metadata", 100 %)
                  ├─ rename the temp over the target if there was one
-                 └─ replace_source and a different output path? trash the source
+                 ├─ replace_source and a different output path? trash the source
+                 └─ …and carry the row over to it: db::replace_track
 ```
 
 Afterwards the frontend re-analyses whatever came out, so the row shows the
@@ -123,11 +124,42 @@ reading. `paths_equal` canonicalises both sides to notice the case.
 The order matters twice over: the cover is read from the **source**, which is
 still intact at that point, and only then is the temp file moved over it.
 
-`replace_source` trashes the original only when the output is a *different* path
-— an in-place conversion has no source left to remove. And it goes to the trash,
+`replace_source` trashes the original only when the conversion was **not**
+in-place — and that is `Converted::in_place`, reported by the conversion itself,
+not a comparison of the two path strings. `paths_equal` canonicalises, and macOS
+is case insensitive: converting `song.AIFF` to AIFF writes over the same file
+while the strings differ, so a caller that trusts them sends the file it has
+just written to the trash. And it goes to the trash,
 never `remove_file`: it is the user's own audio, and a conversion they did not
 mean has to be recoverable. It is set for library conversions and not for files
 dragged in from outside.
+
+### A replacing conversion is a move
+
+The file changes name, and the track does not. `db::replace_track` carries the
+row from the source path to the output path in the same step that trashes the
+source, and with it the **playlist memberships** — without that the source row
+was pruned by the next sweep, `playlist_items` cascaded away with it, and the
+converted file arrived as a new row in no playlist. "Fix the sample rate on this
+whole set" emptied the set it was run on.
+
+What deliberately does not come along: the pending `edits` row, because
+`write::finalize` has just written it into the output and carrying it would make
+an applied change look pending again; and the cached `fingerprints` and
+`waveforms`, which are keyed by path *and* the file's mtime and size, so a
+carried row could never be read back anyway. The row keeps the old identity, so
+`needs_reanalysis` re-probes the track on the next scan — which is right,
+because container, sample rate and depth are exactly what changed.
+
+Where the output path already has a row — converting `a.wav` onto an `a.aiff`
+the library already knows — the memberships move onto it and the old row is
+deleted. A merge, not the skip `relocate_tracks` performs, because unlike a
+relocation the old file is genuinely gone.
+
+The frontend's half is a re-read: `runConvert` calls `playlists.reload()` after
+a replacement, and hands the merged list to `incrementalSync` rather than
+letting it read the pre-merge one — the source has left the folder, so a sync
+against the stale list reads every remaining track as removed.
 
 ### Progress, and the three ways it can fail
 
@@ -171,6 +203,7 @@ the tempo alike.
 | … · `output_path`, `sanitize`, `temp_sibling`, `paths_equal` | where the output goes and how in-place is handled |
 | … · `parse_progress` | ffmpeg's `-progress` output, and the clamp to 99 |
 | `src-tauri/src/commands.rs` · `convert_tracks` | the orchestration: metadata fallback, tagging, rename, trash, cleanups |
+| `src-tauri/src/db/mod.rs` · `replace_track` | carrying the row and its playlist memberships to the file that replaced it |
 | `src-tauri/src/audio/sidecar.rs` · `self_test`, `failure_message` | proving the binaries can run before anything needs them |
 | `src-tauri/src/metadata/write.rs` · `finalize` | re-applying tags after the encode; see [METADATA.md](METADATA.md) |
 | `src-tauri/src/models.rs` · `TargetFormat`, `ConvertOptions`, `ConvertJob`, `ConvertResult` | the target formats and their extensions |
@@ -198,6 +231,10 @@ the tempo alike.
 | Progress parsing | `convert.rs` · `parse_progress_computes_percentage` |
 | A file that is not audio is rejected with a usable reason | `probe.rs` · `a_stream_without_rate_or_channels_is_not_audio`, `probe_error_reports_what_ffprobe_said`, `probe_error_prefers_the_loader_error_over_its_own_context` |
 | The bundled binaries link only against system libraries | `sidecar.rs` · `sidecars_are_self_contained` (macOS; the CI guard) |
+| A replaced track keeps its playlists, and loses its spent edit and stale caches | `db/mod.rs` · `a_replacing_conversion_carries_the_row_and_its_playlists` |
+| Converting onto a path the library already has merges rather than skipping | `db/mod.rs` · `a_replacing_conversion_merges_onto_a_row_that_is_already_there`, `a_playlist_that_already_holds_the_output_keeps_one_entry` |
+| A file the library never knew is not invented as a row | `db/mod.rs` · `replacing_a_track_nothing_knows_about_changes_nothing` |
+| The view shows the converted track in the playlist it was in | `src/e2e/convert.e2e.test.tsx` · `keeps a converted track in the playlist it was in` |
 | A broken sidecar says what the loader said | `sidecar.rs` · `reports_what_the_loader_said`, `falls_back_to_the_exit_status` |
 | ALAC and AAC share the `.m4a` extension; AIFF is the default | `models.rs` · `target_format_extension_maps_containers`, `target_format_pcm_and_player_flags`, `target_format_default_is_aiff` |
 | The list adopts the output and drops the old path | `librarySync.test.ts` · `mergeConverted` — "replaces an in-place conversion (same path) with its re-analysis", "drops the old source path on a format change and adds the output" |
@@ -216,6 +253,12 @@ generated by `scripts/dev-library.py` under `Formats/`.
   rename, the `replace_source` trash and the three cleanup branches do not, and
   those are the parts that move the user's files. Recorded in
   [TODO.md](../TODO.md).
+- **The case-insensitive in-place case is reasoned about, not measured.**
+  `Converted::in_place` is now what the trash decision reads, so the guard and
+  the writer agree by construction — but no test converts a `song.AIFF` to
+  AIFF, because `paths_equal` canonicalises against the real filesystem and
+  APFS can be configured either way. A test that assumed case insensitivity
+  would be a test about the machine it ran on.
 - **Never bundle a Homebrew binary.** Regenerate the sidecars with
   `scripts/build-static-ffmpeg.sh` or the *Build ffmpeg sidecars* workflow, and
   verify with `otool -L`, `file` and `codesign -dv` before committing.
