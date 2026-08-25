@@ -1,4 +1,5 @@
 import { type ReactNode, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { flushSync } from "react-dom";
 import { getCurrentWebview } from "@tauri-apps/api/webview";
 import { ask } from "@tauri-apps/plugin-dialog";
 import {
@@ -705,6 +706,12 @@ export default function LibraryView({
     onTracksChange?.(tracks);
   }, [tracks, onTracksChange]);
 
+  // Playlists: the list, their contents, and every way of changing them.
+  // Declared here rather than next to the grouping that reads them, because a
+  // replacing conversion moves a track's memberships and `runConvert` below has
+  // to re-read them afterwards.
+  const playlists = usePlaylists();
+
   // Run conversion jobs.
   // - "library": source already lives in the library -> output to the same
   //   folder (output_dir=null) and delete the original after a format change.
@@ -755,13 +762,29 @@ export default function LibraryView({
         // A conversion re-embeds the cover, and an in-place one keeps the path,
         // which is exactly when a cached thumbnail outlives the file it shows.
         forgetCoverThumbs([...outputs, ...res.map((r) => r.source_path)]);
+        // What the merge produced, so the sync below can be handed the new
+        // list instead of reading `tracksRef` — which is assigned during
+        // render and therefore still holds the pre-merge one here.
+        //
+        // Through the updater and `flushSync`, not off the ref: a scan batch
+        // arriving during the wait above also calls `setTracks`, and reading
+        // the ref would merge onto a list from before it and drop those rows.
+        // `flushSync` is what makes the updater have run by the next line — a
+        // functional update is otherwise evaluated during the render that
+        // follows, so `merged` would still be null where it is read.
+        let merged: TrackAnalysis[] | null = null;
         if (outputs.length) {
           const analyzed = await analyzeFiles(
             outputs,
             false,
             libraryDir ?? undefined,
           );
-          setTracks((prev) => mergeConverted(prev, res, analyzed));
+          flushSync(() => {
+            setTracks((prev) => {
+              merged = mergeConverted(prev, res, analyzed);
+              return merged;
+            });
+          });
           // Drop edits of sources that a format change replaced with a new path
           // (their metadata is now written into the freshly analyzed output).
           const replaced = res
@@ -782,16 +805,30 @@ export default function LibraryView({
               return dirty ? next : prev;
             });
             void clearEdits(replaced);
+            // The backend carried each row over to the file that replaced it,
+            // memberships included. What is on screen still names the old
+            // paths, so the playlist a converted track is in has to be re-read
+            // or it shows the track as gone until the next start.
+            await playlists.reload();
           }
         }
-        await incrementalSync();
+        // With the merged list, not without. A replacing conversion trashes
+        // the source, so the diff runs against a folder the old path has left
+        // — and against the stale list every remaining track reads as removed
+        // and the converted one as new. The view then emptied itself and
+        // queued the output for a fresh scan, which is the failure the
+        // argument to `incrementalSync` exists to prevent.
+        await incrementalSync(merged ?? undefined);
       } catch (e) {
         unlisten();
         setConverting(false);
         setError(`Conversion failed: ${e}`);
       }
     },
-    [settings, libraryDir, incrementalSync],
+    // `playlists.reload` rather than `playlists`: the hook returns a fresh
+    // object every render, which would give `runConvert` — and the three
+    // callbacks built on it — a new identity on every render for nothing.
+    [settings, libraryDir, incrementalSync, playlists.reload],
   );
 
   const jobFor = useCallback(
@@ -937,8 +974,6 @@ export default function LibraryView({
     [grouping, visibleTracks, libraryDir],
   );
 
-  // Playlists: the list, their contents, and every way of changing them.
-  const playlists = usePlaylists();
   /** What is being dragged, and the row it is currently hovering in front of. */
   const [playlistDrag, setPlaylistDrag] = useState<{
     id: number;

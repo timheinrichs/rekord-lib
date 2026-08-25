@@ -12,7 +12,7 @@
  * otherwise successful result, and a view that only handles a rejected promise
  * shows a failed conversion as a finished one.
  */
-import { cleanup, render, waitFor, within } from "@testing-library/react";
+import { cleanup, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import App from "../App";
@@ -161,6 +161,45 @@ describe("conversion", () => {
     expect(
       libraryView(container).queryByTitle("Converted"),
     ).not.toBeInTheDocument();
+  });
+
+  it("keeps a converted track in the playlist it was in", async () => {
+    // A1a: the source is trashed, its row is pruned and `playlist_items`
+    // cascades away with it, while the output arrives under a new path as a new
+    // row — so converting a whole set used to empty the set it was run on. The
+    // backend now carries the row over; what this pins is the half that lives
+    // here, which is that the view re-reads the playlists instead of showing
+    // the track as gone until the next start.
+    const user = userEvent.setup();
+    fake.state.playlists = [
+      { id: 1, name: "Warmup", created_ms: 1, updated_ms: 1 },
+    ];
+    fake.state.playlistContents = { 1: [NEEDS_WORK] };
+
+    const { container } = render(<App />);
+    const row = await rowFor(container);
+    await user.click(row.getByRole("button", { name: "Convert" }));
+    await waitFor(() => expect(fake.called("convert_tracks")).toBe(true));
+
+    // The view holds the finished result on the row for a beat before it
+    // refreshes, so the new path is what says the refresh has happened.
+    const converted = `${NEEDS_WORK}.converted`;
+    await waitFor(
+      () => expect(libraryView(container).getByTitle(converted)).toBeInTheDocument(),
+      { timeout: 3000 },
+    );
+
+    await user.click(
+      libraryView(container).getByRole("button", { name: "Playlists" }),
+    );
+    await user.click((await screen.findAllByText("Warmup"))[0]);
+
+    // In the playlist under its new path, at the position it held — not in
+    // "Unsorted", which is where a track with no membership ends up.
+    const rows = libraryView(container).getAllByRole("row");
+    const moved = rows.find((r) => within(r).queryByTitle(converted));
+    expect(moved).toBeTruthy();
+    expect(moved!.textContent).toContain("1");
   });
 
   it("keeps the row's edits when the conversion did not replace anything", async () => {

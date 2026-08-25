@@ -1920,6 +1920,55 @@ pub async fn convert_tracks(
                                 if options.replace_source && !converted.in_place {
                                     let _ = trash_ctx().delete(&job.path);
                                 }
+                                if options.replace_source
+                                    && converted.output_path != job.path
+                                {
+                                    // And the row moves with the file. Without
+                                    // this the source is pruned by the next
+                                    // sweep and its playlist memberships
+                                    // cascade away, while the output arrives as
+                                    // a new row in no playlist — converting a
+                                    // whole set emptied the set. Scoped, and
+                                    // before the frontend re-analyses the
+                                    // output: that upsert then lands on the
+                                    // moved row instead of adding a second one.
+                                    //
+                                    // Here the string comparison is the right
+                                    // question, and a different one from the
+                                    // trash above: it asks whether the row
+                                    // still names the file, which after an
+                                    // in-place rename that changed only the
+                                    // case of the extension it does not.
+                                    // Not `?`: this runs after the file has
+                                    // been written and the original trashed, so
+                                    // an unavailable database must not throw
+                                    // away the results of every job in the run.
+                                    let carried = db::require(&app).and_then(|database| {
+                                        let mut conn = database.conn()?;
+                                        Ok(db::replace_track(
+                                            &mut conn,
+                                            &job.path,
+                                            &converted.output_path,
+                                        )?)
+                                    });
+                                    // The audio is converted and the original
+                                    // is in the trash; a database that would
+                                    // not follow is worth saying out loud, not
+                                    // worth failing the conversion over. After
+                                    // the guard, which `events::record` would
+                                    // otherwise deadlock against.
+                                    if let Err(e) = carried {
+                                        events::record(
+                                            &app,
+                                            crate::models::EventLevel::Warn,
+                                            "convert",
+                                            &format!(
+                                                "Converted, but the library row did not move: {e}"
+                                            ),
+                                            Some(&job.path),
+                                        );
+                                    }
+                                }
                                 ConvertResult {
                                     id: job.id,
                                     source_path: job.path,

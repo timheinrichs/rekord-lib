@@ -40,6 +40,7 @@ import type {
   BandcampAccount,
   BandcampItem,
   ConvertJob,
+  ConvertOptions,
   ConvertResult,
   DeleteResult,
   DuplicateGroup,
@@ -175,6 +176,11 @@ type Handler = (
   args: Record<string, unknown>,
   fake: FakeState,
 ) => unknown;
+
+/** The last path segment, the way the backend names a moved row's file. */
+function baseName(path: string): string {
+  return path.slice(path.lastIndexOf("/") + 1);
+}
 
 /** A track for a path the fake has never seen, so a first scan can produce rows. */
 function trackFor(path: string): TrackAnalysis {
@@ -386,12 +392,37 @@ export function installFakeBackend(
     // --- conversion ---
     convert_tracks: (args): ConvertResult[] => {
       const jobs = (args.jobs as ConvertJob[]) ?? [];
+      const replacing = (args.options as ConvertOptions | undefined)?.replace_source;
       return jobs.map((job) => {
         const error = itemErrors.get(job.path);
+        const output = error ? null : `${job.path}.converted`;
+        // A replacing conversion is a move, not a delete and an add: the real
+        // `convert_tracks` carries the row and its playlist memberships over to
+        // the file that replaced it (`db::replace_track`). Modelled here
+        // because the frontend has to re-read the playlists afterwards, and a
+        // fake that leaves the old path in place cannot show that it does.
+        if (replacing && output) {
+          state.tracks = state.tracks.map((t) =>
+            t.path === job.path
+              ? { ...t, path: output, id: output, file_name: baseName(output) }
+              : t,
+          );
+          for (const [id, paths] of Object.entries(state.playlistContents)) {
+            // De-duplicated, because the real move is an `UPDATE OR IGNORE`
+            // against a `(playlist_id, path)` primary key: a playlist that
+            // already holds the output keeps one entry, not two.
+            const moved = paths.map((p) => (p === job.path ? output : p));
+            state.playlistContents[Number(id)] = [...new Set(moved)];
+          }
+          delete state.edits[job.path];
+          state.files = [
+            ...new Set(state.files.map((f) => (f === job.path ? output : f))),
+          ];
+        }
         return {
           id: job.id,
           source_path: job.path,
-          output_path: error ? null : `${job.path}.converted`,
+          output_path: output,
           success: !error,
           error: error ?? null,
         };

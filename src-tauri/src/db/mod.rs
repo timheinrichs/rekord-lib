@@ -486,6 +486,86 @@ pub fn relocate_tracks(
     Ok(result)
 }
 
+/// Carries a track's row over to the file that replaced it, after a conversion
+/// wrote a new file and sent the original to the trash.
+///
+/// **A replacing conversion is a move, not a delete and an add.** Without this
+/// the old row was pruned by the next sweep and `playlist_items` cascaded away
+/// with it, while the converted file arrived under a new path as a new row, in
+/// no playlist — so "fix the sample rate on this whole set" emptied the set it
+/// was run on. What moves is the identity: the path, the file name and the
+/// playlist memberships.
+///
+/// **What deliberately does not move.**
+/// - The pending `edits` row. This is the difference from [`relocate_tracks`],
+///   which carries edits because nothing was applied to the file. A conversion
+///   runs `metadata::write::finalize` over its output, so the edit *has* been
+///   written into the file; carrying it would make an applied change reappear
+///   as still pending.
+/// - The cached `fingerprints` and `waveforms`. They are keyed by path *and* by
+///   the file's mtime and size, and the converted file matches neither — a
+///   carried-over row could never be read back, and it would describe audio
+///   that is no longer there. Deleting them is also what keeps the deferred
+///   foreign keys satisfied: they reference `tracks(path)`, which is being
+///   rewritten under them.
+///
+/// The row keeps the old file's `mtime_ms`/`size_bytes`, so
+/// [`needs_reanalysis`] sees the mismatch and the next scan re-probes the
+/// track — which is right, because its container, sample rate and depth are
+/// exactly what the conversion changed.
+///
+/// Where `new_path` already has a row — converting `a.wav` onto an `a.aiff`
+/// the library already knows — the memberships move onto it and the old row is
+/// deleted. A merge rather than the skip [`relocate_tracks`] performs, because
+/// unlike a relocation the old file is genuinely gone.
+///
+/// Returns whether there was a row to carry over.
+pub fn replace_track(conn: &mut Connection, old_path: &str, new_path: &str) -> DbResult<bool> {
+    if old_path == new_path {
+        return Ok(false);
+    }
+    let tx = conn.transaction()?;
+    tx.execute_batch("PRAGMA defer_foreign_keys = ON")?;
+    let carried = {
+        let mut exists = tx.prepare("SELECT 1 FROM tracks WHERE path = ?1")?;
+        if !exists.exists(params![old_path])? {
+            false
+        } else {
+            let taken = exists.exists(params![new_path])?;
+            // `OR IGNORE` because `(playlist_id, path)` is the primary key: the
+            // target may already sit in that playlist, and then the old row's
+            // membership is the duplicate, not the survivor.
+            tx.execute(
+                "UPDATE OR IGNORE playlist_items SET path = ?2 WHERE path = ?1",
+                params![old_path, new_path],
+            )?;
+            if taken {
+                // Cascades: whatever memberships did not move, plus the caches.
+                tx.execute("DELETE FROM tracks WHERE path = ?1", params![old_path])?;
+            } else {
+                let file_name = Path::new(new_path)
+                    .file_name()
+                    .map(|n| n.to_string_lossy().into_owned())
+                    .unwrap_or_else(|| new_path.to_string());
+                tx.execute(
+                    "UPDATE tracks SET path = ?2, file_name = ?3 WHERE path = ?1",
+                    params![old_path, new_path, file_name],
+                )?;
+            }
+            true
+        }
+    };
+    if carried {
+        // `edits` has no foreign key to `tracks`, so nothing here happens on
+        // its own — not in the merge branch either.
+        tx.execute("DELETE FROM edits WHERE path = ?1", params![old_path])?;
+        tx.execute("DELETE FROM fingerprints WHERE path = ?1", params![old_path])?;
+        tx.execute("DELETE FROM waveforms WHERE path = ?1", params![old_path])?;
+    }
+    tx.commit()?;
+    Ok(carried)
+}
+
 /// Drops every track of a library folder that is not in `keep`. Used by the
 /// full sweep, which is the only run that has seen the whole folder and may
 /// therefore conclude that a missing file is gone.
@@ -1645,6 +1725,118 @@ mod tests {
         assert_eq!(result, RelocateResult { moved: 0, skipped: 1 });
         assert_eq!(load_tracks(&conn, &new_root).unwrap().len(), 1);
         assert_eq!(load_tracks(&conn, "/old").unwrap().len(), 1);
+    }
+
+    #[test]
+    fn a_replacing_conversion_carries_the_row_and_its_playlists() {
+        let db = Db::open_in_memory().unwrap();
+        let mut conn = db.0.lock().unwrap();
+        let fs = identity(7, 8);
+        upsert_tracks(&mut conn, "/lib", &[record("/lib/a.wav", Some(fs))]).unwrap();
+        fingerprint_put(&conn, "/lib/a.wav", fs, 1, &[1, 2, 3]).unwrap();
+        waveform_save(&conn, "/lib/a.wav", fs, 1, &[9, 9]).unwrap();
+        set_edit(&conn, "/lib/a.wav", &serde_json::json!({"title": "x"})).unwrap();
+        // In two playlists, because that is a case 0.8.0 already had to fix
+        // once: the row is one track, the memberships are two.
+        let warmup = create_playlist(&conn, "Warmup").unwrap();
+        let peak = create_playlist(&conn, "Peak").unwrap();
+        set_playlist_paths(&mut conn, warmup, &["/lib/a.wav".to_string()]).unwrap();
+        set_playlist_paths(&mut conn, peak, &["/lib/a.wav".to_string()]).unwrap();
+
+        assert!(replace_track(&mut conn, "/lib/a.wav", "/lib/a.aiff").unwrap());
+
+        // One row, at the new path, with the new name.
+        let rows = load_tracks(&conn, "/lib").unwrap();
+        assert_eq!(rows.len(), 1);
+        assert_eq!(rows[0].path, "/lib/a.aiff");
+        assert_eq!(rows[0].file_name, "a.aiff");
+        // The memberships came along — the whole point of the move.
+        let contents = all_playlist_paths(&conn).unwrap();
+        assert_eq!(contents.get(&warmup), Some(&vec!["/lib/a.aiff".to_string()]));
+        assert_eq!(contents.get(&peak), Some(&vec!["/lib/a.aiff".to_string()]));
+        // The edit was written into the file by the conversion, so it is spent
+        // rather than pending on the new path.
+        assert!(load_edits(&conn).unwrap().is_empty());
+        // And the caches describe audio that is no longer there.
+        assert!(fp_of(&conn, "/lib/a.wav", fs, 1).is_none());
+        assert!(fp_of(&conn, "/lib/a.aiff", fs, 1).is_none());
+        let mut want = HashMap::new();
+        want.insert("/lib/a.aiff".to_string(), fs);
+        assert!(waveforms_load(&conn, &want, 1).unwrap().is_empty());
+    }
+
+    #[test]
+    fn a_replacing_conversion_merges_onto_a_row_that_is_already_there() {
+        // Converting `a.wav` onto an `a.aiff` the library already scanned. The
+        // old file is genuinely gone, so this merges rather than skipping the
+        // way a relocation does.
+        let db = Db::open_in_memory().unwrap();
+        let mut conn = db.0.lock().unwrap();
+        upsert_tracks(
+            &mut conn,
+            "/lib",
+            &[record("/lib/a.wav", None), record("/lib/a.aiff", None)],
+        )
+        .unwrap();
+        let list = create_playlist(&conn, "Set").unwrap();
+        set_playlist_paths(&mut conn, list, &["/lib/a.wav".to_string()]).unwrap();
+
+        assert!(replace_track(&mut conn, "/lib/a.wav", "/lib/a.aiff").unwrap());
+
+        let rows = load_tracks(&conn, "/lib").unwrap();
+        assert_eq!(rows.len(), 1);
+        assert_eq!(rows[0].path, "/lib/a.aiff");
+        assert_eq!(
+            all_playlist_paths(&conn).unwrap().get(&list),
+            Some(&vec!["/lib/a.aiff".to_string()])
+        );
+    }
+
+    #[test]
+    fn a_playlist_that_already_holds_the_output_keeps_one_entry() {
+        // `(playlist_id, path)` is the primary key, so the membership that
+        // moves is the duplicate — without `UPDATE OR IGNORE` this is a failed
+        // write, not a merged one.
+        let db = Db::open_in_memory().unwrap();
+        let mut conn = db.0.lock().unwrap();
+        upsert_tracks(
+            &mut conn,
+            "/lib",
+            &[record("/lib/a.wav", None), record("/lib/a.aiff", None)],
+        )
+        .unwrap();
+        let list = create_playlist(&conn, "Set").unwrap();
+        set_playlist_paths(
+            &mut conn,
+            list,
+            &["/lib/a.aiff".to_string(), "/lib/a.wav".to_string()],
+        )
+        .unwrap();
+
+        assert!(replace_track(&mut conn, "/lib/a.wav", "/lib/a.aiff").unwrap());
+
+        assert_eq!(
+            all_playlist_paths(&conn).unwrap().get(&list),
+            Some(&vec!["/lib/a.aiff".to_string()])
+        );
+    }
+
+    #[test]
+    fn replacing_a_track_nothing_knows_about_changes_nothing() {
+        // An import, or a conversion of a file the scan never reached: there is
+        // no identity to carry, and inventing a row here would add a track the
+        // library has not analysed.
+        let db = Db::open_in_memory().unwrap();
+        let mut conn = db.0.lock().unwrap();
+        upsert_tracks(&mut conn, "/lib", &[record("/lib/known.aiff", None)]).unwrap();
+
+        assert!(!replace_track(&mut conn, "/elsewhere/x.wav", "/lib/x.aiff").unwrap());
+        // An in-place conversion keeps its path and has nothing to move.
+        assert!(!replace_track(&mut conn, "/lib/known.aiff", "/lib/known.aiff").unwrap());
+
+        let rows = load_tracks(&conn, "/lib").unwrap();
+        assert_eq!(rows.len(), 1);
+        assert_eq!(rows[0].path, "/lib/known.aiff");
     }
 
     #[test]
