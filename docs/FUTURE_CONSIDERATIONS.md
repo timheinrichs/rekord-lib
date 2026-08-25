@@ -1411,6 +1411,91 @@ is worth making once, in the styleguide's terms, rather than per field.
 
 *Size: S*
 
+### I5 · "Add to playlist" is a dialog, not a menu
+
+**What** — the picker becomes an overlay: the existing playlists as a readable
+list, and making a new one as a first-class action inside it rather than the
+last row of a dropdown.
+
+**Why** — asked for directly, and the menu has now been wrong twice in a way a
+dialog cannot be. It opened upward into the sticky header and was unreachable
+(fixed in 0.8.1, pinned by `menuPlacement.test.ts`), and it is anchored to a
+button whose position moves with the selection — see **I6**, which is the same
+problem seen from the other side. A dialog is centred, has room for a list that
+is longer than a dropdown wants to be, and does not depend on what is above or
+below its trigger.
+
+**It should probably be I3's dialog.** [I3](#i3--edit-a-playlist-in-a-dialog)
+wants an overlay that reorders, renames and removes; this one wants an overlay
+that picks and creates. Two dialogs over the same table, opened from two places,
+is one dialog with a selection in it — and the argument I3 makes applies here
+unchanged: it edits through the same commands and the same pure helpers in
+`src/lib/playlists.ts`, never a second place where playlist state lives. Decide
+that before building either, because building them separately is the expensive
+order.
+
+*Size: S · overlaps I3 · `AddToPlaylist.tsx`*
+
+### I6 · The selection's actions do not belong in the header
+
+**What** — "Edit metadata", "Convert selection", "Add to playlist" and "Delete"
+appear in the header the moment something is selected, and leave again when the
+selection is cleared. They need somewhere else to live.
+
+**Why** — two complaints, one cause. The header fills up: with a selection it
+carries eight controls plus the gear, on a window that also has to hold a logo.
+And because the row is laid out left to right, the buttons that are *always*
+there — "Scan library" and "Duplicates" — jump to the right as the selection
+ones appear. A control that moves when you select a row is a control you have to
+find again, and it is the one you were about to click.
+
+It is also what made 0.8.1's unreachable menu possible: a dropdown anchored to a
+button inside a 64 px sticky header has nowhere to open, and no amount of
+placement rules fixes the fact that the anchor itself moves.
+
+**What the answer has to satisfy**, rather than what it is — that is the
+decision this entry defers:
+
+- The always-present controls do not move when a selection appears.
+- The actions are near what they act on. A selection lives in the table.
+- There is room for a menu to open from them, downward, without leaving the
+  window (§5 of the styleguide).
+- Nothing is added that is only visible while something is selected *and* only
+  in one grouping — the table already has five.
+
+A bar that appears at the bottom of the table over the selection is the obvious
+candidate and the one to argue against first, since the app has no bottom bar
+today and a new persistent region is a bigger change than it looks.
+
+*Size: M · blocks nothing, but I5 should land after it*
+
+### I7 · An action that changed something says so
+
+**What** — a transient message when a main action completes: added to a
+playlist, deleted, converted, exported. Coloured the way the app already colours
+state — accent for an ordinary result, `warning`, `danger`.
+
+**Why** — asked for directly. Today a delete or an add succeeds silently: the
+table changes, and if what changed is scrolled out of view or the change is a
+row *leaving*, there is nothing at all. The event log records it, but the log is
+a place you go, and the dot on it is the whole notification.
+
+**The mechanism already exists, and that is the point.** `events::record`
+already writes every one of these with a level (`Info`, `Warn`, `Error`) and a
+source, and C3 shipped the store and the unread dot. A toast is that same entry
+shown transiently on its way past — **not** a second reporting channel with its
+own call sites, which is how the two end up disagreeing about what happened. So
+the work is a subscriber to the event stream plus a place to draw it, and the
+rule is that nothing raises a toast without also being in the log.
+
+Two things to get right. The colours are the status tokens and stay semantic —
+`success` for done, `warning`, `danger` — never a decorative fourth. And a
+bulk action produces one message, not one per file: the scan emits per-file
+events by design, and a toast per skipped track in a run of two hundred is a
+wall, not feedback.
+
+*Size: S · depends on C3, which shipped*
+
 ---
 
 ## Deliberately not adopted
