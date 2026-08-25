@@ -7,7 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/)
 (`MAJOR.MINOR.PATCH`). As long as the version is at `0.x`, MINOR bumps may
 contain incompatible changes.
 
-## [Unreleased]
+## [0.8.1] - 2026-08-26
+
+**Severity:** critical
+
+Update before your next conversion. A file whose extension is in capitals was
+sent to the trash by the conversion that had just rewritten it, and the track
+left the library with it — recoverable from the trash, but only if you notice.
 
 ### Fixed
 - **Converting a track no longer takes it out of its playlists.** Converting
@@ -795,7 +801,9 @@ tool for a CDJ/XDJ- and Rekordbox-compatible library.
 - Project scaffold: Tauri 2 + React 19 + Tailwind v4, bundled
   ffmpeg/ffprobe sidecar, first analysis/conversion pipeline.
 
-[Unreleased]: https://github.com/timheinrichs/rekord-lib/compare/v0.7.2...HEAD
+[Unreleased]: https://github.com/timheinrichs/rekord-lib/compare/v0.8.1...HEAD
+[0.8.1]: https://github.com/timheinrichs/rekord-lib/compare/v0.8.0...v0.8.1
+[0.8.0]: https://github.com/timheinrichs/rekord-lib/compare/v0.7.5...v0.8.0
 [0.7.5]: https://github.com/timheinrichs/rekord-lib/compare/v0.7.4...v0.7.5
 [0.7.4]: https://github.com/timheinrichs/rekord-lib/compare/v0.7.3...v0.7.4
 [0.7.3]: https://github.com/timheinrichs/rekord-lib/compare/v0.7.2...v0.7.3
