@@ -32,6 +32,10 @@ contain incompatible changes.
   that and wrote over the original, while the step that cleans up afterwards
   compared the two names as text, decided they were different files, and sent
   the freshly converted one to the trash.
+- **"Add to playlist" opens a menu you can reach.** It opened upward, out of
+  the top of the window, so the list of playlists was there but unclickable —
+  the button did nothing you could act on. Every menu in the app now opens
+  downward and draws above the header, and a test keeps it that way.
 - **The library no longer empties itself after a replacing conversion.** With
   the source gone from the folder, the check that reconciles the list against
   the disk was still comparing against the list from before the conversion, so

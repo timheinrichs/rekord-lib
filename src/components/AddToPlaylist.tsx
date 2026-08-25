@@ -49,7 +49,12 @@ export default function AddToPlaylist({
         Add to playlist ({count})
       </button>
       {open && (
-        <div className="absolute bottom-full right-0 z-30 mb-1 max-h-80 w-56 overflow-y-auto rounded-lg border border-border bg-surface-2 py-1 shadow-2xl">
+        // Downward and above the header, like every other menu in the app.
+        // It opened *upward* until 0.8.1, which put it off the top of the
+        // window: these actions live in the 64 px sticky header, so there is
+        // nothing above the button to open into. And `z-30` is the header's own
+        // layer, not a layer over it.
+        <div className="absolute right-0 top-full z-40 mt-2 max-h-80 w-56 overflow-y-auto rounded-lg border border-border bg-surface-2 py-1 shadow-lg shadow-black/40">
           {playlists.map((p) => {
             // A playlist that already holds every selected track has nothing to
             // gain, and offering it is a click that does nothing. Said rather

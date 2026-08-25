@@ -154,6 +154,13 @@ import '@fontsource/jetbrains-mono/700.css';
   (`h-9 w-9`, centered, never a bare glyph), which also clears the 32 px click
   target. Horizontal padding is free to vary with the label: `px-4` normally,
   `px-3` where a row of controls is tight.
+- **Menus open downward, and above the header:** `absolute right-0 top-full
+  mt-2 z-40`. The app's actions sit in a 64 px sticky header (`z-30`), so a
+  panel anchored with `bottom-full` opens off the top of the window and cannot
+  be clicked at all — and `z-30` is the header's own layer, which leaves which
+  one wins to document order. `src/components/menuPlacement.test.ts` enforces
+  both. A menu anchored somewhere other than the header may earn the exception;
+  it is argued for in that test, not written silently.
 - **Density:** compact (power-user tool). Tight line height in lists, padding `px-3 py-2` for rows.
 - **Icons:** stroke icons `stroke-width 2`, glyph 18–20 px. Very small decorative icons (16 px) only without a click function.
 - **Window:** dark title bar; if using a custom title bar, `bg-surface` + `border-b border-border`.
