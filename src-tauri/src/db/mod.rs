@@ -429,12 +429,18 @@ fn relocated_path(path: &str, old_dir: &str, new_dir: &str) -> Option<String> {
 /// for that path exists yet; everything else is counted as skipped and left
 /// alone, because this runs precisely when the user is trying to recover data.
 /// Foreign keys are deferred for the transaction: `fingerprints.path`,
-/// `edits.path` and `playlist_items.path` all reference `tracks(path)`, so
+/// `waveforms.path` and `playlist_items.path` all reference `tracks(path)`, so
 /// updating the parent key would otherwise fail before the child rows can
 /// follow. **Every one of them has to be listed here.** A child left behind
 /// does not fail where it was forgotten — it fails at `COMMIT`, as a bare
 /// `FOREIGN KEY constraint failed` that rolls the whole relocation back, in
-/// exactly the situation this function exists to recover from.
+/// exactly the situation this function exists to recover from. It has happened
+/// twice: `playlist_items` in 0.8.0, and `waveforms` — which had been missing
+/// since the table was added — in 0.8.1, where any user who had ever played a
+/// track could not re-point their library at all.
+///
+/// `edits.path` is in the list too, but for the other reason: it has no foreign
+/// key, so nothing carries it and nothing complains when it is forgotten.
 pub fn relocate_tracks(
     conn: &mut Connection,
     old_dir: &str,
@@ -454,6 +460,7 @@ pub fn relocate_tracks(
         let mut move_track =
             tx.prepare("UPDATE tracks SET path = ?2, library_dir = ?3 WHERE path = ?1")?;
         let mut move_fingerprint = tx.prepare("UPDATE fingerprints SET path = ?2 WHERE path = ?1")?;
+        let mut move_waveform = tx.prepare("UPDATE waveforms SET path = ?2 WHERE path = ?1")?;
         let mut move_edit = tx.prepare("UPDATE edits SET path = ?2 WHERE path = ?1")?;
         let mut move_member =
             tx.prepare("UPDATE playlist_items SET path = ?2 WHERE path = ?1")?;
@@ -469,6 +476,7 @@ pub fn relocate_tracks(
             }
             move_track.execute(params![old_path, new_path, new_dir])?;
             move_fingerprint.execute(params![old_path, new_path])?;
+            move_waveform.execute(params![old_path, new_path])?;
             move_edit.execute(params![old_path, new_path])?;
             move_member.execute(params![old_path, new_path])?;
             result.moved += 1;
@@ -1564,6 +1572,10 @@ mod tests {
         let fs = identity(7, 8);
         upsert_tracks(&mut conn, "/old", &[record("/old/sub/a.aiff", Some(fs))]).unwrap();
         fingerprint_put(&conn, "/old/sub/a.aiff", fs, 1, &[1, 2, 3]).unwrap();
+        // A waveform too: this table was the one child nobody listed, and a
+        // test that seeds every *other* child is a test that says the
+        // relocation works right up until a user has played something.
+        waveform_save(&conn, "/old/sub/a.aiff", fs, 1, &[4, 5, 6]).unwrap();
         set_edit(&conn, "/old/sub/a.aiff", &serde_json::json!({"title": "x"})).unwrap();
         let list = create_playlist(&conn, "Set").unwrap();
         set_playlist_paths(&mut conn, list, &["/old/sub/a.aiff".to_string()]).unwrap();
@@ -1579,6 +1591,9 @@ mod tests {
         assert_eq!(moved[0].path, new_path);
         // … so everything keyed by the path came along, which is the point.
         assert!(fp_of(&conn, &new_path, fs, 1).is_some());
+        let mut want = HashMap::new();
+        want.insert(new_path.clone(), fs);
+        assert!(waveforms_load(&conn, &want, 1).unwrap().contains_key(&new_path));
         assert!(load_edits(&conn).unwrap().contains_key(&new_path));
         // A membership left pointing at the old path does not merely go
         // missing: the deferred foreign key turns it into a failed COMMIT, so
