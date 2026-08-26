@@ -986,10 +986,16 @@ separation the devtest database and settings already have.
 
 **The frontend stopped holding it.** `suggest_metadata` used to take
 `discogsKey` and `discogsSecret` on every call; it now reads them itself. What
-settings can ask for is whether something is stored (`discogs_credentials`
-answers `{ stored, unavailable, key }` — the key is not the secret half and
-seeing it is how you tell which app's credentials are in there). The secret
-field is write-only and says so.
+settings can ask for is whether something is stored.
+
+**Corrected in 0.9.0:** `discogs_credentials` used to answer
+`{ stored, unavailable, key }`, on the argument that the consumer key is not the
+secret half and seeing it is how you tell which application is stored. That was
+wrong on both counts — it is still credential material, and settings rendered
+it, so it appeared on every screenshot of that screen. The status now carries
+`{ stored, unavailable, kind, saved_at }`: which *form* is stored and since
+when, and nothing that is worth reading. See **J2** for the auth model it now
+sits in.
 
 **Migration, once, in the shape of `shed_legacy_keys`:** a pair still in
 `rekord-lib.json` is written to the Keychain and only then deleted from the
@@ -1550,6 +1556,42 @@ every other cover and through `/security-review` before it ships.
 
 *Size: S for the catalog number · M for the candidate model · M for the cover,
 and that one needs `/security-review`*
+
+---
+
+### J2 · OAuth, once the user's own Discogs collection is in scope
+
+**What** — the full OAuth 1.0a flow: request token, browser authorization,
+per-user access token, HMAC-SHA1-signed requests. Discogs' third form of
+authentication, next to the anonymous search and the credential 0.9.0 stores.
+
+**Why not now** — measured 2026-08-26, it buys nothing the app currently wants:
+
+- **Not the rate limit.** 60 requests per minute, throttled per source IP —
+  identical to a personal access token, which is a string somebody copies rather
+  than a flow somebody completes.
+- **Not the data.** Genre, year, label and country come from
+  `/database/search`, which is public and answers anonymous callers.
+- **Not the secret.** OAuth needs the consumer secret *in the client*. In a
+  distributed desktop app that is a public secret whichever way it gets there;
+  OAuth makes shipping it the intended design rather than a real protection.
+
+**What makes it right** — the moment the app wants a resource that belongs to
+the *user* rather than to the catalog. The concrete one is their **Discogs
+collection**: "do I already own this release", or preferring metadata from a
+copy they have catalogued over the global best guess. Wantlist and marketplace
+are the same shape. None of that is reachable with a key/secret pair, and no
+amount of rate limit substitutes for it — that is the day this stops being
+avoidable work and starts being the only way.
+
+**What it costs then** — request signing, a callback (a loopback HTTP server, or
+the out-of-band verifier code pasted back into the app), two more Keychain items
+for the token pair, and `/security-review`, because the callback is a local
+listener taking untrusted input. The `Credential` enum in
+`metadata/discogs.rs` is where the third form would go; `secrets.rs` already
+stores one form at a time, which is the shape this needs.
+
+*Size: M, and it needs `/security-review`*
 
 ---
 

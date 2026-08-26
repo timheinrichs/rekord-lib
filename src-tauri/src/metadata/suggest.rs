@@ -223,9 +223,8 @@ fn parse_recording(rec: &Value) -> MbCandidate {
 /// candidates and aggregated per-field suggestions (Discogs + MusicBrainz).
 pub async fn suggest(
     path: &str,
-    discogs_key: &str,
-    discogs_secret: &str,
-) -> AppResult<MetadataSuggestions> {
+    credential: Option<&discogs::Credential>,
+) -> AppResult<(MetadataSuggestions, bool)> {
     let current = read_metadata(path).unwrap_or_default();
     let filename_guess = parse_filename(path);
 
@@ -250,10 +249,11 @@ pub async fn suggest(
         Err(_) => Vec::new(),
     };
 
-    // Discogs per-field suggestions (empty without credentials / on error).
+    // Discogs per-field suggestions. Credentials are optional — without them
+    // the search runs anonymously, at Discogs' lower rate limit — and an error
+    // yields empty chips rather than a failure.
     let dc = discogs::search(
-        discogs_key,
-        discogs_secret,
+        credential,
         artist.as_deref(),
         title.as_deref(),
         album.as_deref(),
@@ -262,10 +262,10 @@ pub async fn suggest(
 
     // Discogs first, then MusicBrainz genre/year folded in as extra chips.
     let mut field_suggestions = FieldSuggestions {
-        genres: dc.genres,
-        years: dc.years,
-        labels: dc.labels,
-        countries: dc.countries,
+        genres: dc.aggregate.genres,
+        years: dc.aggregate.years,
+        labels: dc.aggregate.labels,
+        countries: dc.aggregate.countries,
     };
     for c in &candidates {
         if let Some(g) = c.genre.as_deref() {
@@ -276,13 +276,19 @@ pub async fn suggest(
         }
     }
 
-    Ok(MetadataSuggestions {
-        id: path.to_string(),
-        current,
-        filename_guess,
-        candidates,
-        field_suggestions,
-    })
+    // The flag rides alongside rather than inside the suggestions: it is about
+    // the app's access to Discogs, not about this track, and the command turns
+    // it into one event instead of a field every caller has to think about.
+    Ok((
+        MetadataSuggestions {
+            id: path.to_string(),
+            current,
+            filename_guess,
+            candidates,
+            field_suggestions,
+        },
+        dc.denied,
+    ))
 }
 
 #[cfg(test)]

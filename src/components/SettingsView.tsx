@@ -9,9 +9,11 @@ import {
   discogsCredentials,
   onScanProgress,
   pickOutputDir,
-  setDiscogsCredentials,
+  setDiscogsAppCredentials,
+  setDiscogsToken,
   type DiscogsStatus,
 } from "../lib/api";
+import { formatDate } from "../lib/format";
 import { relocateLibrary } from "../lib/library";
 import { relocateMessage, shouldRelocate } from "../lib/relocate";
 import { checkForUpdate, installUpdate, type UpdateInfo } from "../lib/updater";
@@ -172,11 +174,13 @@ export default function SettingsView({
     onSettingsChange({ library_dir: dir });
   };
 
-  // Discogs credentials. The secret is write-only: it goes into the Keychain
-  // and the app only ever asks again whether one is there.
+  // Discogs credentials. Write-only: they go into the Keychain and the app only
+  // ever asks again whether one is there, and which form it took.
   const [discogs, setDiscogs] = useState<DiscogsStatus | null>(null);
+  const [discogsToken, setDiscogsTokenInput] = useState("");
   const [discogsKey, setDiscogsKey] = useState("");
   const [discogsSecret, setDiscogsSecret] = useState("");
+  const [showAppForm, setShowAppForm] = useState(false);
   const [discogsBusy, setDiscogsBusy] = useState(false);
   const [discogsError, setDiscogsError] = useState<string | null>(null);
 
@@ -184,17 +188,27 @@ export default function SettingsView({
     discogsCredentials()
       .then(setDiscogs)
       // A rejected call is the same situation as a Keychain that says no.
-      .catch(() => setDiscogs({ stored: false, unavailable: true, key: null }));
+      .catch(() =>
+        setDiscogs({
+          stored: false,
+          unavailable: true,
+          kind: null,
+          saved_at: null,
+        }),
+      );
 
   useEffect(() => {
     void readDiscogs();
   }, []);
 
-  const saveDiscogs = async () => {
+  /** Runs one Keychain write and leaves no copy of what was typed behind. */
+  const storeDiscogs = async (write: () => Promise<void>) => {
     setDiscogsBusy(true);
     setDiscogsError(null);
     try {
-      await setDiscogsCredentials(discogsKey.trim(), discogsSecret.trim());
+      await write();
+      setDiscogsTokenInput("");
+      setDiscogsKey("");
       setDiscogsSecret("");
       await readDiscogs();
     } catch (e) {
@@ -209,8 +223,10 @@ export default function SettingsView({
     setDiscogsError(null);
     try {
       await clearDiscogsCredentials();
+      setDiscogsTokenInput("");
       setDiscogsKey("");
       setDiscogsSecret("");
+      setShowAppForm(false);
       await readDiscogs();
     } catch (e) {
       setDiscogsError(`Could not remove the credentials: ${e}`);
@@ -469,8 +485,10 @@ export default function SettingsView({
       {/* Discogs */}
       <section className="rounded-xl border border-border bg-surface p-5">
         <h2 className="text-sm font-semibold text-fg">Discogs</h2>
-        <p className="mt-1 text-sm text-fg-subtle">
-          Consumer key/secret of your Discogs app (
+        <p className="mt-1 font-sans text-sm text-fg-subtle">
+          Per-field suggestions for genre, year, label and country. They work
+          without an account: Discogs answers anonymous searches at 25 requests
+          per minute. A personal access token from{" "}
           <button
             onClick={() =>
               void openUrl("https://www.discogs.com/settings/developers")
@@ -478,19 +496,20 @@ export default function SettingsView({
             className="underline decoration-dotted underline-offset-2 hover:text-fg"
           >
             discogs.com/settings/developers
-          </button>
-          ) for per-field metadata suggestions. Kept in the macOS Keychain, not
-          in the app&rsquo;s settings file.
+          </button>{" "}
+          raises that to 60. It is kept in the macOS Keychain, not in the
+          app&rsquo;s settings file.
         </p>
 
         {/* The Keychain is the only copy, so a Keychain that will not answer is
             said plainly rather than papered over with an empty form: nothing was
-            lost, and entering the credentials again is the way out. */}
+            lost, and entering the credential again is the way out. What it costs
+            is the rate limit, not the suggestions. */}
         {discogs?.unavailable && (
-          <p className="mt-3 rounded-lg border border-warning-500/40 bg-warning-500/10 px-4 py-3 text-sm text-warning-500">
-            The Keychain could not be read, so stored credentials cannot be
-            used. Suggestions from Discogs stay empty until they are entered
-            again; everything else works as usual.
+          <p className="mt-3 rounded-lg border border-warning-500/40 bg-warning-500/10 px-4 py-3 font-sans text-sm text-warning-500">
+            The Keychain could not be read, so a stored credential cannot be
+            used. Suggestions keep working at the anonymous rate limit until it
+            is entered again; everything else works as usual.
           </p>
         )}
 
@@ -500,11 +519,15 @@ export default function SettingsView({
               <span className="h-1.5 w-1.5 rounded-full bg-success-500" />
               Stored in the Keychain
             </span>
-            {discogs.key && (
-              <span className="min-w-0 truncate text-fg-muted" title={discogs.key}>
-                {discogs.key}
-              </span>
-            )}
+            {/* Which one is in there, and since when — the question the consumer
+                key used to answer, without putting credential material on
+                screen. */}
+            <span className="min-w-0 truncate text-fg-muted">
+              {discogs.kind === "token"
+                ? "personal access token"
+                : "consumer key + secret"}
+              {discogs.saved_at ? ` · ${formatDate(discogs.saved_at)}` : ""}
+            </span>
             <button
               onClick={forgetDiscogs}
               disabled={discogsBusy}
@@ -515,41 +538,79 @@ export default function SettingsView({
           </div>
         ) : (
           <>
-            <div className="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-2">
-              <label className="flex flex-col gap-1 text-sm">
-                <span className="text-fg-muted">Consumer key</span>
-                <input
-                  value={discogsKey}
-                  onChange={(e) => setDiscogsKey(e.target.value)}
-                  className="rounded-lg border border-border-strong bg-surface-2 px-3 py-2 outline-none focus:border-accent-500"
-                />
-              </label>
-              <label className="flex flex-col gap-1 text-sm">
-                <span className="text-fg-muted">Consumer secret</span>
+            <div className="mt-4 flex flex-wrap items-end gap-3">
+              <label className="flex min-w-0 flex-1 flex-col gap-1 text-sm">
+                <span className="text-fg-muted">Personal access token</span>
                 <input
                   type="password"
-                  value={discogsSecret}
-                  onChange={(e) => setDiscogsSecret(e.target.value)}
+                  value={discogsToken}
+                  onChange={(e) => setDiscogsTokenInput(e.target.value)}
                   className="rounded-lg border border-border-strong bg-surface-2 px-3 py-2 outline-none focus:border-accent-500"
                 />
               </label>
-            </div>
-            <div className="mt-3 flex flex-wrap items-center gap-3">
               <button
-                onClick={saveDiscogs}
-                disabled={
-                  discogsBusy || !discogsKey.trim() || !discogsSecret.trim()
+                onClick={() =>
+                  void storeDiscogs(() => setDiscogsToken(discogsToken.trim()))
                 }
+                disabled={discogsBusy || !discogsToken.trim()}
                 className="h-9 inline-flex items-center justify-center rounded-md bg-accent-600 px-4 text-sm font-medium enabled:hover:bg-accent-500 disabled:bg-surface-2 disabled:text-fg-disabled"
               >
                 {discogsBusy ? "Saving…" : "Save to Keychain"}
               </button>
-              {/* Written once and never read back: after this the secret is
-                  the Keychain's, and the app only asks whether it is there. */}
-              <p className="font-sans text-xs text-fg-subtle">
-                The secret is not shown again after it is saved.
-              </p>
             </div>
+            {/* Written once and never read back: after this the token is the
+                Keychain's, and the app only asks whether it is there. */}
+            <p className="mt-3 font-sans text-xs text-fg-subtle">
+              The token is not shown again after it is saved.
+            </p>
+
+            {/* The older way in. Second, not gone: anyone who already registered
+                an application should not have to start over. */}
+            <button
+              onClick={() => setShowAppForm(!showAppForm)}
+              className="mt-3 text-xs underline decoration-dotted underline-offset-2 text-fg-subtle hover:text-fg"
+            >
+              {showAppForm ? "Hide" : "Already registered a Discogs app?"}
+            </button>
+            {showAppForm && (
+              <>
+                <div className="mt-3 grid grid-cols-1 gap-4 sm:grid-cols-2">
+                  <label className="flex flex-col gap-1 text-sm">
+                    <span className="text-fg-muted">Consumer key</span>
+                    <input
+                      value={discogsKey}
+                      onChange={(e) => setDiscogsKey(e.target.value)}
+                      className="rounded-lg border border-border-strong bg-surface-2 px-3 py-2 outline-none focus:border-accent-500"
+                    />
+                  </label>
+                  <label className="flex flex-col gap-1 text-sm">
+                    <span className="text-fg-muted">Consumer secret</span>
+                    <input
+                      type="password"
+                      value={discogsSecret}
+                      onChange={(e) => setDiscogsSecret(e.target.value)}
+                      className="rounded-lg border border-border-strong bg-surface-2 px-3 py-2 outline-none focus:border-accent-500"
+                    />
+                  </label>
+                </div>
+                <button
+                  onClick={() =>
+                    void storeDiscogs(() =>
+                      setDiscogsAppCredentials(
+                        discogsKey.trim(),
+                        discogsSecret.trim(),
+                      ),
+                    )
+                  }
+                  disabled={
+                    discogsBusy || !discogsKey.trim() || !discogsSecret.trim()
+                  }
+                  className="h-9 mt-3 inline-flex items-center justify-center rounded-md border border-border-strong px-4 text-sm enabled:hover:border-accent-500 enabled:hover:text-accent-500 disabled:border-border disabled:text-fg-disabled"
+                >
+                  {discogsBusy ? "Saving…" : "Save key + secret"}
+                </button>
+              </>
+            )}
           </>
         )}
 

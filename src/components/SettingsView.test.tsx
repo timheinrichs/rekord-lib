@@ -10,9 +10,11 @@ const api = vi.hoisted(() => ({
   discogsCredentials: vi.fn(async () => ({
     stored: false,
     unavailable: false,
-    key: null as string | null,
+    kind: null as "token" | "app" | null,
+    saved_at: null as number | null,
   })),
-  setDiscogsCredentials: vi.fn(async () => {}),
+  setDiscogsToken: vi.fn(async () => {}),
+  setDiscogsAppCredentials: vi.fn(async () => {}),
   clearDiscogsCredentials: vi.fn(async () => {}),
 }));
 vi.mock("../lib/api", () => ({
@@ -108,57 +110,125 @@ describe("SettingsView · About", () => {
 });
 
 describe("SettingsView · Discogs", () => {
+  const nothingStored = {
+    stored: false,
+    unavailable: false,
+    kind: null,
+    saved_at: null,
+  } as const;
+
   beforeEach(() => {
     api.discogsCredentials.mockClear();
-    api.setDiscogsCredentials.mockClear();
+    api.setDiscogsToken.mockClear();
+    api.setDiscogsAppCredentials.mockClear();
     api.clearDiscogsCredentials.mockClear();
-    api.discogsCredentials.mockResolvedValue({
-      stored: false,
-      unavailable: false,
-      key: null,
-    });
+    api.discogsCredentials.mockResolvedValue(nothingStored);
   });
 
-  it("stores what is typed in the Keychain, and forgets the secret", async () => {
+  it("stores a token in the Keychain, and forgets it", async () => {
     const user = userEvent.setup();
     renderSettings(null);
 
-    await user.type(screen.getByLabelText("Consumer key"), "key-123");
-    const secret = screen.getByLabelText("Consumer secret");
-    await user.type(secret, "secret-456");
+    const token = screen.getByLabelText("Personal access token");
+    await user.type(token, "tok-123");
     await user.click(screen.getByRole("button", { name: "Save to Keychain" }));
 
-    expect(api.setDiscogsCredentials).toHaveBeenCalledWith(
+    expect(api.setDiscogsToken).toHaveBeenCalledWith("tok-123");
+    // Written once: the field does not keep a copy for the next render.
+    await waitFor(() => expect(token).toHaveValue(""));
+  });
+
+  it("cannot store an empty token", async () => {
+    renderSettings(null);
+    expect(
+      screen.getByRole("button", { name: "Save to Keychain" }),
+    ).toBeDisabled();
+  });
+
+  it("still takes a registered app's key and secret", async () => {
+    // The older way in stays reachable: whoever already registered a Discogs
+    // application should not have to start over with a token.
+    const user = userEvent.setup();
+    renderSettings(null);
+
+    await user.click(
+      screen.getByRole("button", { name: /already registered/i }),
+    );
+    await user.type(screen.getByLabelText("Consumer key"), "key-123");
+    await user.type(screen.getByLabelText("Consumer secret"), "secret-456");
+    await user.click(screen.getByRole("button", { name: "Save key + secret" }));
+
+    expect(api.setDiscogsAppCredentials).toHaveBeenCalledWith(
       "key-123",
       "secret-456",
     );
-    // Written once: the field does not keep a copy for the next render.
-    await waitFor(() => expect(secret).toHaveValue(""));
   });
 
-  it("cannot be saved half filled", async () => {
+  it("cannot save a half filled pair", async () => {
     const user = userEvent.setup();
     renderSettings(null);
 
-    const save = screen.getByRole("button", { name: "Save to Keychain" });
+    await user.click(
+      screen.getByRole("button", { name: /already registered/i }),
+    );
+    const save = screen.getByRole("button", { name: "Save key + secret" });
     expect(save).toBeDisabled();
     await user.type(screen.getByLabelText("Consumer key"), "key-123");
     expect(save).toBeDisabled();
   });
 
-  it("says a credential is stored without showing it", async () => {
+  it("says which credential is stored, and since when", async () => {
     api.discogsCredentials.mockResolvedValue({
       stored: true,
       unavailable: false,
-      key: "key-123",
+      kind: "token",
+      saved_at: Date.UTC(2026, 6, 21, 12, 0, 0),
     });
     renderSettings(null);
 
     expect(await screen.findByText("Stored in the Keychain")).toBeInTheDocument();
-    // The key is not the secret half, and seeing it is how you tell which app's
-    // credentials are in there. The secret has no input to come back into.
-    expect(screen.getByText("key-123")).toBeInTheDocument();
-    expect(screen.queryByLabelText("Consumer secret")).toBeNull();
+    // The form and the date answer "which one is in there" — the question the
+    // consumer key used to answer, at the price of showing it.
+    expect(
+      screen.getByText(/personal access token · 2026-07-21/),
+    ).toBeInTheDocument();
+    expect(screen.queryByLabelText("Personal access token")).toBeNull();
+  });
+
+  it("says so without a date when the Keychain kept none", async () => {
+    // A credential stored by a version before the date existed. The label is
+    // beside the point; the credential is what matters.
+    api.discogsCredentials.mockResolvedValue({
+      stored: true,
+      unavailable: false,
+      kind: "app",
+      saved_at: null,
+    });
+    renderSettings(null);
+
+    expect(await screen.findByText("consumer key + secret")).toBeInTheDocument();
+  });
+
+  it("never renders stored credential material", async () => {
+    // The regression this whole change exists for: the consumer key used to be
+    // rendered next to the badge, which put it on every screenshot of this
+    // screen. The status deliberately carries more than its type allows — an
+    // older backend, a widened payload — because a mock shaped like the new
+    // type could not fail this test, and the point is that the view ignores
+    // credential material even when it is handed some.
+    api.discogsCredentials.mockResolvedValue({
+      stored: true,
+      unavailable: false,
+      kind: "app",
+      saved_at: Date.UTC(2026, 6, 21, 12, 0, 0),
+      key: "key-123",
+      token: "tok-123",
+    } as never);
+    const { container } = renderSettings(null);
+
+    await screen.findByText("Stored in the Keychain");
+    expect(container.textContent).not.toContain("key-123");
+    expect(container.textContent).not.toContain("tok-123");
   });
 
   it("removes a stored credential on request", async () => {
@@ -166,7 +236,8 @@ describe("SettingsView · Discogs", () => {
     api.discogsCredentials.mockResolvedValue({
       stored: true,
       unavailable: false,
-      key: "key-123",
+      kind: "token",
+      saved_at: Date.UTC(2026, 6, 21, 12, 0, 0),
     });
     renderSettings(null);
 
@@ -176,18 +247,20 @@ describe("SettingsView · Discogs", () => {
 
   it("says so when the Keychain will not answer, and asks again", async () => {
     // Fails closed: nothing falls back to the settings file, so the way out is
-    // entering the credentials again — which needs the form to be there.
+    // entering the credential again — which needs the form to be there. The
+    // suggestions themselves keep working, anonymously.
     api.discogsCredentials.mockResolvedValue({
       stored: false,
       unavailable: true,
-      key: null,
+      kind: null,
+      saved_at: null,
     });
     renderSettings(null);
 
     expect(
       await screen.findByText(/Keychain could not be read/),
     ).toBeInTheDocument();
-    expect(screen.getByLabelText("Consumer secret")).toBeInTheDocument();
+    expect(screen.getByLabelText("Personal access token")).toBeInTheDocument();
   });
 
   it("treats a rejected read as a Keychain that said no", async () => {

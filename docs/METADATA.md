@@ -181,20 +181,35 @@ field of an edit that changes something other than a tag.
 Title`, `Artist - Title`, `NN Title`, `Title` — and takes the album from the
 folder name. It is a guess offered next to the field, never written on its own.
 
-Existing tags beat the filename guess as the query basis for MusicBrainz, and
-Discogs contributes per-field chips only when credentials are configured. Both
-network sides fail soft: no client, no credentials or an error yields fewer
-suggestions, never an error dialog.
+Existing tags beat the filename guess as the query basis for MusicBrainz. Both
+network sides fail soft: no client or an error yields fewer suggestions, never
+an error dialog.
 
-The Discogs credentials are the one genuine secret the app holds, and they live
-in the **macOS Keychain** — keyed by the bundle identifier, so the `-devtest`
-build has its own and a dev run cannot read the installed app's. The frontend
-writes them once and afterwards only asks whether something is stored;
-`suggest_metadata` reads them itself, so the secret never travels with a
-request. A pair left in `rekord-lib.json` by an older version is moved on the
-next start and the keys are deleted. It **fails closed**: a Keychain that will
-not answer means empty Discogs suggestions and a note in settings asking for the
-credentials again, never a fallback to a plaintext copy.
+**Discogs needs no account.** `/database/search` answers unauthenticated
+requests — measured 2026-08-26, returning exactly the four fields the chips are
+built from — at 25 requests per minute instead of 60, throttled by source IP.
+Credentials are therefore optional and buy the higher limit, nothing else.
+Discogs *documents* the endpoint as requiring authentication, so the app watches
+for the day that becomes true: a 401/403 on a request that carried no credential
+is recorded once per run in the event log, because the alternative is chips that
+quietly stop appearing.
+
+A credential takes one of two forms, one at a time: the user's **personal access
+token**, or a registered application's **consumer key and secret**. They are
+worth the same to the API, so settings offers the token first — a string copied
+from a settings page rather than an application somebody has to register.
+
+Either form lives in the **macOS Keychain** — keyed by the bundle identifier, so
+the `-devtest` build has its own and a dev run cannot read the installed app's.
+The frontend writes it once and afterwards only asks *whether* something is
+stored, *which form* it is and *when* it was saved — **no part of the credential
+comes back**, not even the consumer key, which until 0.9.0 was rendered in
+settings and so ended up on every screenshot of that screen. A pair left in
+`rekord-lib.json` by an older version is moved on the next start and the keys
+are deleted. It **fails closed**: a Keychain that will not answer means the
+credential is not used and a note in settings asking for it again — never a
+fallback to a plaintext copy. The suggestions themselves keep working, at the
+anonymous limit.
 
 ## Implementation anchors
 
@@ -209,8 +224,10 @@ credentials again, never a fallback to a plaintext copy.
 | … · `resolve_cover` | the `CoverInput` cases: keep, none, file, bytes, MusicBrainz |
 | `src-tauri/src/metadata/artwork.rs` · `process_cover`, `thumbnail` | `MAX_EDGE`, `TARGET_BYTES`, and the list thumbnails |
 | `src-tauri/src/metadata/suggest.rs` · `parse_filename`, `search_musicbrainz`, `suggest` | the guess and the candidates |
-| `src-tauri/src/metadata/discogs.rs` · `search`, `aggregate` | the per-field chips |
-| `src-tauri/src/secrets.rs` · `discogs`, `set_discogs`, `status`, `service`, `migrate_from_store` | the Keychain items, per bundle identifier, and the one-time move out of the JSON store |
+| `src-tauri/src/metadata/discogs.rs` · `search`, `aggregate` | the per-field chips, with or without a credential |
+| … · `Credential::header`, `refused` | the two auth forms, and what counts as "Discogs closed the anonymous search" |
+| `src-tauri/src/secrets.rs` · `discogs`, `set_token`, `set_app`, `replace`, `status`, `status_from`, `service`, `migrate_from_store` | the Keychain items, per bundle identifier, one credential at a time, and the one-time move out of the JSON store |
+| `src-tauri/src/commands.rs` · `report_discogs_denied` | the once-per-run event when Discogs turns an anonymous search away |
 | `src-tauri/src/models.rs` · `TrackMetadata::is_complete` | what "incomplete" means |
 | `src-tauri/src/commands.rs` · `write_metadata`, `write_items` | per-item results, `clear_empty = true`, the re-read |
 | … · `capture_undo`, `undo_cover_for`, `store_undo`, `undo_last`, `undo_peek` | the snapshot and the restore |
@@ -242,9 +259,15 @@ credentials again, never a fallback to a plaintext copy.
 | A written file's thumbnail is re-read instead of served from the cache | `coverCache.test.ts` · "re-asks for a forgotten path a row is still showing", `CoverThumb.test.tsx` · "shows the new artwork after the file was written, without remounting", `metadata.e2e.test.tsx` · "re-reads the thumbnail of a file it wrote" |
 | The dev build cannot reach the installed app's credentials | `secrets.rs` · `service_is_per_bundle_identifier` |
 | Only a complete pair is migrated out of the JSON store | `secrets.rs` · `legacy_pair_takes_only_a_complete_credential` |
+| A stale legacy pair never replaces a newer credential | `secrets.rs` · `a_legacy_pair_never_replaces_a_newer_credential` |
+| An empty value cannot clear a stored credential | `secrets.rs` · `an_empty_value_is_refused_before_anything_is_cleared` |
 | A dropped settings key cannot be written back | `settings.test.ts` · `does not carry the Discogs credentials any more` |
 | The secret does not travel with a suggestion request | `metadata.e2e.test.tsx` · `asks for suggestions without carrying the Discogs secret` |
-| Settings stores, hides and removes it, and says so when the Keychain will not answer | `SettingsView.test.tsx` · `SettingsView · Discogs` |
+| A Discogs chip reaches the editor with no credential stored at all | `metadata.e2e.test.tsx` · `suggests without a credential, because Discogs allows it` |
+| No part of a credential reaches the frontend, or the screen | `secrets.rs` · `a_status_carries_no_credential_material`, `SettingsView.test.tsx` · `never renders stored credential material` |
+| A token wins over a pair, and half a pair is nothing | `secrets.rs` · `a_token_beats_a_pair_and_half_a_pair_is_nothing`, `the_date_belongs_to_a_credential_that_is_there` |
+| Only an anonymous refusal is reported as "Discogs now requires credentials" | `discogs.rs` · `only_an_anonymous_refusal_counts_as_denied` |
+| Settings stores, hides and removes either form, and says so when the Keychain will not answer | `SettingsView.test.tsx` · `SettingsView · Discogs` |
 
 ## Keeping this honest
 

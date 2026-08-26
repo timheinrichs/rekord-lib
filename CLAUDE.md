@@ -242,6 +242,13 @@ should never have to install a dependency to make a feature work.
   Open, or `xattr -dr com.apple.quarantine /Applications/rekord-lib.app`). The
   real target is Developer ID signing + notarization (see suggestions below) —
   ad-hoc is only the interim.
+- **Credential material stays in the backend.** Not just secrets: the "not
+  secret" half of a pair — a consumer key, a client id, an account name — has no
+  business travelling over IPC or being rendered, because the settings screen is
+  the screen people screenshot. A status answers *whether* something is stored
+  and *which kind*, never what it is (`secrets.rs` · `DiscogsStatus`), and a
+  test asserts the value cannot reach the DOM. `/security-review` checks this
+  explicitly.
 - **Security.** Only bundle binaries from trustworthy, verifiable sources, and
   vet them before they enter the repo (arch, signature, dependencies, size,
   version; prefer sources that publish checksums/signatures). Treat all

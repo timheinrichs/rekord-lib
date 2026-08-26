@@ -1,4 +1,4 @@
-use std::sync::atomic::Ordering;
+use std::sync::atomic::{AtomicBool, Ordering};
 
 use base64::Engine;
 use tauri::{AppHandle, Emitter, Manager, State};
@@ -1791,25 +1791,57 @@ pub fn start_library_watch(
 /// Returns metadata suggestions (existing tags, file name guess,
 /// MusicBrainz candidates) for manual confirmation.
 ///
-/// The Discogs credentials are read here rather than passed in: they live in the
+/// The Discogs credential is read here rather than passed in: it lives in the
 /// Keychain, and a secret that travels through the frontend on every request is
-/// a secret the frontend holds. Without them — none stored, or a Keychain that
-/// will not answer — the Discogs half is simply empty.
+/// a secret the frontend holds. It is optional — without one (none stored, or a
+/// Keychain that will not answer) the search still runs, anonymously, at the
+/// lower rate limit Discogs applies to callers it cannot identify.
 #[tauri::command]
 pub async fn suggest_metadata(app: AppHandle, path: String) -> AppResult<MetadataSuggestions> {
-    let (key, secret) = crate::secrets::discogs(&app).unwrap_or_default();
-    suggest::suggest(&path, &key, &secret).await
+    let credential = crate::secrets::discogs(&app);
+    let (suggestions, denied) = suggest::suggest(&path, credential.as_ref()).await?;
+    if denied {
+        report_discogs_denied(&app);
+    }
+    Ok(suggestions)
 }
 
-/// Stores the Discogs consumer key and secret in the Keychain.
+/// Whether the "Discogs turned us away" event has already been recorded.
+static DISCOGS_DENIED_REPORTED: AtomicBool = AtomicBool::new(false);
+
+/// Says once per run that anonymous Discogs search has stopped working.
+///
+/// The app searches without credentials on purpose, which is undocumented
+/// behaviour Discogs may withdraw. The day it does, the chips would simply stop
+/// appearing with nothing to explain them — so it goes into the event log, once,
+/// rather than on every track the user opens.
+fn report_discogs_denied(app: &AppHandle) {
+    if DISCOGS_DENIED_REPORTED.swap(true, Ordering::Relaxed) {
+        return;
+    }
+    crate::events::warn(
+        app,
+        "discogs",
+        "Discogs now requires credentials for search",
+        Some("Suggestions from Discogs stay empty until a personal access token is stored in Settings. MusicBrainz is unaffected."),
+    );
+}
+
+/// Stores a Discogs personal access token in the Keychain.
 #[tauri::command]
-pub fn set_discogs_credentials(app: AppHandle, key: String, secret: String) -> AppResult<()> {
-    crate::secrets::set_discogs(&app, key.trim(), secret.trim())
+pub fn set_discogs_token(app: AppHandle, token: String) -> AppResult<()> {
+    crate::secrets::set_token(&app, token.trim())
         .map_err(|e| AppError::Metadata(format!("Keychain: {e}")))
 }
 
-/// Whether a Discogs credential is stored — never what it is, except for the
-/// consumer key, which is not the secret half.
+/// Stores a registered Discogs application's consumer key and secret.
+#[tauri::command]
+pub fn set_discogs_app_credentials(app: AppHandle, key: String, secret: String) -> AppResult<()> {
+    crate::secrets::set_app(&app, key.trim(), secret.trim())
+        .map_err(|e| AppError::Metadata(format!("Keychain: {e}")))
+}
+
+/// Whether a Discogs credential is stored, and which form — never what it is.
 #[tauri::command]
 pub fn discogs_credentials(app: AppHandle) -> crate::secrets::DiscogsStatus {
     crate::secrets::status(&app)

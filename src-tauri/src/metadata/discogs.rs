@@ -15,31 +15,76 @@ pub struct DiscogsAggregate {
     pub countries: Vec<String>,
 }
 
-/// Searches Discogs releases and aggregates per-field suggestions. Requires the
-/// app's consumer key + secret (Discogs `key`/`secret` auth). Any error (no
-/// credentials, HTTP failure, bad JSON) yields empty suggestions — never fails.
+/// How a request identifies itself to Discogs.
+///
+/// The API takes either the user's own personal access token or a registered
+/// application's consumer key and secret, and treats both the same way for
+/// public data: 60 requests per minute instead of 25. The token is the lighter
+/// of the two — a string copied from a settings page rather than an application
+/// somebody has to register — which is why settings offers it first.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Credential {
+    /// A personal access token, belonging to the user.
+    Token(String),
+    /// A registered application's consumer key and secret.
+    App { key: String, secret: String },
+}
+
+impl Credential {
+    /// The `Authorization` header value Discogs expects for this form.
+    pub fn header(&self) -> String {
+        match self {
+            Credential::Token(token) => format!("Discogs token={token}"),
+            Credential::App { key, secret } => format!("Discogs key={key}, secret={secret}"),
+        }
+    }
+}
+
+/// What a search returned, and whether Discogs turned it away.
+#[derive(Debug, Clone, Default)]
+pub struct SearchOutcome {
+    pub aggregate: DiscogsAggregate,
+    /// An unauthenticated request was refused — see `refused`.
+    pub denied: bool,
+}
+
+/// Whether a failed response means "this needs credentials".
+///
+/// Discogs documents `/database/search` as requiring authentication, but
+/// answers unauthenticated requests all the same (measured 2026-08-26, at the
+/// lower 25/min limit). The app relies on that, so it has to notice the day it
+/// stops being true: a 401/403 on a request that carried **no** credentials is
+/// exactly that day, and is worth saying out loud. The same status on an
+/// authenticated request means the stored credential is wrong instead, which
+/// settings already lets the user fix.
+fn refused(status: reqwest::StatusCode, authenticated: bool) -> bool {
+    !authenticated
+        && (status == reqwest::StatusCode::UNAUTHORIZED
+            || status == reqwest::StatusCode::FORBIDDEN)
+}
+
+/// Searches Discogs releases and aggregates per-field suggestions.
+///
+/// Credentials are optional: without them the search still runs, at the lower
+/// rate limit Discogs applies to anonymous callers. Any error (HTTP failure,
+/// bad JSON) yields empty suggestions — never fails.
 pub async fn search(
-    key: &str,
-    secret: &str,
+    cred: Option<&Credential>,
     artist: Option<&str>,
     title: Option<&str>,
     album: Option<&str>,
-) -> DiscogsAggregate {
-    if key.trim().is_empty() || secret.trim().is_empty() {
-        return DiscogsAggregate::default();
-    }
-    try_search(key, secret, artist, title, album)
+) -> SearchOutcome {
+    try_search(cred, artist, title, album)
         .await
         .unwrap_or_default()
 }
 
 async fn try_search(
-    key: &str,
-    secret: &str,
+    cred: Option<&Credential>,
     artist: Option<&str>,
     title: Option<&str>,
     album: Option<&str>,
-) -> AppResult<DiscogsAggregate> {
+) -> AppResult<SearchOutcome> {
     let client = net::client()?;
 
     let mut params: Vec<(&str, String)> =
@@ -54,25 +99,30 @@ async fn try_search(
         params.push(("release_title", al.trim().to_string()));
     }
 
-    let resp = client
-        .get("https://api.discogs.com/database/search")
-        .header(
-            reqwest::header::AUTHORIZATION,
-            format!("Discogs key={key}, secret={secret}"),
-        )
+    let mut req = client.get("https://api.discogs.com/database/search");
+    if let Some(cred) = cred {
+        req = req.header(reqwest::header::AUTHORIZATION, cred.header());
+    }
+    let resp = req
         .query(&params)
         .send()
         .await
         .map_err(|e| AppError::Metadata(format!("Discogs request: {e}")))?;
 
     if !resp.status().is_success() {
-        return Ok(DiscogsAggregate::default());
+        return Ok(SearchOutcome {
+            aggregate: DiscogsAggregate::default(),
+            denied: refused(resp.status(), cred.is_some()),
+        });
     }
     let json: Value = resp
         .json()
         .await
         .map_err(|e| AppError::Metadata(format!("Discogs JSON: {e}")))?;
-    Ok(aggregate(&json))
+    Ok(SearchOutcome {
+        aggregate: aggregate(&json),
+        denied: false,
+    })
 }
 
 /// Adds a trimmed, non-empty value if not already present (case-insensitive),
@@ -174,5 +224,35 @@ mod tests {
     fn aggregate_empty_on_no_results() {
         let a = aggregate(&json!({}));
         assert!(a.genres.is_empty() && a.years.is_empty());
+    }
+
+    #[test]
+    fn header_names_the_form_discogs_expects() {
+        assert_eq!(
+            Credential::Token("tok".into()).header(),
+            "Discogs token=tok"
+        );
+        assert_eq!(
+            Credential::App {
+                key: "k".into(),
+                secret: "s".into(),
+            }
+            .header(),
+            "Discogs key=k, secret=s"
+        );
+    }
+
+    #[test]
+    fn only_an_anonymous_refusal_counts_as_denied() {
+        use reqwest::StatusCode;
+        // The day Discogs closes the anonymous search.
+        assert!(refused(StatusCode::UNAUTHORIZED, false));
+        assert!(refused(StatusCode::FORBIDDEN, false));
+        // A stored credential that is wrong is a different problem, and the
+        // user can already see and replace it in settings.
+        assert!(!refused(StatusCode::UNAUTHORIZED, true));
+        // Everything else is an ordinary bad day for the API.
+        assert!(!refused(StatusCode::TOO_MANY_REQUESTS, false));
+        assert!(!refused(StatusCode::INTERNAL_SERVER_ERROR, false));
     }
 }

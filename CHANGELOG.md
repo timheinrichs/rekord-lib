@@ -7,6 +7,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/)
 (`MAJOR.MINOR.PATCH`). As long as the version is at `0.x`, MINOR bumps may
 contain incompatible changes.
 
+## [Unreleased]
+
+### Changed
+- **Discogs suggestions no longer need an account.** Genre, year, label and
+  country now come back on a fresh install: Discogs answers anonymous searches,
+  at 25 requests per minute instead of 60. Credentials are optional and buy the
+  higher limit, nothing else.
+- **A personal access token is the new way in.** One string from
+  `discogs.com/settings/developers`, instead of registering a Discogs
+  application. Consumer key + secret still work and stay reachable in Settings
+  for anyone who already has a pair — one credential is stored at a time.
+
+### Security
+- **The Discogs consumer key is no longer shown, or sent to the frontend.**
+  Settings used to print it next to "Stored in the Keychain", which put it on
+  every screenshot of that screen; `discogs_credentials` returned it to make
+  that possible. It now answers only which *form* of credential is stored and
+  when it was saved. A stored key is unaffected — it stays in the Keychain and
+  keeps working.
+
+### Fixed
+- The User-Agent sent to MusicBrainz, Discogs and the Cover Art Archive said
+  `rekord-lib/0.1.0` on every version. It now carries the real one.
+
 ## [0.8.1] - 2026-08-26
 
 **Severity:** critical

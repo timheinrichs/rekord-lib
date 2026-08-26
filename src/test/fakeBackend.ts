@@ -76,8 +76,14 @@ export interface FakeState {
   /**
    * The Keychain, which is not the store: the credentials moved out of
    * `rekord-lib.json`, and a test that puts them back there proves nothing.
+   * Either form, one at a time, as the real Keychain holds them.
    */
-  discogs: { key: string; secret: string } | null;
+  discogs:
+    | { kind: "token"; token: string }
+    | { kind: "app"; key: string; secret: string }
+    | null;
+  /** When the fake Keychain took the credential, in Unix milliseconds. */
+  discogsSavedAt: number | null;
   /** Playlists, and their contents in order — the two tables, as the app sees them. */
   playlists: { id: number; name: string; created_ms: number; updated_ms: number }[];
   playlistContents: Record<number, string[]>;
@@ -100,6 +106,13 @@ export interface FakeState {
 
 const DB_UNAVAILABLE = "the library database is unavailable";
 
+/**
+ * When the fake Keychain says a credential was stored. Fixed rather than
+ * `Date.now()`: a test that asserts on the date must not depend on the day it
+ * runs. 2026-07-21, the day the real app registration was made.
+ */
+const SAVED_AT = Date.UTC(2026, 6, 21, 12, 0, 0);
+
 function defaults(): FakeState {
   return {
     files: [],
@@ -112,6 +125,7 @@ function defaults(): FakeState {
     account: null,
     collection: [],
     discogs: null,
+    discogsSavedAt: null,
     playlists: [],
     playlistContents: {},
     covers: {},
@@ -286,18 +300,31 @@ export function installFakeBackend(
       return null;
     },
     // The Discogs credentials live in the Keychain, so the fake keeps them in
-    // one place too — and, like the real thing, never hands the secret back.
+    // one place too — and, like the real thing, hands back neither half: only
+    // which form is stored and since when.
     discogs_credentials: () => ({
       stored: !!state.discogs,
       unavailable: false,
-      key: state.discogs?.key ?? null,
+      kind: state.discogs?.kind ?? null,
+      saved_at: state.discogs ? state.discogsSavedAt : null,
     }),
-    set_discogs_credentials: (args) => {
-      state.discogs = { key: args.key as string, secret: args.secret as string };
+    set_discogs_token: (args) => {
+      state.discogs = { kind: "token", token: args.token as string };
+      state.discogsSavedAt = SAVED_AT;
+      return null;
+    },
+    set_discogs_app_credentials: (args) => {
+      state.discogs = {
+        kind: "app",
+        key: args.key as string,
+        secret: args.secret as string,
+      };
+      state.discogsSavedAt = SAVED_AT;
       return null;
     },
     clear_discogs_credentials: () => {
       state.discogs = null;
+      state.discogsSavedAt = null;
       return null;
     },
     library_relocate: (): RelocateResult => ({ moved: state.tracks.length, skipped: 0 }),
@@ -333,6 +360,10 @@ export function installFakeBackend(
     cancel_dedupe: () => null,
 
     // --- metadata, undo ---
+    // Chips regardless of `state.discogs`, because that is the backend's rule:
+    // Discogs answers anonymous searches, and a stored credential only raises
+    // the rate limit. Gating these on a credential would make the fake model
+    // the app as it was before 0.9.0.
     suggest_metadata: (args): MetadataSuggestions => {
       const path = args.path as string;
       const current = byPath(path)?.metadata ?? makeMetadata();
@@ -341,7 +372,12 @@ export function installFakeBackend(
         current,
         filename_guess: current,
         candidates: [],
-        field_suggestions: { genres: [], years: [], labels: [], countries: [] },
+        field_suggestions: {
+          genres: ["Deep House"],
+          years: [],
+          labels: [],
+          countries: [],
+        },
       };
     },
     cover_preview: () => "data:image/jpeg;base64,",

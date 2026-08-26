@@ -46,7 +46,7 @@ beforeEach(() => {
       }),
     ],
     store: { settings: { library_dir: LIBRARY } },
-    discogs: { key: "key-123", secret: "secret-456" },
+    discogs: { kind: "app", key: "key-123", secret: "secret-456" },
   });
 });
 
@@ -89,6 +89,34 @@ describe("editing metadata", () => {
     // A secret that travels on every suggestion request is a secret the
     // frontend holds — this is the test that fails if it comes back.
     expect(args).toEqual({ path: TRACK });
+  });
+
+  it("suggests without a credential, because Discogs allows it", async () => {
+    // The app searches Discogs anonymously when nothing is stored — a token
+    // only raises the rate limit. Before this, no credential meant no chips,
+    // and every new user had to register a Discogs application first.
+    fake.restore();
+    fake = installFakeBackend({
+      files: [TRACK],
+      tracks: [
+        makeTrack({
+          path: TRACK,
+          file_name: "no-tags.aiff",
+          metadata: makeMetadata({ title: "Before", artist: "Artist" }),
+          metadata_incomplete: true,
+        }),
+      ],
+      store: { settings: { library_dir: LIBRARY } },
+      discogs: null,
+    });
+    const { container } = render(<App />);
+    await openEditor(container);
+
+    // Not just that the command was called — the chip has to be on screen,
+    // which is what a user without a Discogs account gets out of this.
+    expect(
+      await overlay().findByRole("button", { name: "Deep House" }),
+    ).toBeInTheDocument();
   });
 
   it("records the edit and writes it, in that order", async () => {

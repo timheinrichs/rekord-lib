@@ -374,25 +374,39 @@ export function setPlaylistPaths(id: number, paths: string[]): Promise<void> {
   return invoke("playlist_set", { id, paths });
 }
 
-/** Whether Discogs credentials are stored, and whether the Keychain answered. */
+/**
+ * Whether a Discogs credential is stored, and whether the Keychain answered.
+ *
+ * No part of the credential comes back — not even the consumer key, which used
+ * to travel here on the grounds that it is not the secret half. `kind` and
+ * `saved_at` answer the only question settings actually has: which one is in
+ * there.
+ */
 export interface DiscogsStatus {
   stored: boolean;
   /** The Keychain could not be used — see `SettingsView` for what that means. */
   unavailable: boolean;
-  /** The consumer key. The secret half is never returned. */
-  key: string | null;
+  /** Which form is stored: a personal access token, or an app's key + secret. */
+  kind: "token" | "app" | null;
+  /** When it was stored, in Unix milliseconds. */
+  saved_at: number | null;
 }
 
 export function discogsCredentials(): Promise<DiscogsStatus> {
   return invoke<DiscogsStatus>("discogs_credentials");
 }
 
-/** Stores the Discogs consumer key and secret in the Keychain. */
-export function setDiscogsCredentials(
+/** Stores a Discogs personal access token in the Keychain. */
+export function setDiscogsToken(token: string): Promise<void> {
+  return invoke("set_discogs_token", { token });
+}
+
+/** Stores a registered Discogs application's consumer key and secret. */
+export function setDiscogsAppCredentials(
   key: string,
   secret: string,
 ): Promise<void> {
-  return invoke("set_discogs_credentials", { key, secret });
+  return invoke("set_discogs_app_credentials", { key, secret });
 }
 
 /** Removes the stored Discogs credentials. */

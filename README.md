@@ -40,9 +40,10 @@ track of, without uploading anything anywhere.
   reject: resampling above 48 kHz down to 44.1 kHz, uncompressed PCM instead of
   AIFF-C, 16- or 24-bit. FLAC/ALAC are flagged as CDJ-3000/NXS2-only. External
   files can be dragged in.
-- **Metadata editor** with suggestions from the filename, MusicBrainz and —
-  once an API key is configured (kept in the macOS Keychain) — Discogs,
-  required-field checks, and bulk edit across a selection.
+- **Metadata editor** with suggestions from the filename, MusicBrainz and
+  Discogs — no account needed; an optional Discogs token (kept in the macOS
+  Keychain) only raises the rate limit — required-field checks, and bulk edit
+  across a selection.
 - **Playlists** as an explicit order, and **"Export for Rekordbox"** — a
   `rekordbox.xml` with the whole library, the playlists, and each track's tempo,
   key and beat grid, imported in one step.

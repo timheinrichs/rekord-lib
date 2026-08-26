@@ -159,7 +159,8 @@ dismissals are a separate store rather than a flag on a group.
 | --- | --- | --- | --- |
 | `suggest_metadata` | `path` | `AppResult<MetadataSuggestions>` | — |
 | `discogs_credentials` | — | `DiscogsStatus` | — |
-| `set_discogs_credentials` | `key`, `secret` | `AppResult<()>` | — |
+| `set_discogs_token` | `token` | `AppResult<()>` | — |
+| `set_discogs_app_credentials` | `key`, `secret` | `AppResult<()>` | — |
 | `clear_discogs_credentials` | — | `AppResult<()>` | — |
 | `cover_preview` | `source`, `cover` | `AppResult<string \| null>` — a `data:` URL | — |
 | `cover_thumbnail` | `path` | `AppResult<string \| null>` — a `data:` URL | — |
@@ -168,10 +169,17 @@ dismissals are a separate store rather than a flag on a group.
 | `undo_last` | — | `AppResult<WriteMetadataResult[]>` | `scan://skipped` |
 
 `suggest_metadata` takes no credentials: they live in the macOS Keychain and the
-backend reads them itself, so a secret never travels with a request.
-`discogs_credentials` answers `{ stored, unavailable, key }` — never the secret
-half; `unavailable` means the Keychain could not be asked, which is a different
-thing from nothing being stored and is what settings puts on screen.
+backend reads them itself, so nothing secret travels with a request. They are
+also optional — Discogs answers anonymous searches at a lower rate limit, so a
+missing credential costs throughput, not suggestions.
+
+`discogs_credentials` answers `{ stored, unavailable, kind, saved_at }` and
+**no part of the credential**: `kind` is `"token"` or `"app"`, `saved_at` is Unix
+milliseconds. It used to return the consumer key, which is how that key ended up
+on screenshots of the settings screen. `unavailable` means the Keychain could not
+be asked, which is a different thing from nothing being stored and is what
+settings puts on screen. The two setters store one form each and clear the other
+first, so exactly one credential exists at a time.
 
 `write_metadata` reports per item because a bulk edit over a selection must not
 lose the twelve files that worked because the thirteenth was read-only. It also
