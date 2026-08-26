@@ -142,10 +142,10 @@ it("keeps the splash up instead of showing an empty table", async () => {
     expect(await screen.findByText("Analyzing 1/3")).toBeInTheDocument();
   });
 
-  it("says what the header spinner is doing", async () => {
-    // The indicator appears unprompted — a file dropped into the folder starts
-    // it — so a bare spinner between two buttons belongs to neither of them as
-    // far as a reader can tell.
+  it("keeps the header still while the library syncs", async () => {
+    // The sync used to announce itself here. It starts unprompted and is over
+    // in a moment, so what the label mostly did was appear between two buttons
+    // and move them out from under the cursor mid-click.
     const listed = fake.hold("list_audio_files");
     fake.state.store.settings = { library_dir: LIBRARY };
     fake.state.tracks = [
@@ -154,9 +154,10 @@ it("keeps the splash up instead of showing an empty table", async () => {
 
     const { container } = render(<App />);
 
-    await waitFor(() =>
-      expect(libraryView(container).getByText("Updating library…")).toBeInTheDocument(),
-    );
+    await waitFor(() => expect(fake.called("list_audio_files")).toBe(true));
+    expect(
+      libraryView(container).queryByText(/Updating library/),
+    ).not.toBeInTheDocument();
 
     listed();
   });

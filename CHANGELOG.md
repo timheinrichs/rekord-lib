@@ -14,6 +14,11 @@ contain incompatible changes.
   country now come back on a fresh install: Discogs answers anonymous searches,
   at 25 requests per minute instead of 60. Credentials are optional and buy the
   higher limit, nothing else.
+- **The header stays still while the library syncs.** The "Updating library…"
+  label appeared between the scan and duplicates buttons whenever the folder was
+  reconciled — including during a scan — and moved them out from under the
+  cursor. The sync starts unprompted and is over in a moment; it no longer says
+  so. The boot splash still names that phase, where there is room for it.
 - **A personal access token is the new way in.** One string from
   `discogs.com/settings/developers`, instead of registering a Discogs
   application. Consumer key + secret still work and stay reachable in Settings

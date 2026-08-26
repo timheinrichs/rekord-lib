@@ -247,7 +247,10 @@ export default function LibraryView({
   // Stage + counters of the running scan; the BPM pass can take minutes, so it
   // needs more than a spinner.
   const [scanProgress, setScanProgress] = useState<ScanProgress | null>(null);
-  // Incremental (auto) sync in progress — drives the inline spinner.
+  // Incremental (auto) sync in progress. Not shown in the header — it starts
+  // unprompted and finishes in a moment, and a label appearing between two
+  // buttons moved them under the cursor. What it still does is hold the boot
+  // splash up across the gap between the sync and the scan it starts.
   const [syncing, setSyncing] = useState(false);
   // False until the cached library has been read. Distinct from `loading`
   // (which means a scan is running) and from an empty library: without it the
@@ -1762,22 +1765,6 @@ export default function LibraryView({
           </>
         )}
       </button>
-      {/* The incremental sync, left of the Duplicates button.
-          Labelled, not a bare spinner. It appears unprompted — a file dropped
-          into the folder in Finder starts it — so there is no action for a user
-          to attribute it to, and an unattributable spinner between two buttons
-          reads as belonging to neither. Same treatment the scan button and the
-          pending-tags button already give their own status: icon plus what it
-          is, in muted text. */}
-      {syncing && !loading && (
-        <span
-          className="inline-flex items-center gap-1.5 px-1 text-sm text-fg-muted"
-          title="Reconciling the library folder with what is stored"
-        >
-          <SpinnerIcon />
-          Updating library…
-        </span>
-      )}
       {/* Purely a way into the result — the search itself is a scan phase now,
           so there is nothing to start here and nothing to show when the library
           is clean. */}

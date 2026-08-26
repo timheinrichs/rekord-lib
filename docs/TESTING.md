@@ -203,7 +203,7 @@ costs less than a short one.
 | --- | --- |
 | A first fill goes through the scan job, so it can be watched and held | `firstRun.e2e.test.tsx` · "populates the library through the scan job, so the run can be watched and held" |
 | The splash stays up instead of showing an empty table | … · "keeps the splash up instead of showing an empty table" |
-| The header spinner says what it is doing | … · "says what the header spinner is doing" |
+| The header does not move while the library syncs | … · "keeps the header still while the library syncs" |
 | A missing database does not take the boot down | … · "survives a library database that failed to open, and says so" |
 | The button sweeps the folder; the backlog run does not | `scan.e2e.test.tsx` · "sweeps the whole folder rather than a list of paths" |
 | A patch waits for the batching window, then lands | … · "holds a patch for the batching window, then applies it" |
