@@ -169,7 +169,7 @@ comes from a native panel the user drove.
 | … · `edit_overlay`, `EditOverlay` | the one place the backend interprets a pending edit, and how leniently |
 | `src/lib/playlists.ts` | every ordering rule, pure |
 | `src/lib/usePlaylists.ts` | the state, and the optimistic-then-reconciled write |
-| `src/components/LibraryView.tsx` | the grouping, the drag, the row actions |
+| `src/components/LibraryView.tsx` | the grouping, the drag, the row actions — move up, move down, remove; **no delete**, because in a playlist row "−" and a trash can one step apart differ by an icon and mean losing a place in a set versus losing the file |
 | `src/components/PlaylistMenu.tsx`, `AddToPlaylist.tsx` | rename/delete, and getting tracks in |
 
 ## Verification links
@@ -184,6 +184,7 @@ comes from a native panel the user drove.
 | A replacing conversion carries them too, instead of emptying the playlist | `db/mod.rs` · `a_replacing_conversion_carries_the_row_and_its_playlists`; `convert.e2e.test.tsx` · "keeps a converted track in the playlist it was in" |
 | A row is numbered by the playlist, not by the filter | `playlists.test.ts` · "numbers a row by the playlist, not by what the filter left over", "counts a path the library no longer holds, and does not draw it" |
 | A track in two playlists is two rows | `playlists.e2e.test.tsx` · "draws a track that is in two playlists as two rows" |
+| A playlist row removes, and cannot delete the file | `playlists.e2e.test.tsx` · "takes a track out of the playlist, but not off the disk" |
 | A refused write puts the row back | `playlists.e2e.test.tsx` · "puts a row back where the database has it when a write fails" |
 | Step and drag are the same move | `playlists.test.ts` · "agrees with the drag, which is the point of sharing its rule" |
 | A move that cannot happen writes nothing | `playlists.test.ts` · "moves the last track down to nowhere, and the first up to nowhere" |

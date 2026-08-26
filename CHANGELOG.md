@@ -14,6 +14,11 @@ contain incompatible changes.
   country now come back on a fresh install: Discogs answers anonymous searches,
   at 25 requests per minute instead of 60. Credentials are optional and buy the
   higher limit, nothing else.
+- **A playlist row can no longer delete the file.** Its actions were move up,
+  move down, remove from the playlist, edit — and, one icon further right, move
+  to the trash. Two destructive buttons a few pixels apart, one of which costs a
+  place in a set and the other the file. Removing is what a playlist row does
+  now; deleting stays in the library views.
 - **The header stays still while the library syncs.** The "Updating library…"
   label appeared between the scan and duplicates buttons whenever the folder was
   reconciled — including during a scan — and moved them out from under the

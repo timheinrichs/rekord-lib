@@ -138,6 +138,39 @@ describe("playlists", () => {
     expect(beta!.textContent).toContain("1");
   });
 
+  it("takes a track out of the playlist, but not off the disk", async () => {
+    // Two destructive buttons a few pixels apart, telling "remove from this
+    // playlist" from "move the file to the trash" by their icon alone. A
+    // playlist row offers the first one only; deleting a file is what the
+    // library views are for.
+    const user = userEvent.setup();
+    fake.state.playlists = [
+      { id: 1, name: "Warmup", created_ms: 1, updated_ms: 1 },
+    ];
+    fake.state.playlistContents = { 1: [A] };
+
+    const { container } = render(<App />);
+    const view = await ready(container);
+
+    await user.click(view.getByRole("button", { name: "Playlists" }));
+    await waitFor(() =>
+      expect(view.getAllByText("Warmup").length).toBeGreaterThan(0),
+    );
+    await user.click(view.getAllByText("Warmup")[0]);
+
+    const row = view
+      .getAllByRole("row")
+      .find((r) => within(r).queryByTitle(A) && within(r).queryByLabelText("Remove from playlist"));
+    expect(row).toBeTruthy();
+    expect(within(row!).queryByLabelText("Delete track")).toBeNull();
+
+    // And the one that is there does what it says: the playlist changes, the
+    // file is not touched.
+    await user.click(within(row!).getByLabelText("Remove from playlist"));
+    await waitFor(() => expect(fake.called("playlist_set")).toBe(true));
+    expect(fake.called("delete_files")).toBe(false);
+  });
+
   it("draws a track that is in two playlists as two rows", async () => {
     // One flat array of rows feeds one tbody, so both groups push a row for the
     // same track. Keyed by the track alone they are the same key: React warns

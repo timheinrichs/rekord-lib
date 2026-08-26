@@ -2372,20 +2372,28 @@ export default function LibraryView({
                         >
                           <EditIcon />
                         </button>
-                        <button
-                          onClick={() =>
-                            void confirmAndDelete(
-                              [t.path],
-                              `Move “${md.title || t.file_name}” to the trash?`,
-                            )
-                          }
-                          disabled={converting}
-                          className="flex h-8 w-8 items-center justify-center rounded-md text-fg-subtle enabled:hover:bg-surface enabled:hover:text-danger-500 disabled:text-fg-disabled"
-                          title="Delete (move to trash)"
-                          aria-label="Delete track"
-                        >
-                          <TrashIcon />
-                        </button>
+                        {/* Not in a playlist row. There, "−" already means
+                            remove, and a second, near-identical destructive
+                            button one step further right means trash the file —
+                            a difference of one icon between taking a track out
+                            of a set and taking it off the disk. The library
+                            views are where a file gets deleted. */}
+                        {!inPlaylist && (
+                          <button
+                            onClick={() =>
+                              void confirmAndDelete(
+                                [t.path],
+                                `Move “${md.title || t.file_name}” to the trash?`,
+                              )
+                            }
+                            disabled={converting}
+                            className="flex h-8 w-8 items-center justify-center rounded-md text-fg-subtle enabled:hover:bg-surface enabled:hover:text-danger-500 disabled:text-fg-disabled"
+                            title="Delete (move to trash)"
+                            aria-label="Delete track"
+                          >
+                            <TrashIcon />
+                          </button>
+                        )}
                       </div>
                         </td>
                       );
