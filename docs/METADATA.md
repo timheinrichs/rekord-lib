@@ -236,7 +236,7 @@ anonymous limit.
 | `src/lib/coverCache.ts` · `createCoverCache`, `forget` | the thumbnail cache and the rule that invalidates it |
 | `src/components/CoverThumb.tsx` · `forgetCoverThumbs` | the row's thumbnail, and what the write path calls to drop it |
 | `src-tauri/src/metadata/write.rs` · `prepare_cover`, `mime_of`, `finalize_cover` | re-encode, embed verbatim, or skip an encode that would change nothing |
-| `src-tauri/src/metadata/artwork.rs` · `already_cdj_shaped`, `jpeg_size` | whether the bytes are already what the encoder would produce |
+| `src-tauri/src/metadata/artwork.rs` · `already_cdj_shaped`, `jpeg_frame` | whether the bytes are already what the encoder would produce |
 | `src/lib/writeResults.ts` | folding write results back into the list |
 
 ## Verification links

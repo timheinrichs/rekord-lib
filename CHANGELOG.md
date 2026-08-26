@@ -7,7 +7,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/)
 (`MAJOR.MINOR.PATCH`). As long as the version is at `0.x`, MINOR bumps may
 contain incompatible changes.
 
-## [Unreleased]
+## [0.9.0] - 2026-08-26
 
 ### Added
 - **A playlist can be edited as a list.** *Edit…* on a playlist's ⋮ menu opens
@@ -46,7 +46,9 @@ contain incompatible changes.
   every screenshot of that screen; `discogs_credentials` returned it to make
   that possible. It now answers only which *form* of credential is stored and
   when it was saved. A stored key is unaffected — it stays in the Keychain and
-  keeps working.
+  keeps working. If you have shared a screenshot of that screen, regenerate the
+  pair at `discogs.com/settings/developers`: updating hides the key from here
+  on, it cannot un-share one that already left.
 
 ### Fixed
 - The User-Agent sent to MusicBrainz, Discogs and the Cover Art Archive said
@@ -847,6 +849,7 @@ tool for a CDJ/XDJ- and Rekordbox-compatible library.
   ffmpeg/ffprobe sidecar, first analysis/conversion pipeline.
 
 [Unreleased]: https://github.com/timheinrichs/rekord-lib/compare/v0.8.1...HEAD
+[0.9.0]: https://github.com/timheinrichs/rekord-lib/compare/v0.8.1...v0.9.0
 [0.8.1]: https://github.com/timheinrichs/rekord-lib/compare/v0.8.0...v0.8.1
 [0.8.0]: https://github.com/timheinrichs/rekord-lib/compare/v0.7.5...v0.8.0
 [0.7.5]: https://github.com/timheinrichs/rekord-lib/compare/v0.7.4...v0.7.5
