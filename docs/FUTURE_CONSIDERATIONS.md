@@ -30,6 +30,7 @@ week or more, **XL** ≈ open-ended.
 | [G](#g--reach-and-test-depth) | Reach and test depth |
 | [H](#h--long-term-not-committed) | Long-term, not committed |
 | [I](#i--interface-and-playback) | Interface and playback — what the app looks like and how it plays |
+| [J](#j--metadata-sources) | Metadata sources — what the databases are asked for and what comes back |
 
 ---
 
@@ -1495,6 +1496,60 @@ events by design, and a toast per skipped track in a run of two hundred is a
 wall, not feedback.
 
 *Size: S · depends on C3, which shipped*
+
+---
+
+## J — Metadata sources
+
+What the app asks MusicBrainz and Discogs for, and how much of the answer it
+actually uses. Distinct from the tiers above because the question is neither
+analysis nor interface: the data exists in a remote database and the only
+decision is which parts of it we are willing to put in front of the user.
+
+### J1 · Fill more than four fields from Discogs
+
+**What** — `discogs::aggregate` reads four keys out of a search result and turns
+them into chips: `style`/`genre`, `year`, `label`, `country`. A search result
+carries more that maps onto fields the editor already has:
+
+- `catno` → **catalog number**. The field is in `TrackMetadata`, in the editor
+  form and in the tag writer, and it is the only one of the ten with no
+  suggestion source at all — neither `parse_filename` nor `MbCandidate`
+  produces one, so today it is hand-typed or empty.
+- the result's `title`, which is `"Artist - Release Title"` → **album** and
+  **album artist**.
+- the release's tracklist → **title** and **track number** of the actual track.
+  This is the only one that needs a second request (`/releases/{id}`); search
+  results describe the release, not its tracks.
+- `cover_image` → the **cover**, as a fifth `CoverInput` case next to the
+  MusicBrainz one.
+
+**Why** — the four fields we fill are the four *optional* ones. The four that
+`is_complete` requires — title, artist, album, album artist — are served only by
+the filename guess and MusicBrainz, and Discogs is where an underground or
+Bandcamp release is more likely to be documented at all. A track that stays
+marked *metadata incomplete* stays that way for fields Discogs could answer.
+
+**The decision that comes before the code.** Chips are aggregated across up to
+25 releases, so a genre from one and a year from another can be combined into a
+release that never existed. For the optional fields that is deliberate and
+useful — a vocabulary to pick from. For album, album artist and catalog number
+it is not: those three are only right *together*, and a per-field chip quietly
+invites a mismatch that reads as authoritative. So the honest shape is probably
+not more chip rows but a **Discogs candidate** alongside `MbCandidate` — one
+release, applied as a set, with the aggregate kept for the fields where mixing
+does no harm. Whichever way that goes, it settles how the tracklist lookup and
+the cover attach themselves, because both hang off a chosen release rather than
+off a search.
+
+**What it costs.** The catalog number alone is a chip list, a `SUGGESTION_KEY`
+entry and a test — small enough to do on its own and worth having either way.
+The candidate model is the real item. The cover is separate again: remote bytes
+are untrusted input, so it goes through `metadata::artwork::process_cover` like
+every other cover and through `/security-review` before it ships.
+
+*Size: S for the catalog number · M for the candidate model · M for the cover,
+and that one needs `/security-review`*
 
 ---
 
