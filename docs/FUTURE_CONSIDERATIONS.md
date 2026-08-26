@@ -1517,6 +1517,51 @@ wall, not feedback.
 
 *Size: S · depends on C3, which shipped*
 
+### I8 · Playlists are their own view, not a grouping
+
+**What** — the top-level navigation becomes **Library · Playlists · Bandcamp**.
+`MainView` (`App.tsx`, `HeaderNav.tsx`) gains a third value, and `Playlists`
+leaves the grouping switch (`GROUPINGS` in `lib/grouping.ts`), which goes back
+to being four ways of folding one list.
+
+**Why** — asked for directly, and the switch already admits the mismatch in its
+own comment: *"unlike the three before it this one does not fold the library
+into a different shape — it shows an order the user made."* Flat, Album, Label
+and Folder are all derived from the tags of the same rows; a playlist is
+authored data with its own table, its own commands, its own dialog (I3) and its
+own export. Sitting in the switch, it inherits behaviour that does not fit it:
+
+- **The search and filter apply to it.** A playlist that says "12 tracks" draws
+  9 while a filter is on, which is what forced `positions` to be taken from the
+  stored list and what the I3 dialog exists to make reconcilable.
+- **The sort headers are inert there** — the one grouping whose rows must not be
+  sorted, in a table whose headers all invite it.
+- **"Unsorted" exists because a *grouping* must account for every row.** A view
+  has no such duty; there, "tracks in no playlist" would be a feature if it is
+  kept, not an obligation.
+
+**What it forces a decision on** — the tab is an afternoon; these are the work:
+
+- **Is the table still the body of the view?** Cheapest is the same virtualised
+  table with the grouping locked to `playlist` — and then the sort headers still
+  have to become inert or disappear, rather than being quietly ignored.
+- **Group heads, or a list beside one open playlist?** The second reads more
+  like what people expect from a playlist view, and it would absorb both I3's
+  dialog and much of I5's picker — but it is a second layout, not a locked
+  grouping.
+- **Where does "Export for Rekordbox" belong?** It writes the whole library
+  *plus* every playlist and today sits in the library header. Either that is
+  already the wrong home for it, or it stays there and the playlists view has no
+  export of its own — worth settling explicitly rather than by whichever screen
+  gets built first.
+- **What does the view show with nothing in it?** The grouping never needed an
+  empty state, because Unsorted was always there.
+
+*Size: M as a third tab over a locked grouping · L if the playlists move into a
+sidebar and the table's sort/filter behaviour is reworked around them. Nothing
+blocks it; I3 shipped, and its dialog either stays as the per-playlist editor or
+is absorbed by the view.*
+
 ---
 
 ## J — Metadata sources
