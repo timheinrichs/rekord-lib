@@ -16,6 +16,27 @@ export interface PlayerTrack {
   path: string;
   title: string;
   artist: string;
+  album: string;
+}
+
+/**
+ * The second line of the player bar: who, and off what.
+ *
+ * The album is what tells two versions of the same track apart, which is the
+ * question a library full of near-duplicates asks while one of them is playing.
+ * It only earns its place when it is there — an empty value would be a
+ * separator followed by nothing.
+ */
+export function subtitleParts(track: PlayerTrack): {
+  artist: string;
+  album: string | null;
+} {
+  return {
+    // An em dash rather than an empty line: the row keeps its height, and a
+    // missing artist reads as missing rather than as a rendering fault.
+    artist: track.artist.trim() || "—",
+    album: track.album.trim() || null,
+  };
 }
 
 /** Clamps an index into [0, len-1] (0 for an empty queue). */

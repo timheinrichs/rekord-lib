@@ -1381,40 +1381,54 @@ waveform, which the cache rules require to be deliberate.
 
 *Size: M · touches B6's stored waveform*
 
-### I3 · Edit a playlist in a dialog
+### I3 · Edit a playlist in a dialog — **done**
 
-**What** — one overlay that reorders, renames and removes, instead of the
-per-action menu entries A1 shipped.
+**What shipped** — *Edit…* on the group head's menu opens
+`src/components/PlaylistEditor.tsx`: the playlist as its own list, with rename
+in the header, ↑/↓ and remove per row, and delete-with-confirm in the footer.
 
-**Why** — A1 built the right model for this: membership is explicit position
-rows rather than an implied query order, so reordering is a cheap write and not
-a rebuild. The UI is what has not caught up — `PlaylistMenu` and
-`AddToPlaylist` cover create, rename, delete and add, and there is nowhere to
-see a playlist as a list and move a track within it.
+It stayed a second view rather than a second mechanism, as specified: every
+button calls the same `usePlaylists` operation the row actions call, which
+computes the new order with the pure functions in `lib/playlists.ts` and writes
+it whole.
 
-The reason this is small: the ordering logic is already written, pure and
-covered — `movePlaylistItem`, `movePlaylistItems`, `stepPlaylistItem`,
-`addToPlaylist` and `removeFromPlaylist` in `src/lib/playlists.ts`, 29 tests. An
-overlay is a second view onto those same functions, not a new mechanism.
+**What it turned out to be *for*.** Two things a grouping inside a filtered,
+sorted table cannot do — and the second was not in this entry:
 
-Which is also what it must not become: a second place where playlist state
-lives. The dialog edits through the same commands and the same pure helpers, as
-A1 specified.
+- The whole playlist at once. The table shows what the filter left over, so a
+  move is relative to rows that may not be there.
+- The entries the loaded library has no row for. `buildPlaylistGroups` skips
+  them, so a playlist that says "12 tracks" shows 9 with nothing to explain the
+  difference. `playlistRows` keeps them, by file name.
 
-*Size: S · depends on A1, which shipped*
+  The first version of this called them deleted files and struck them through.
+  `/code-review` caught it: `playlist_items.path` cascades on
+  `tracks(path)`, so a deleted track takes its memberships with it and that
+  state cannot persist. What the dialog actually catches is a track in another
+  **library folder** — `all_playlist_paths` is global, `load_tracks` is per
+  folder — which is intact, and which a strike-through next to a remove button
+  would have invited throwing away.
 
-### I4 · The player says which album
+*Size: S · depended on A1, which shipped*
 
-**What** — album name in the player bar next to title and artist.
+### I4 · The player says which album — **done**
 
-**Why** — asked for directly. It is also the field that tells two versions of
-the same track apart, which is exactly what a library full of near-duplicates
-needs while one of them is playing.
+**What shipped** — the bar's second line is now `artist · album`, from the
+queue entry (`PlayerTrack.album`, filled from the pending edit's metadata like
+every other value the player shows). `subtitleParts` decides what is on it: an
+album that is empty is dropped along with its separator, and a missing artist
+becomes an em dash rather than an empty line.
 
-The work is not the field, it is the width. The bar already runs `MarqueeText`
-over the title because the space is not there, so adding a third value is a
-decision about what gets truncated first at a narrow window — and that decision
-is worth making once, in the styleguide's terms, rather than per field.
+**The width, which was the actual work.** The entry called it right — the field
+was nothing, the decision was what gets truncated first. It is now a styleguide
+rule (§5) rather than a choice made in this one bar: **several values on one
+line truncate from the right**, because they are written in falling order of
+what they answer. In flexbox terms that is `min-w-0 truncate` on both and a
+large `shrink-[999]` on the later one, not a fixed width — a fixed width
+truncates a short value that would have fit.
+
+One correction to the entry: the bar never ran `MarqueeText`, it truncates. The
+marquee is in the table rows.
 
 *Size: S*
 

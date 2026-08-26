@@ -89,6 +89,32 @@ keeps its shape.
 - A path with no visible track is skipped rather than drawn empty: it may be
   filtered out, or the file may be gone and the row already pruned.
 
+**And a dialog, for what a grouping cannot do.** *Edit…* on the group head's
+menu opens the playlist as a list of its own: rename, reorder, remove, delete.
+It is not a second mechanism — every button calls the same `usePlaylists`
+operation the row actions do, which computes the new list with the same pure
+functions and writes it whole. It exists for the two things the table cannot
+answer:
+
+- **The whole playlist, in its own order.** The table shows what the filter left
+  over, so "move this to the top" is a move relative to rows that may not be
+  there. The dialog has no filter and no sort.
+- **The entries the loaded library has no row for.** `buildPlaylistGroups`
+  skips them — correctly, since a filtered list must not sprout empty rows —
+  which leaves a playlist that says "12 tracks" showing 9, with nothing to
+  reconcile the difference against. `playlistRows` keeps them, by their file
+  name.
+
+  What such an entry is, precisely, is worth being exact about, because the
+  obvious answer is wrong: **not a deleted file.** `playlist_items.path`
+  references `tracks(path)` `ON DELETE CASCADE`, so a track that leaves the
+  library takes its memberships with it, and `set_playlist_paths` drops a path
+  the library does not hold rather than storing one. What remains is the case
+  the two queries disagree on — `all_playlist_paths` reads every membership,
+  `load_tracks` reads one `library_dir` — a track in **another library folder**,
+  which is what switching folders without relocating leaves behind. Those files
+  are intact, so the row says where they are instead of calling them missing.
+
 Every change is optimistic and then reconciled — the new order is on screen
 before the write returns, because a drag that snaps back reads as a failed drag,
 and the re-read afterwards is what makes the view agree with the database again,
@@ -170,7 +196,8 @@ comes from a native panel the user drove.
 | `src/lib/playlists.ts` | every ordering rule, pure |
 | `src/lib/usePlaylists.ts` | the state, and the optimistic-then-reconciled write |
 | `src/components/LibraryView.tsx` | the grouping, the drag, the row actions — move up, move down, remove; **no delete**, because in a playlist row "−" and a trash can one step apart differ by an icon and mean losing a place in a set versus losing the file |
-| `src/components/PlaylistMenu.tsx`, `AddToPlaylist.tsx` | rename/delete, and getting tracks in |
+| `src/components/PlaylistMenu.tsx`, `AddToPlaylist.tsx` | rename/delete, the way into the editor, and getting tracks in |
+| `src/components/PlaylistEditor.tsx` · with `playlists.ts` · `playlistRows` | the whole playlist as a list — including the entries the grouping skips |
 
 ## Verification links
 
@@ -185,6 +212,9 @@ comes from a native panel the user drove.
 | A row is numbered by the playlist, not by the filter | `playlists.test.ts` · "numbers a row by the playlist, not by what the filter left over", "counts a path the library no longer holds, and does not draw it" |
 | A track in two playlists is two rows | `playlists.e2e.test.tsx` · "draws a track that is in two playlists as two rows" |
 | A playlist row removes, and cannot delete the file | `playlists.e2e.test.tsx` · "takes a track out of the playlist, but not off the disk" |
+| The dialog opens from the menu and writes the order it shows | `playlists.e2e.test.tsx` · "edits a playlist in the dialog, and writes the order it shows" |
+| It lists every stored entry, ends disabled, and keeps an entry from another library folder visible | `PlaylistEditor.test.tsx`; `playlists.test.ts` · `playlistRows` cases |
+| The name field shows the stored name, not a rename that did not happen | `PlaylistEditor.test.tsx` · "shows the stored name, not a rename that did not happen" |
 | A refused write puts the row back | `playlists.e2e.test.tsx` · "puts a row back where the database has it when a write fails" |
 | Step and drag are the same move | `playlists.test.ts` · "agrees with the drag, which is the point of sharing its rule" |
 | A move that cannot happen writes nothing | `playlists.test.ts` · "moves the last track down to nowhere, and the first up to nowhere" |

@@ -138,6 +138,39 @@ describe("playlists", () => {
     expect(beta!.textContent).toContain("1");
   });
 
+  it("edits a playlist in the dialog, and writes the order it shows", async () => {
+    // The dialog is a second view onto the same operations the row actions use,
+    // so what has to hold is the wiring: the menu opens it, the whole stored
+    // playlist is in it — the table can only show what the filter left over —
+    // and a step writes the new order through `playlist_set`.
+    const user = userEvent.setup();
+    fake.state.playlists = [
+      { id: 1, name: "Warmup", created_ms: 1, updated_ms: 1 },
+    ];
+    fake.state.playlistContents = { 1: [A, B] };
+
+    const { container } = render(<App />);
+    const view = await ready(container);
+
+    await user.click(view.getByRole("button", { name: "Playlists" }));
+    await waitFor(() =>
+      expect(view.getAllByText("Warmup").length).toBeGreaterThan(0),
+    );
+    await user.click(view.getByLabelText("Playlist actions"));
+    await user.click(screen.getByRole("button", { name: "Edit…" }));
+
+    // Both entries, not just the ones a filter would have left: the dialog
+    // shows the playlist, not the table.
+    expect(screen.getByLabelText("Playlist name")).toHaveValue("Warmup");
+    expect(screen.getAllByRole("listitem")).toHaveLength(2);
+
+    await user.click(screen.getByLabelText("Move “Beta” up"));
+
+    await waitFor(() => expect(fake.called("playlist_set")).toBe(true));
+    const [set] = fake.argsFor("playlist_set");
+    expect(set).toEqual({ id: 1, paths: [B, A] });
+  });
+
   it("takes a track out of the playlist, but not off the disk", async () => {
     // Two destructive buttons a few pixels apart, telling "remove from this
     // playlist" from "move the file to the trash" by their icon alone. A

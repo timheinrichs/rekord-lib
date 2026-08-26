@@ -9,6 +9,17 @@ contain incompatible changes.
 
 ## [Unreleased]
 
+### Added
+- **A playlist can be edited as a list.** *Edit…* on a playlist's ⋮ menu opens
+  it in its own dialog: rename, reorder, remove, delete. It shows the whole
+  stored playlist rather than what the current filter left over — including
+  entries the loaded library has no row for, which the grouping skips, so a
+  playlist that says "12 tracks" no longer shows 9 with nothing to explain the
+  difference.
+- **The player says which album.** Artist and album share the bar's second
+  line. When the window narrows the album gives way first; an album that is not
+  tagged is left off along with its separator.
+
 ### Changed
 - **Discogs suggestions no longer need an account.** Genre, year, label and
   country now come back on a fresh install: Discogs answers anonymous searches,

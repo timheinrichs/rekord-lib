@@ -243,3 +243,54 @@ export function buildPlaylistGroups(
   });
   return groups;
 }
+
+/** One line in the playlist editor: a stored entry, drawn or not. */
+export interface PlaylistRow {
+  path: string;
+  /** 1-based place in the stored list. */
+  position: number;
+  title: string;
+  artist: string;
+  /**
+   * The loaded library has no track for this path — see `playlistRows` for the
+   * one situation that actually produces it.
+   */
+  outsideLibrary: boolean;
+}
+
+/**
+ * Every entry of a playlist, in order, including the ones the table cannot
+ * draw.
+ *
+ * `buildPlaylistGroups` skips a path with no visible track, and it is right to:
+ * a filtered list must not sprout empty rows. The dialog is the other case —
+ * there is no filter, so an entry that is not drawn is simply gone from view,
+ * and a playlist that says "12 tracks" over 9 rows is a playlist nobody can
+ * reconcile.
+ *
+ * **What such an entry is, precisely.** Not a deleted file:
+ * `playlist_items.path` references `tracks(path)` `ON DELETE CASCADE`, so a
+ * track that leaves the library takes its memberships with it, and
+ * `set_playlist_paths` drops a path the library does not hold rather than
+ * storing it. What is left is the case the two queries disagree on —
+ * `all_playlist_paths` reads every membership, `load_tracks` reads one
+ * `library_dir` — a track belonging to **another library folder**, which is
+ * what a folder switch without a relocate leaves behind. Those files are
+ * intact, which is why the row says so rather than calling them missing, and
+ * why removing one is offered as what it is: taking it out of the playlist.
+ */
+export function playlistRows(
+  paths: string[],
+  known: Map<string, { title: string; artist: string }>,
+): PlaylistRow[] {
+  return paths.map((path, index) => {
+    const track = known.get(path);
+    return {
+      path,
+      position: index + 1,
+      title: track?.title || path.split("/").pop() || path,
+      artist: track?.artist ?? "",
+      outsideLibrary: !track,
+    };
+  });
+}

@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { usePlayer, usePlayerProgress } from "../lib/player";
+import { subtitleParts, usePlayer, usePlayerProgress } from "../lib/player";
 import { coverThumbnail, waveform as fetchWaveform } from "../lib/api";
 import { createWaveformCache } from "../lib/waveformCache";
 import Waveform from "./Waveform";
@@ -74,6 +74,7 @@ export default function PlayerBar() {
   if (!current) return null;
 
   const pct = duration > 0 ? (time / duration) * 100 : 0;
+  const subtitle = subtitleParts(current);
 
   return (
     <div className="fixed inset-x-0 bottom-0 z-50 border-t border-border bg-surface/95 backdrop-blur">
@@ -114,8 +115,21 @@ export default function PlayerBar() {
           </div>
           <div className="min-w-0">
             <div className="truncate text-sm text-fg">{current.title}</div>
-            <div className="truncate text-xs text-fg-muted">
-              {current.artist || "—"}
+            {/* Two values on one line, so one of them has to give way first
+                when the window narrows. The later one does — see the
+                styleguide: the album is the qualifier, the artist is the
+                answer to "who is this". The huge shrink factor is what states
+                that in flexbox's terms. */}
+            <div className="flex min-w-0 items-baseline gap-1.5 text-xs text-fg-muted">
+              <span className="min-w-0 truncate">{subtitle.artist}</span>
+              {subtitle.album && (
+                <>
+                  <span className="shrink-0 text-fg-subtle">·</span>
+                  <span className="min-w-0 shrink-[999] truncate text-fg-subtle">
+                    {subtitle.album}
+                  </span>
+                </>
+              )}
             </div>
           </div>
         </div>

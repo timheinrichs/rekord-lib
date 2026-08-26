@@ -54,3 +54,23 @@ it the right answer: the user's own Discogs collection.
 warnings), then the app itself: Settings shows no key, a token stores and shows
 its date, and a track opened with **nothing** stored still gets Discogs chips.
 `/security-review` before the release, `/code-review` before the commit.
+
+---
+
+## Also in 0.9.0
+
+Three follow-ups from driving the app, all user-facing and therefore part of the
+same MINOR:
+
+- **The header stops moving.** "Updating library…" appeared between the scan and
+  duplicates buttons during a sync and pushed them out from under the cursor.
+  `syncing` still holds the boot splash up; only the label is gone.
+- **A playlist row removes a track, it does not delete it.** Two destructive
+  buttons a few pixels apart, differing by an icon, one costing a place in a set
+  and the other the file. Deleting stays in the library views.
+- **I3 and I4 from `docs/FUTURE_CONSIDERATIONS.md`.** `PlaylistEditor.tsx` is
+  the playlist as its own list — a second view onto `usePlaylists`, not a second
+  mechanism — and it is the only place an entry whose file has left the library
+  can be seen or removed. The player bar carries the album, and what gets
+  truncated first is now a styleguide rule (§5) rather than a decision made in
+  one bar.

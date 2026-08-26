@@ -161,6 +161,16 @@ import '@fontsource/jetbrains-mono/700.css';
   one wins to document order. `src/components/menuPlacement.test.ts` enforces
   both. A menu anchored somewhere other than the header may earn the exception;
   it is argued for in that test, not written silently.
+- **Several values on one line truncate from the right.** A row that carries
+  more than one value — artist and album under the player's title, a format and
+  a sample rate in a cell — gives up the *last* one first as the window
+  narrows, because the values are written in falling order of what they answer:
+  the first says what this is, the ones after it qualify it. In flexbox terms
+  that is a much larger shrink factor on the later value
+  (`min-w-0 truncate` on both, `shrink-[999]` on the one that goes first), not
+  a fixed width on either — a fixed width truncates a short value that would
+  have fit. Where a value must not be cut at all, it is `shrink-0` and
+  something else gives way.
 - **Density:** compact (power-user tool). Tight line height in lists, padding `px-3 py-2` for rows.
 - **Icons:** stroke icons `stroke-width 2`, glyph 18–20 px. Very small decorative icons (16 px) only without a click function.
 - **Window:** dark title bar; if using a custom title bar, `bg-surface` + `border-b border-border`.

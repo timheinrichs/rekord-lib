@@ -5,6 +5,7 @@ import {
   UNSORTED_ID,
   movePlaylistItem,
   movePlaylistItems,
+  playlistRows,
   removeFromPlaylist,
   stepPlaylistItem,
   uniquePlaylistName,
@@ -253,5 +254,43 @@ describe("buildPlaylistGroups", () => {
     const groups = buildPlaylistGroups([], {}, tracks);
     expect(groups).toHaveLength(1);
     expect(groups[0].tracks).toHaveLength(3);
+  });
+});
+
+describe("playlistRows", () => {
+  const known = new Map([
+    ["/lib/a.aiff", { title: "Alpha", artist: "One" }],
+    ["/lib/b.aiff", { title: "Beta", artist: "Two" }],
+  ]);
+
+  it("numbers every stored entry, in the stored order", () => {
+    const rows = playlistRows(["/lib/b.aiff", "/lib/a.aiff"], known);
+    expect(rows.map((r) => [r.position, r.title])).toEqual([
+      [1, "Beta"],
+      [2, "Alpha"],
+    ]);
+    expect(rows.every((r) => !r.outsideLibrary)).toBe(true);
+  });
+
+  it("keeps an entry the loaded library has no row for, by its file name", () => {
+    // `all_playlist_paths` reads every membership, `load_tracks` reads one
+    // library folder — so this is a track that belongs to another one, which
+    // the grouping skips and the dialog has to be able to show.
+    const rows = playlistRows(["/lib/a.aiff", "/other/vanished.aiff"], known);
+    expect(rows[1]).toMatchObject({
+      position: 2,
+      title: "vanished.aiff",
+      artist: "",
+      outsideLibrary: true,
+    });
+  });
+
+  it("falls back to the whole path when there is no file name in it", () => {
+    const rows = playlistRows(["weird"], known);
+    expect(rows[0].title).toBe("weird");
+  });
+
+  it("has nothing to show for an empty playlist", () => {
+    expect(playlistRows([], known)).toEqual([]);
   });
 });

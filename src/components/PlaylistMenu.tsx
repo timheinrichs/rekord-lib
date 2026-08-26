@@ -6,6 +6,7 @@ interface Props {
   playlist: Playlist;
   onRename: (name: string) => void;
   onDelete: () => void;
+  onEdit: () => void;
 }
 
 /**
@@ -17,7 +18,12 @@ interface Props {
  * and unlike a track it takes no files with it, which is exactly why it is easy
  * to do by accident.
  */
-export default function PlaylistMenu({ playlist, onRename, onDelete }: Props) {
+export default function PlaylistMenu({
+  playlist,
+  onRename,
+  onDelete,
+  onEdit,
+}: Props) {
   const [open, setOpen] = useState(false);
   const [renaming, setRenaming] = useState(false);
   const [confirming, setConfirming] = useState(false);
@@ -63,6 +69,18 @@ export default function PlaylistMenu({ playlist, onRename, onDelete }: Props) {
       </button>
       {open && (
         <div className="absolute right-0 z-20 mt-1 w-44 rounded-lg border border-border bg-surface-2 py-1 shadow-2xl">
+          {/* First, because it is the one that leads somewhere: the whole
+              playlist in its own order, which is what this menu could never
+              show. */}
+          <button
+            onClick={() => {
+              setOpen(false);
+              onEdit();
+            }}
+            className="h-9 inline-flex items-center justify-center block w-full px-3 text-left text-sm hover:bg-surface hover:text-accent-400"
+          >
+            Edit…
+          </button>
           <button
             onClick={() => {
               setOpen(false);

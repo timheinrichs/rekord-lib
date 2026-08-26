@@ -81,10 +81,11 @@ import MetadataEditor from "./MetadataEditor";
 import BulkMetadataEditor, { type BulkPatch } from "./BulkMetadataEditor";
 import CoverThumb, { forgetCoverThumbs } from "./CoverThumb";
 import PlaylistMenu from "./PlaylistMenu";
+import PlaylistEditor from "./PlaylistEditor";
 import AddToPlaylist from "./AddToPlaylist";
 import { usePlayer, type PlayerTrack } from "../lib/player";
 import { usePlaylists } from "../lib/usePlaylists";
-import { buildPlaylistGroups, wouldAdd } from "../lib/playlists";
+import { buildPlaylistGroups, playlistRows, wouldAdd } from "../lib/playlists";
 import { exportRekordbox } from "../lib/api";
 import MarqueeText from "./MarqueeText";
 import DuplicatesModal from "./DuplicatesModal";
@@ -715,6 +716,27 @@ export default function LibraryView({
   // to re-read them afterwards.
   const playlists = usePlaylists();
 
+  // The playlist open in the editor, by id — the playlist itself is looked up
+  // rather than copied, so a rename inside the dialog shows in its own header.
+  const [editingPlaylist, setEditingPlaylist] = useState<number | null>(null);
+  const editedPlaylist =
+    playlists.all.find((p) => p.id === editingPlaylist) ?? null;
+  // Every stored entry, in order, whether or not the table can draw it — with
+  // the pending edit's metadata, which is what the rest of the list shows too.
+  const editedPlaylistRows = useMemo(() => {
+    if (!editedPlaylist) return [];
+    const known = new Map(
+      tracks.map((t) => {
+        const m = edits[t.id]?.metadata ?? t.metadata;
+        return [
+          t.path,
+          { title: m.title || t.file_name, artist: m.artist || "" },
+        ] as const;
+      }),
+    );
+    return playlistRows(playlists.contents[editedPlaylist.id] ?? [], known);
+  }, [editedPlaylist, playlists.contents, tracks, edits]);
+
   // Run conversion jobs.
   // - "library": source already lives in the library -> output to the same
   //   folder (output_dir=null) and delete the original after a format change.
@@ -1101,6 +1123,7 @@ export default function LibraryView({
         path: t.path,
         title: m.title || t.file_name,
         artist: m.artist || m.album_artist || "",
+        album: m.album || "",
       };
     },
     [edits],
@@ -2833,6 +2856,7 @@ export default function LibraryView({
                             void playlists.rename(group.id, name)
                           }
                           onDelete={() => void playlists.remove(group.id)}
+                          onEdit={() => setEditingPlaylist(group.id)}
                         />
                       ) : undefined,
                     });
@@ -2972,6 +2996,22 @@ export default function LibraryView({
             setBulkFolderIds(null);
           }}
           onApply={applyBulk}
+        />
+      )}
+
+      {editedPlaylist && (
+        <PlaylistEditor
+          playlist={editedPlaylist}
+          rows={editedPlaylistRows}
+          onRename={(name) => void playlists.rename(editedPlaylist.id, name)}
+          onStep={(path, step) =>
+            void playlists.step(editedPlaylist.id, path, step)
+          }
+          onRemove={(path) =>
+            void playlists.removeTracks(editedPlaylist.id, [path])
+          }
+          onDelete={() => void playlists.remove(editedPlaylist.id)}
+          onClose={() => setEditingPlaylist(null)}
         />
       )}
 
