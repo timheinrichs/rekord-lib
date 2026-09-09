@@ -1,0 +1,529 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-09-09T00:00:00Z",
+  "title": "Design System: rekord-lib",
+  "extensions": {
+    "colorMeta": {
+      "accent-600": {
+        "role": "primary",
+        "displayName": "Waveform Violet (action)",
+        "canonical": "#574BC0",
+        "tonalRamp": [
+          "#191340",
+          "#282160",
+          "#3A327E",
+          "#473C9E",
+          "#574BC0",
+          "#6A5FD6",
+          "#8177E0",
+          "#9C93E9"
+        ]
+      },
+      "accent-500": {
+        "role": "primary",
+        "displayName": "Waveform Violet",
+        "canonical": "#6A5FD6",
+        "tonalRamp": [
+          "#191340",
+          "#282160",
+          "#3A327E",
+          "#473C9E",
+          "#574BC0",
+          "#6A5FD6",
+          "#8177E0",
+          "#9C93E9"
+        ]
+      },
+      "accent-300": {
+        "role": "primary",
+        "displayName": "Waveform Violet (on dark)",
+        "canonical": "#9C93E9",
+        "tonalRamp": [
+          "#191340",
+          "#282160",
+          "#3A327E",
+          "#473C9E",
+          "#574BC0",
+          "#6A5FD6",
+          "#8177E0",
+          "#9C93E9"
+        ]
+      },
+      "bg": {
+        "role": "neutral",
+        "displayName": "Cold Graphite — field",
+        "canonical": "#100F14",
+        "tonalRamp": [
+          "#09090C",
+          "#100F14",
+          "#17161D",
+          "#201F28",
+          "#292933",
+          "#343440",
+          "#4A4A55",
+          "#666671"
+        ],
+        "note": "Theme-dependent (--bg). Light theme: #F6F6F8."
+      },
+      "surface": {
+        "role": "neutral",
+        "displayName": "Cold Graphite — panel",
+        "canonical": "#17161D",
+        "tonalRamp": [
+          "#09090C",
+          "#100F14",
+          "#17161D",
+          "#201F28",
+          "#292933",
+          "#343440",
+          "#4A4A55",
+          "#666671"
+        ],
+        "note": "Theme-dependent (--surface). Light theme: #FFFFFF."
+      },
+      "surface-2": {
+        "role": "neutral",
+        "displayName": "Cold Graphite — raised",
+        "canonical": "#201F28",
+        "tonalRamp": [
+          "#09090C",
+          "#100F14",
+          "#17161D",
+          "#201F28",
+          "#292933",
+          "#343440",
+          "#4A4A55",
+          "#666671"
+        ],
+        "note": "Theme-dependent (--surface-2). Light theme: #ECECEF."
+      },
+      "border": {
+        "role": "neutral",
+        "displayName": "Hairline",
+        "canonical": "#292933",
+        "tonalRamp": [
+          "#09090C",
+          "#100F14",
+          "#17161D",
+          "#201F28",
+          "#292933",
+          "#343440",
+          "#4A4A55",
+          "#666671"
+        ],
+        "note": "Theme-dependent (--border). Light theme: #D9D9DF."
+      },
+      "border-strong": {
+        "role": "neutral",
+        "displayName": "Control outline",
+        "canonical": "#343440",
+        "tonalRamp": [
+          "#09090C",
+          "#100F14",
+          "#17161D",
+          "#201F28",
+          "#292933",
+          "#343440",
+          "#4A4A55",
+          "#666671"
+        ],
+        "note": "Theme-dependent (--border-strong). Light theme: #B7B7C0."
+      },
+      "fg": {
+        "role": "neutral",
+        "displayName": "Readout white",
+        "canonical": "#F6F6F8",
+        "tonalRamp": [
+          "#343440",
+          "#4A4A55",
+          "#666671",
+          "#8C8C98",
+          "#B7B7C0",
+          "#D9D9DF",
+          "#ECECEF",
+          "#F6F6F8"
+        ],
+        "note": "Theme-dependent (--fg). Light theme: #100F14."
+      },
+      "fg-muted": {
+        "role": "neutral",
+        "displayName": "Secondary text / live status",
+        "canonical": "#B7B7C0",
+        "tonalRamp": [
+          "#343440",
+          "#4A4A55",
+          "#666671",
+          "#8C8C98",
+          "#B7B7C0",
+          "#D9D9DF",
+          "#ECECEF",
+          "#F6F6F8"
+        ],
+        "note": "Also the colour of status the user reads but cannot click."
+      },
+      "fg-subtle": {
+        "role": "neutral",
+        "displayName": "Meta grey",
+        "canonical": "#8C8C98",
+        "tonalRamp": [
+          "#343440",
+          "#4A4A55",
+          "#666671",
+          "#8C8C98",
+          "#B7B7C0",
+          "#D9D9DF",
+          "#ECECEF",
+          "#F6F6F8"
+        ]
+      },
+      "fg-disabled": {
+        "role": "neutral",
+        "displayName": "Inert grey",
+        "canonical": "#5A5A66",
+        "tonalRamp": [
+          "#343440",
+          "#4A4A55",
+          "#666671",
+          "#8C8C98",
+          "#B7B7C0",
+          "#D9D9DF",
+          "#ECECEF",
+          "#F6F6F8"
+        ],
+        "note": "The only way to say disabled. Never opacity."
+      },
+      "success-500": {
+        "role": "tertiary",
+        "displayName": "Verdict Green",
+        "canonical": "#22B27A",
+        "tonalRamp": [
+          "oklch(25% 0.07 163)",
+          "oklch(35% 0.09 163)",
+          "oklch(45% 0.11 163)",
+          "oklch(55% 0.13 163)",
+          "oklch(66% 0.13 163)",
+          "oklch(76% 0.10 163)",
+          "oklch(86% 0.06 163)",
+          "oklch(95% 0.02 163)"
+        ],
+        "note": "Ramp synthesized for display; the project defines only the 500 step."
+      },
+      "warning-500": {
+        "role": "secondary",
+        "displayName": "Convert Amber",
+        "canonical": "#F5A623",
+        "tonalRamp": [
+          "oklch(30% 0.08 70)",
+          "oklch(40% 0.10 70)",
+          "oklch(50% 0.13 70)",
+          "oklch(60% 0.15 70)",
+          "oklch(78% 0.15 70)",
+          "oklch(86% 0.11 70)",
+          "oklch(92% 0.07 70)",
+          "oklch(97% 0.03 70)"
+        ],
+        "note": "Ramp synthesized for display; the project defines only the 500 step."
+      },
+      "danger-500": {
+        "role": "tertiary",
+        "displayName": "Refuse Red",
+        "canonical": "#E5484D",
+        "tonalRamp": [
+          "oklch(25% 0.10 22)",
+          "oklch(35% 0.13 22)",
+          "oklch(45% 0.16 22)",
+          "oklch(55% 0.19 22)",
+          "oklch(63% 0.20 22)",
+          "oklch(75% 0.14 22)",
+          "oklch(86% 0.08 22)",
+          "oklch(95% 0.03 22)"
+        ],
+        "note": "Ramp synthesized for display; the project defines only the 500 step."
+      },
+      "info-500": {
+        "role": "secondary",
+        "displayName": "Info Blue",
+        "canonical": "#3B82F6",
+        "note": "Defined in tokens.css but currently unused; informational markers take accent-300."
+      }
+    },
+    "typographyMeta": {
+      "display": {
+        "displayName": "Display",
+        "purpose": "The largest type in the app (18px): a modal's own title, an empty-state headline. No text-xl or text-2xl exists."
+      },
+      "title": {
+        "displayName": "Title",
+        "purpose": "Section and dialog headings at body size (14px), separated by weight and colour rather than scale."
+      },
+      "body": {
+        "displayName": "Body / Data",
+        "purpose": "The working size (14px): track titles, cell values, button labels, inputs. Monospace, so columns align."
+      },
+      "prose": {
+        "displayName": "Prose",
+        "purpose": "Inter, opted into only for real sentences — help text under a setting, a release note, an explanation in a dialog."
+      },
+      "label": {
+        "displayName": "Label / Meta",
+        "purpose": "12px monospace for secondary values, tallies and pills; 11px/10px exist for progress detail and corner badges."
+      }
+    },
+    "shadows": [
+      {
+        "name": "shadow-sm",
+        "value": "0 1px 2px rgb(0 0 0 / 0.30)",
+        "purpose": "Quietest lift; defined in tokens, rarely needed."
+      },
+      {
+        "name": "shadow-md",
+        "value": "0 4px 12px rgb(0 0 0 / 0.35)",
+        "purpose": "Default for a popover or dialog panel (filter menu, column menu)."
+      },
+      {
+        "name": "shadow-lg",
+        "value": "0 12px 32px rgb(0 0 0 / 0.45)",
+        "purpose": "The docked header and larger floating panels; written as shadow-lg shadow-black/40."
+      },
+      {
+        "name": "overlay-backdrop",
+        "value": "background: rgb(0 0 0 / 0.60)",
+        "purpose": "Modal backdrop at z-50, portalled into document.body, page scroll-locked."
+      }
+    ],
+    "motion": [
+      {
+        "name": "animate-fade-in",
+        "value": "fade-in 150ms ease-out both",
+        "purpose": "Content appearing: view switch, filter or sort change, loaded covers, splash text."
+      },
+      {
+        "name": "animate-fade-out",
+        "value": "fade-out 150ms ease-in both",
+        "purpose": "The splash handing over to the app."
+      },
+      {
+        "name": "animate-skeleton",
+        "value": "skeleton 1.6s ease-in-out infinite",
+        "purpose": "Placeholder pulse — opacity only, never a gradient sweep."
+      },
+      {
+        "name": "animate-eq",
+        "value": "eq 1.1s ease-in-out infinite alternate",
+        "purpose": "The four logo bars bouncing like an equalizer on the splash."
+      },
+      {
+        "name": "dock",
+        "value": "transition-[box-shadow,background-color,border-color] 300ms",
+        "purpose": "The sticky header and filter bar docking on scroll."
+      },
+      {
+        "name": "marquee",
+        "value": "marquee linear infinite (duration set inline)",
+        "purpose": "An overflowing title scrolls only while its row is hovered; two copies, -50% shift."
+      },
+      {
+        "name": "reduced-motion",
+        "value": "@media (prefers-reduced-motion: reduce) { animation: none }",
+        "purpose": "Mandatory. Every animation is switched off in index.css and content is complete in its final state."
+      }
+    ],
+    "breakpoints": [
+      {
+        "name": "sm",
+        "value": "640px"
+      },
+      {
+        "name": "md",
+        "value": "768px"
+      },
+      {
+        "name": "table-min",
+        "value": "1520px",
+        "note": "The track table's own min-width (min-w-[95rem]); it scrolls horizontally inside its container rather than reflowing."
+      }
+    ],
+    "layers": [
+      {
+        "name": "filter-bar",
+        "value": "z-20"
+      },
+      {
+        "name": "app-header",
+        "value": "z-30"
+      },
+      {
+        "name": "menu",
+        "value": "z-40"
+      },
+      {
+        "name": "modal",
+        "value": "z-50"
+      }
+    ]
+  },
+  "components": [
+    {
+      "name": "Primary Button",
+      "kind": "button",
+      "refersTo": "button-primary",
+      "description": "The one thing to do next in a given context — convert, scan, download.",
+      "html": "<button class=\"ds-btn-primary\">Convert 12 files</button>",
+      "css": ".ds-btn-primary { display:inline-flex; align-items:center; justify-content:center; height:36px; padding:0 16px; border:none; border-radius:8px; background:var(--color-accent-600,#574BC0); color:var(--fg,#F6F6F8); font-family:JetBrains Mono, ui-monospace, SFMono-Regular, Menlo, monospace; font-size:14px; font-weight:500; cursor:pointer; transition:background-color .15s ease-out; } .ds-btn-primary:hover:enabled { background:var(--color-accent-500,#6A5FD6); } .ds-btn-primary:focus-visible { outline:2px solid var(--color-accent-400,#8177E0); outline-offset:2px; } .ds-btn-primary:disabled { background:var(--surface-2,#201F28); color:var(--fg-disabled,#5A5A66); cursor:default; }"
+    },
+    {
+      "name": "Secondary Button",
+      "kind": "button",
+      "refersTo": "button-secondary",
+      "description": "Quiet until touched: a hairline outline that picks up the accent on hover.",
+      "html": "<button class=\"ds-btn-secondary\">Re-detect BPM</button>",
+      "css": ".ds-btn-secondary { display:inline-flex; align-items:center; justify-content:center; height:36px; padding:0 12px; border:1px solid var(--border-strong,#343440); border-radius:8px; background:transparent; color:var(--fg-muted,#B7B7C0); font-family:JetBrains Mono, ui-monospace, SFMono-Regular, Menlo, monospace; font-size:14px; font-weight:400; cursor:pointer; transition:border-color .15s ease-out,color .15s ease-out; } .ds-btn-secondary:hover:enabled { border-color:var(--color-accent-500,#6A5FD6); color:var(--color-accent-400,#8177E0); } .ds-btn-secondary:focus-visible { outline:2px solid var(--color-accent-400,#8177E0); outline-offset:2px; } .ds-btn-secondary:disabled { border-color:var(--border,#292933); color:var(--fg-disabled,#5A5A66); cursor:default; }"
+    },
+    {
+      "name": "Icon Button",
+      "kind": "button",
+      "refersTo": "button-icon",
+      "description": "Square at the same 36px, never a bare glyph. The dot marks something unread; the label says what.",
+      "html": "<button class=\"ds-btn-icon\" title=\"Settings, update available\" aria-label=\"Settings, update available\"><svg width=\"18\" height=\"18\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><circle cx=\"12\" cy=\"12\" r=\"3\"/><path d=\"M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09a1.65 1.65 0 0 0 1.51-1 1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z\"/></svg><span class=\"ds-btn-icon-dot\"></span></button>",
+      "css": ".ds-btn-icon { position:relative; display:flex; align-items:center; justify-content:center; height:36px; width:36px; flex-shrink:0; border:1px solid var(--border-strong,#343440); border-radius:8px; background:transparent; color:var(--fg-muted,#B7B7C0); cursor:pointer; transition:border-color .15s ease-out,color .15s ease-out; } .ds-btn-icon:hover { border-color:var(--color-accent-500,#6A5FD6); color:var(--color-accent-400,#8177E0); } .ds-btn-icon:focus-visible { outline:2px solid var(--color-accent-400,#8177E0); outline-offset:2px; } .ds-btn-icon-dot { position:absolute; right:-4px; top:-4px; height:10px; width:10px; border-radius:9999px; background:var(--color-accent-500,#6A5FD6); box-shadow:0 0 0 2px var(--bg,#100F14); }"
+    },
+    {
+      "name": "Segmented Navigation",
+      "kind": "nav",
+      "refersTo": "tab-active",
+      "description": "The Library/Bandcamp switch: an outlined group with 36px tabs, exactly one active.",
+      "html": "<nav class=\"ds-nav\"><button class=\"ds-nav-tab ds-nav-tab--active\">Library</button><button class=\"ds-nav-tab\">Bandcamp</button></nav>",
+      "css": ".ds-nav { display:inline-flex; align-items:center; gap:4px; padding:2px; border:1px solid var(--border-strong,#343440); border-radius:12px; } .ds-nav-tab { display:inline-flex; align-items:center; justify-content:center; height:36px; padding:0 12px; border:none; border-radius:8px; background:transparent; color:var(--fg-muted,#B7B7C0); font-family:JetBrains Mono, ui-monospace, SFMono-Regular, Menlo, monospace; font-size:14px; cursor:pointer; transition:color .15s ease-out,background-color .15s ease-out; } .ds-nav-tab:hover { color:var(--fg,#F6F6F8); } .ds-nav-tab:focus-visible { outline:2px solid var(--color-accent-400,#8177E0); outline-offset:2px; } .ds-nav-tab--active { background:rgb(87 75 192 / .2); color:var(--color-accent-200,#BCB6F1); }"
+    },
+    {
+      "name": "Search Input",
+      "kind": "input",
+      "refersTo": "input",
+      "description": "The border is the focus indicator — no glow, no ring.",
+      "html": "<input class=\"ds-input\" type=\"search\" placeholder=\"Search…\" />",
+      "css": ".ds-input { width:224px; padding:6px 12px; border:1px solid var(--border-strong,#343440); border-radius:12px; background:var(--surface-2,#201F28); color:var(--fg,#F6F6F8); font-family:JetBrains Mono, ui-monospace, SFMono-Regular, Menlo, monospace; font-size:14px; outline:none; transition:border-color .15s ease-out; } .ds-input::placeholder { color:var(--fg-subtle,#8C8C98); } .ds-input:focus { border-color:var(--color-accent-500,#6A5FD6); } .ds-input:disabled { color:var(--fg-subtle,#8C8C98); }"
+    },
+    {
+      "name": "Status Pill",
+      "kind": "chip",
+      "refersTo": "pill-warning",
+      "description": "The tinted-ring triple: 15% background, solid text, 30% ring. Colour means compatibility, never decoration.",
+      "html": "<span class=\"ds-pill ds-pill--warning\">→ AIFF 44.1 kHz</span> <span class=\"ds-pill ds-pill--success\">runs on CDJ</span> <span class=\"ds-pill ds-pill--danger\">E-8305 risk</span>",
+      "css": ".ds-pill { display:inline-block; border-radius:9999px; padding:2px 8px; font-family:JetBrains Mono, ui-monospace, SFMono-Regular, Menlo, monospace; font-size:12px; } .ds-pill--warning { background:rgb(245 166 35 / .15); color:var(--color-warning-500,#F5A623); box-shadow:inset 0 0 0 1px rgb(245 166 35 / .3); } .ds-pill--success { background:rgb(34 178 122 / .15); color:var(--color-success-500,#22B27A); box-shadow:inset 0 0 0 1px rgb(34 178 122 / .3); } .ds-pill--danger { background:rgb(229 72 77 / .15); color:var(--color-danger-500,#E5484D); box-shadow:inset 0 0 0 1px rgb(229 72 77 / .3); }"
+    },
+    {
+      "name": "Track Row",
+      "kind": "custom",
+      "refersTo": "table-row",
+      "description": "The heart of the app: 64px, hairline-separated, values in falling order of importance, status as small icons whose meaning is in the accessible name.",
+      "html": "<div class=\"ds-row\"><div class=\"ds-row-cover\"></div><div class=\"ds-row-main\"><div class=\"ds-row-title\">Kettenkarussell – Insecurity Guard.aiff</div><div class=\"ds-row-meta\"><span class=\"ds-row-meta-first\">Kettenkarussell</span><span class=\"ds-row-sep\">·</span><span class=\"ds-row-meta-last\">Insecurity Guard</span></div></div><div class=\"ds-row-tech\">96 kHz · 24-bit</div><div class=\"ds-row-status\" title=\"Conversion needed: above 48 kHz\" role=\"img\" aria-label=\"Conversion needed: above 48 kHz\"><svg width=\"18\" height=\"18\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M4 7h13l-3-3\"/><path d=\"M20 17H7l3 3\"/></svg></div></div>",
+      "css": ".ds-row { display:flex; align-items:center; gap:12px; height:64px; padding:0 16px; border-bottom:1px solid var(--border,#292933); color:var(--fg,#F6F6F8); font-family:JetBrains Mono, ui-monospace, SFMono-Regular, Menlo, monospace; font-size:14px; cursor:pointer; transition:background-color .15s ease-out; } .ds-row:hover { background:var(--surface-2,#201F28); } .ds-row-cover { height:40px; width:40px; flex-shrink:0; border-radius:4px; background:var(--surface-2,#201F28); } .ds-row-main { min-width:0; flex:1; } .ds-row-title { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; } .ds-row-meta { display:flex; align-items:baseline; gap:6px; font-size:12px; color:var(--fg-muted,#B7B7C0); } .ds-row-meta-first { min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; } .ds-row-sep { flex-shrink:0; color:var(--fg-subtle,#8C8C98); } .ds-row-meta-last { min-width:0; flex-shrink:999; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; color:var(--fg-subtle,#8C8C98); } .ds-row-tech { flex-shrink:0; font-size:12px; color:var(--fg-subtle,#8C8C98); } .ds-row-status { flex-shrink:0; display:flex; align-items:center; color:var(--color-warning-500,#F5A623); }"
+    },
+    {
+      "name": "Settings Card",
+      "kind": "card",
+      "refersTo": "card",
+      "description": "Flat panel on the field: one hairline, no shadow, prose in Inter for the explanation under the value.",
+      "html": "<section class=\"ds-card\"><h2 class=\"ds-card-title\">Analysis</h2><p class=\"ds-card-prose\">Tempo is written into the file only when the detector is confident. The musical key stays in the database.</p></section>",
+      "css": ".ds-card { border:1px solid var(--border,#292933); border-radius:12px; background:var(--surface,#17161D); padding:20px; } .ds-card-title { margin:0 0 4px; font-family:JetBrains Mono, ui-monospace, SFMono-Regular, Menlo, monospace; font-size:14px; font-weight:500; color:var(--fg,#F6F6F8); } .ds-card-prose { margin:0; font-family:Inter, ui-sans-serif, system-ui, sans-serif; font-size:14px; line-height:1.55; color:var(--fg-subtle,#8C8C98); }"
+    },
+    {
+      "name": "Progress Bar",
+      "kind": "custom",
+      "description": "6px track in the raised tone with an accent fill; the only place a bar is ever fully accent-coloured.",
+      "html": "<div class=\"ds-progress\"><div class=\"ds-progress-fill\" style=\"width:62%\"></div></div>",
+      "css": ".ds-progress { height:6px; width:100%; overflow:hidden; border-radius:9999px; background:var(--surface-2,#201F28); } .ds-progress-fill { height:100%; border-radius:9999px; background:var(--color-accent-500,#6A5FD6); transition:width .3s ease-out; }"
+    }
+  ],
+  "narrative": {
+    "northStar": "The Mastering Desk",
+    "overview": "rekord-lib looks like a piece of studio equipment, not like a music app. The surface is near-black, the type is monospace almost everywhere, and the numbers that matter — 44.1 kHz, 24-bit, 128.0 BPM, AIFF — sit in columns that line up because the font makes them line up. One violet accent runs through the instrument and marks the signal: the waveform, the progress bar, the primary action. Everything else is graphite.\n\nThe mood is calm, precise, incorruptible. Nothing pushes, nothing celebrates. The interface's job is to state a verdict about a file the user cannot inspect by ear — whether a CDJ will refuse it — and a readout that exaggerates is worse than no readout. So colour is spent on meaning, never on mood: green means ready, amber means it needs work, red means a player will refuse it, violet means this is the thing to act on. A screen with no problems is a screen with almost no colour in it, and that is the intended resting state.\n\nControls are quiet until touched. At rest a button is a hairline and a label; the track list dominates and the chrome recedes. On hover the border or the icon picks up the accent, and that is the whole gesture. Depth works the same way: three surface tones carry the layering, and a shadow appears only under something that genuinely floats. The two things this must never look like are an enterprise data grid and a playful consumer app.",
+    "keyCharacteristics": [
+      "Dark by default (data-theme=\"dark\" on <html>); light is a full, supported theme, not an afterthought.",
+      "Monospace as the default voice of the UI — Inter is opted into for prose.",
+      "Exactly one accent (violet), and status colour that only ever means compatibility.",
+      "Every button 36 px tall, stated as a height and enforced by a test.",
+      "Flat surfaces, hairline borders, shadows reserved for floating layers.",
+      "Compact density: 64 px track rows, px-3 py-2 cells, 12 px gaps."
+    ],
+    "rules": [
+      {
+        "name": "The Semantic Colour Rule",
+        "body": "Green, amber and red only ever describe compatibility state. A status colour used because it looks good is a defect. A build label that is merely a heads-up (\"Beta\") takes the accent, not amber.",
+        "section": "colors"
+      },
+      {
+        "name": "The One Accent Rule",
+        "body": "Violet is the only brand colour. No second accent, no gradient, no glow — including as a skeleton shimmer, which is why placeholders pulse their opacity instead.",
+        "section": "colors"
+      },
+      {
+        "name": "The Opacity Rule",
+        "body": "Never express disabled with opacity; it multiplies with the content's own colour and lands on a different grey in every control. Say it in colour (bg-surface-2 / border-border / text-fg-disabled) and guard every hover with enabled:.",
+        "section": "colors"
+      },
+      {
+        "name": "The Tinted-Ring Rule",
+        "body": "A status surface is a 15% tint of the status colour, a 30% ring of the same hue, and the solid hue as text. tokens.css also defines --bg-warning/--fg-warning pairs for this; they are currently unused, so the tint form is the live convention.",
+        "section": "colors"
+      },
+      {
+        "name": "The Sentence Case Rule",
+        "body": "Sentence case everywhere. No Title Case, no ALL CAPS. The four uppercase occurrences in the source are drift, not a sanctioned style.",
+        "section": "typography"
+      },
+      {
+        "name": "The Two Weights Rule",
+        "body": "400 regular and 500 medium, nothing else. font-semibold on ten headings today is drift to be reduced to 500, not a third weight.",
+        "section": "typography"
+      },
+      {
+        "name": "The Mono-Default Rule",
+        "body": "Never set a value, label, control or table cell in Inter; reach for font-sans exactly when writing a sentence the user reads once.",
+        "section": "typography"
+      },
+      {
+        "name": "The Falling-Order Truncation Rule",
+        "body": "When a line carries several values, the last one gives way first: min-w-0 truncate on both, shrink-[999] on the one that goes first. Never a fixed width.",
+        "section": "layout"
+      },
+      {
+        "name": "The Downward Menu Rule",
+        "body": "A menu opens downward and above the header: right-0 top-full mt-2 z-40. The header is a 64 px sticky bar at z-30, so bottom-full opens off the top of the window. Layer stack: filter bar 20, header 30, menus 40, modal 50.",
+        "section": "layout"
+      },
+      {
+        "name": "The Tone-Before-Shadow Rule",
+        "body": "If two things need telling apart, move one to the next surface tone. Add a shadow only when the element actually floats over content.",
+        "section": "elevation"
+      },
+      {
+        "name": "The 36 px Rule",
+        "body": "Every button is h-9 (36 px), stated as a height and never derived from padding; icon-only buttons are square at the same number. buttonShape.test.ts enforces height and corner over the source.",
+        "section": "shapes"
+      }
+    ],
+    "dos": [
+      "Do take every colour from src/styles/tokens.css — semantic tokens for surfaces, text and lines; accent-* for brand, action and progress; the three status hues for compatibility only.",
+      "Do state a button's height as h-9 and make an icon-only button h-9 w-9.",
+      "Do default to font-mono and opt into font-sans only for sentences.",
+      "Do express disabled in colour (disabled:bg-surface-2, disabled:text-fg-disabled, disabled:border-border) and guard hovers with enabled:.",
+      "Do open menus with right-0 top-full mt-2 z-40.",
+      "Do give a new animation a token in tokens.css and add it to the prefers-reduced-motion block in index.css.",
+      "Do let the later value truncate first when a line carries several (shrink-[999]).",
+      "Do carry meaning in text as well as colour — a coloured dot is 10 px of hue and not a message, so the tooltip and the accessible name say the level."
+    ],
+    "donts": [
+      "Don't use a Tailwind default palette (neutral-*, sky-*, emerald-*) or a raw hex in a component.",
+      "Don't use a status colour decoratively, or a second accent, or a gradient or glow anywhere — including a shimmer sweep across a skeleton.",
+      "Don't express disabled with opacity.",
+      "Don't derive a control's height from padding, and don't put a bare glyph where a 36 px square button belongs.",
+      "Don't set body text in mono's place or set a value, label or table cell in Inter.",
+      "Don't use Title Case, ALL CAPS, or weight 600/700.",
+      "Don't stack a shadow on a bordered surface to create depth — move it to the next surface tone instead.",
+      "Don't animate list rows; animate the container, because the table renders only its visible rows and a per-row animation refires on every scroll.",
+      "Don't make it look like an enterprise data grid — no grey toolbars, no zebra striping, no border around every cell, no default framework blue.",
+      "Don't make it look like a playful consumer app — no illustrations, no coachmarks, no emoji in the UI, no encouraging copy. The app states facts about files."
+    ]
+  }
+}
