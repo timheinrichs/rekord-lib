@@ -174,9 +174,10 @@ clean Mac.
   `std::fs::remove_file`. This is someone's music.
 - **Colors come from the tokens in `src/styles/tokens.css`**, never from
   Tailwind's default palettes, and status colors mean state rather than
-  decoration. The authoritative styleguide is
-  [docs/brand/STYLEGUIDE.md](docs/brand/STYLEGUIDE.md); new UI should not stand
-  out next to what is there.
+  decoration. The authoritative design system is [DESIGN.md](DESIGN.md) — read
+  its named rules before writing UI; new UI should not stand out next to what is
+  there. The logo and brand assets are
+  [docs/brand/STYLEGUIDE.md](docs/brand/STYLEGUIDE.md).
 - **Do not bump the version and do not cut a release.** That is the maintainer's
   call, and it is a deliberate separate step — see
   [Releases](README.md#releases). Feature work lands on `main` normally.

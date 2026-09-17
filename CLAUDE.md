@@ -10,11 +10,14 @@ Bandcamp download).
 ## Design & Branding — mandatory
 
 The app has a **fixed visual identity**. All UI work follows the
-styleguide, not ad-hoc design:
+design system, not ad-hoc design:
 
 - **Single source of truth:** `src/styles/tokens.css` (Tailwind v4, CSS-first).
-  Full styleguide: [`docs/brand/STYLEGUIDE.md`](docs/brand/STYLEGUIDE.md).
-  Tokens are also available as TS: `src/styles/theme.ts` (for canvas/charts).
+  The system it implements — colours, typography, layout, depth, shape,
+  components, motion, and the named rules — is [`DESIGN.md`](DESIGN.md) in the
+  repo root. The logo, the brand assets and the project's setup mechanics are
+  [`docs/brand/STYLEGUIDE.md`](docs/brand/STYLEGUIDE.md). Tokens are also
+  available as TS: `src/styles/theme.ts` (for canvas/charts).
 - **Colors only via tokens**, never the Tailwind default palettes
   (`neutral-*`, `sky-*`, `emerald-*`, …):
   - Surfaces/text/lines: semantic tokens `bg-bg`, `bg-surface`,
@@ -46,15 +49,18 @@ styleguide, not ad-hoc design:
 
 In short: build new UI so that it does not stand out next to the existing UI — use
 tokens, status color = state, mono for technical data. When in doubt, check
-`docs/brand/STYLEGUIDE.md`.
+[`DESIGN.md`](DESIGN.md), and read its named rules before arguing with one — each
+says why it exists, and most of them exist because something went wrong once.
 
-Two skills belong here. **`/design`** is for trying layout variants on a canvas
-before building one — allowed, but the result gets re-expressed in tokens, never
-adopted as ad-hoc design. **`/design-system`** audits the system for
-inconsistencies, documents a component, or works out a new pattern; reach for it
-when the question is "does this already exist and what is it called" rather than
-"what should this screen look like". Either way `tokens.css` plus the styleguide
-stay the binding source.
+**Trying a layout variant on a canvas before building it is allowed**, and so is
+exploring a direction outside the tokens to see what it would look like. What is
+not allowed is keeping it: the result gets re-expressed in tokens, never adopted
+as ad-hoc design. `tokens.css` plus `DESIGN.md` stay the binding source, and a
+change to the system is a change to that document first.
+
+(The maintainer drives this with the `impeccable` skill, which reads `PRODUCT.md`
+and `DESIGN.md` as the project's authority. It lives outside the repo, so it is
+tooling rather than a requirement — the rule above holds either way.)
 
 ## Workflow
 

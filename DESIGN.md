@@ -158,6 +158,18 @@ components:
 
 # Design System: rekord-lib
 
+> **This file is binding for the visual system.** Colours, typography, layout,
+> depth, shape, components and the named rules live here, and
+> `src/styles/tokens.css` is the implementation of the tokens named below.
+> [`docs/brand/STYLEGUIDE.md`](docs/brand/STYLEGUIDE.md) owns the other half —
+> the logo and brand assets, and how the project is wired up (font packages, the
+> `data-theme` attribute). Each fact belongs to exactly one of the two.
+>
+> The file is regenerable: `/impeccable document` re-extracts it from the code
+> together with `.impeccable/design.json`. A refresh has to *merge* — the named
+> rules, their reasons and the test references below were written by hand and
+> are not recoverable from tokens.
+
 ## Overview
 
 **Creative North Star: "The Mastering Desk"**
@@ -272,7 +284,7 @@ that `tokens.css` once carried were never used and were removed in 0.9.1.
 Consequence worth knowing: there is no `text-fg-warning` utility, and a colour
 utility no token defines generates *nothing* rather than failing — which is how
 two uncertain-tempo markers rendered in the inherited colour for several
-releases. `src/styles/styleguideRules.test.ts` now fails on one.
+releases. `src/styles/designRules.test.ts` now fails on one.
 
 ## Typography
 
@@ -312,12 +324,12 @@ manual*.
 **The Sentence Case Rule.** Sentence case everywhere. No Title Case, no ALL
 CAPS — including for data that arrives lowercase, which is not made to shout by
 an `uppercase` class. Enforced over the source by
-`src/styles/styleguideRules.test.ts`.
+`src/styles/designRules.test.ts`.
 
 **The Two Weights Rule.** 400 regular and 500 medium, nothing else. A heading
 separates itself by weight and colour, not by a third level — which is why 600
 is not available to reach for. Enforced over the source by
-`src/styles/styleguideRules.test.ts`.
+`src/styles/designRules.test.ts`.
 
 **The Mono-Default Rule.** Do not reach for `font-sans` for anything that is a
 value, a label, a control or a table cell. Reach for it exactly when you are
@@ -433,6 +445,30 @@ controls is tight, `px-2` in a table cell.
 over the source.
 
 ## Components
+
+Each entry leads with the character, then shape, colour and states. **Copy from
+the implementation, not from a snippet here** — the styleguide used to carry
+copy-paste Tailwind recipes and they were a third copy of every component, kept
+honest by nothing. The canonical build of each is:
+
+| Component | As built in |
+| --- | --- |
+| Primary button | `src/components/BulkMetadataEditor.tsx` (the *Apply* action) |
+| Secondary / outlined button | `src/components/LibraryView.tsx` (the toolbar row) |
+| Destructive button | `src/components/DuplicatesModal.tsx` |
+| Icon button with badge | `src/components/HeaderNav.tsx` |
+| Segmented navigation | `src/components/HeaderNav.tsx` (`TabButton`) |
+| Text field | `src/components/LibraryView.tsx` (search), `MetadataEditor.tsx` (form) |
+| Status pill | `src/components/AppHeader.tsx` (`BuildChip`) |
+| Status icons | `src/components/StatusIcons.tsx` |
+| Card / section | `src/components/SettingsView.tsx` |
+| Menu panel | `src/components/FilterMenu.tsx` |
+| Track row | `src/components/LibraryView.tsx` |
+| Transport controls, progress | `src/components/PlayerBar.tsx` |
+| Skeleton | `src/components/Skeleton.tsx` |
+
+`.impeccable/design.json` additionally carries self-contained HTML/CSS for nine
+of these, for tools that render a preview rather than read React.
 
 ### Buttons
 

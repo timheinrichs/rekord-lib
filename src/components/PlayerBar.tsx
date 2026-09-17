@@ -117,7 +117,7 @@ export default function PlayerBar() {
             <div className="truncate text-sm text-fg">{current.title}</div>
             {/* Two values on one line, so one of them has to give way first
                 when the window narrows. The later one does — see the
-                styleguide: the album is the qualifier, the artist is the
+                Falling-Order Truncation Rule: the album is the qualifier, the artist is the
                 answer to "who is this". The huge shrink factor is what states
                 that in flexbox's terms. */}
             <div className="flex min-w-0 items-baseline gap-1.5 text-xs text-fg-muted">

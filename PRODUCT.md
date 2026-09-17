@@ -128,7 +128,7 @@ category.
   product. Sentence case, no Title Case, no ALL CAPS. English throughout the
   product and repository.
 - The visual identity is fixed and token-bound (`src/styles/tokens.css`,
-  `docs/brand/STYLEGUIDE.md`), dark by default. Status color means
+  `DESIGN.md`, with the marks in `docs/brand/STYLEGUIDE.md`), dark by default. Status color means
   compatibility state, never decoration.
 - **Free and MIT-licensed**, no account requirement, no capability behind a
   paywall. Donations are voluntary (PayPal) and never a gate.
@@ -176,7 +176,7 @@ category.
 
 ## Accessibility & Inclusion
 
-Nothing beyond the styleguide is established as binding: contrast on small
+Nothing beyond `DESIGN.md` is established as binding: contrast on small
 technical text, and **reduced motion is mandatory** — every animation switches
 off under `@media (prefers-reduced-motion: reduce)` in `index.css`, and a new
 one is added to that rule. Full keyboard operation and VoiceOver support are

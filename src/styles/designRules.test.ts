@@ -8,12 +8,15 @@ import {
 import { accent, graphite, status } from "./theme";
 
 /**
- * Type, shape and colour rules from `docs/brand/STYLEGUIDE.md`, checked over the
- * source for the same reason `buttonShape.test.ts` is: every one of these
- * renders perfectly and is still wrong. All four were real drift found by
- * extracting `DESIGN.md` from the code — seven settings headings at weight 600,
- * four uppercase labels, ten text fields on the card radius, and a tempo marker
- * written in a colour that does not exist.
+ * Type, shape and colour rules from `DESIGN.md`, checked over the source for the
+ * same reason `buttonShape.test.ts` is: every one of these renders perfectly and
+ * is still wrong. All four were real drift found by extracting that document from
+ * the code — seven settings headings at weight 600, four uppercase labels, ten
+ * text fields on the card radius, and a tempo marker written in a colour that
+ * does not exist.
+ *
+ * Each test below names the rule it holds, so a renamed section cannot quietly
+ * orphan the reference the way a section *number* did.
  */
 
 /** Utility prefixes that take a colour. */
@@ -81,7 +84,7 @@ const FIELD = /<(?:input|select|textarea)\b.*?(?<!=)>/gs;
 const TICK = /type=\{?"(?:checkbox|radio)"/;
 const CLASSNAME = /className=(?:"([^"]*)"|\{`(.*?)`\})/s;
 
-describe("styleguide rules over the source", () => {
+describe("design system rules over the source", () => {
   it("finds components and tokens to check", () => {
     // Guards the guards: a broken glob or a renamed token file would make
     // everything below vacuously pass.
@@ -93,7 +96,8 @@ describe("styleguide rules over the source", () => {
   });
 
   it("uses only the two weights", () => {
-    // §4: 400 regular and 500 medium. Seven settings headings, one Bandcamp
+    // The Two Weights Rule: 400 regular and 500 medium. Seven settings
+    // headings, one Bandcamp
     // heading and two duplicate-group headings had drifted to 600, which reads
     // as a third level of hierarchy the system does not have.
     const offenders: string[] = [];
@@ -110,7 +114,7 @@ describe("styleguide rules over the source", () => {
   });
 
   it("writes sentence case, never caps", () => {
-    // §4: sentence case everywhere. `uppercase` shouts a value the user did not
+    // The Sentence Case Rule: everywhere. `uppercase` shouts a value the user did not
     // type — two of these were on data (`item_type`), which arrives lowercase
     // and should be shown that way.
     const offenders: string[] = [];
@@ -123,7 +127,8 @@ describe("styleguide rules over the source", () => {
   });
 
   it("gives every text field the control radius", () => {
-    // §5: controls are `rounded-md` (8 px), cards `rounded-lg` (12 px). Ten
+    // `DESIGN.md` → Shapes: controls are `rounded-md` (8 px), a nested or
+    // floating panel `rounded-lg` (12 px), a page-level section `rounded-xl`. Ten
     // fields sat on the card radius next to buttons on the control one, which
     // put two corners in the same toolbar.
     const offenders: string[] = [];

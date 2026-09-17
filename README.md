@@ -153,7 +153,7 @@ src-tauri/src/          Rust backend
   bandcamp/             login, collection, download
   db/                   SQLite: tracks, edits, fingerprints, duplicates
   metadata/             read/write tags, cover, suggestions
-docs/brand/             styleguide + design tokens
+docs/brand/             logo, brand assets, setup
 ```
 
 Persistence is split deliberately: anything that grows with the collection lives
@@ -182,7 +182,9 @@ hardware, and the file says which.
 ### Design
 
 The visual identity is fixed: colors only through tokens
-(`src/styles/tokens.css`), dark as the default. Authoritative styleguide:
+(`src/styles/tokens.css`), dark as the default. The system those tokens
+implement — colors, typography, shape, components and the rules that govern
+them — is [DESIGN.md](DESIGN.md); the logo and brand assets are
 [docs/brand/STYLEGUIDE.md](docs/brand/STYLEGUIDE.md).
 
 ### IDE

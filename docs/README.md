@@ -46,8 +46,9 @@ document, and a claim with no test named next to it has nowhere to hide.
 
 | Document | Covers |
 | --- | --- |
-| [brand/STYLEGUIDE.md](brand/STYLEGUIDE.md) | The fixed visual identity: tokens, typography, shape, status colors |
-| [brand/theme.ts](brand/theme.ts) | The tokens as TypeScript, for canvas and charts |
+| [../DESIGN.md](../DESIGN.md) | The design system, and binding for it: colors, typography, layout, depth, shape, components, and the named rules |
+| [brand/STYLEGUIDE.md](brand/STYLEGUIDE.md) | The other half: the logo and brand assets, and the setup a checkout needs (fonts, theme attribute) |
+| [../src/styles/theme.ts](../src/styles/theme.ts) | The tokens as TypeScript, for canvas and charts |
 
 `media/` holds the README's screenshot and nothing else.
 

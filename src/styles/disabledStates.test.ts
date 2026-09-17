@@ -7,12 +7,11 @@ import {
 } from "../test/classNames";
 
 /**
- * Guards the styleguide rules about non-interactive states
- * (docs/brand/STYLEGUIDE.md → "Colors"). All three were regressions found in the
- * running app rather than hypotheticals, and none shows up in a unit test of any
- * single component — so they are checked over the source itself. The scanner
- * they use lives in `src/test/classNames.ts`, shared with the other
- * source-level styleguide tests.
+ * Guards the rules about non-interactive states — the Opacity Rule in
+ * `DESIGN.md`. All three were regressions found in the running app rather than
+ * hypotheticals, and none shows up in a unit test of any single component — so
+ * they are checked over the source itself. The scanner they use lives in
+ * `src/test/classNames.ts`, shared with the other source-level design tests.
  */
 
 describe("disabled states", () => {

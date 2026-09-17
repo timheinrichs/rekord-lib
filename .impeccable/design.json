@@ -469,12 +469,12 @@
       },
       {
         "name": "The Sentence Case Rule",
-        "body": "Sentence case everywhere. No Title Case, no ALL CAPS — including for data that arrives lowercase, which is not made to shout by an uppercase class. Enforced over the source by src/styles/styleguideRules.test.ts.",
+        "body": "Sentence case everywhere. No Title Case, no ALL CAPS — including for data that arrives lowercase, which is not made to shout by an uppercase class. Enforced over the source by src/styles/designRules.test.ts.",
         "section": "typography"
       },
       {
         "name": "The Two Weights Rule",
-        "body": "400 regular and 500 medium, nothing else. A heading separates itself by weight and colour, not by a third level. Enforced over the source by src/styles/styleguideRules.test.ts.",
+        "body": "400 regular and 500 medium, nothing else. A heading separates itself by weight and colour, not by a third level. Enforced over the source by src/styles/designRules.test.ts.",
         "section": "typography"
       },
       {

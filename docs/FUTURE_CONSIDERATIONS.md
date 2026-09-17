@@ -1352,12 +1352,13 @@ collapsed default.
 right now it is carried by a 14 px glyph. Reported from a screenshot: the
 container reads as closed at a glance even when it is open.
 
-The styleguide constrains the answer, which is the useful part of this entry.
+The design system constrains the answer, which is the useful part of this entry.
 Depth comes from surface levels rather than shadows, and there are three
 (`bg`, `surface`, `surface-2`) — so "lighter" means the next level up and a
 `border-border-strong` hairline, not a new colour. If three levels turn out not
-to be enough to say *contains the row below it*, that is a styleguide question
-and belongs in `docs/brand/STYLEGUIDE.md` before it belongs in a component.
+to be enough to say *contains the row below it*, that is a design-system
+question and belongs in `DESIGN.md` — specifically its Tone-Before-Shadow
+rule — before it belongs in a component.
 
 *Size: S*
 
@@ -1420,8 +1421,9 @@ album that is empty is dropped along with its separator, and a missing artist
 becomes an em dash rather than an empty line.
 
 **The width, which was the actual work.** The entry called it right — the field
-was nothing, the decision was what gets truncated first. It is now a styleguide
-rule (§5) rather than a choice made in this one bar: **several values on one
+was nothing, the decision was what gets truncated first. It is now a named rule
+in `DESIGN.md` — the Falling-Order Truncation Rule — rather than a choice made in
+this one bar: **several values on one
 line truncate from the right**, because they are written in falling order of
 what they answer. In flexbox terms that is `min-w-0 truncate` on both and a
 large `shrink-[999]` on the later one, not a fixed width — a fixed width
@@ -1480,7 +1482,7 @@ decision this entry defers:
 - The always-present controls do not move when a selection appears.
 - The actions are near what they act on. A selection lives in the table.
 - There is room for a menu to open from them, downward, without leaving the
-  window (§5 of the styleguide).
+  window (the Downward Menu Rule in `DESIGN.md`).
 - Nothing is added that is only visible while something is selected *and* only
   in one grouping — the table already has five.
 
@@ -1677,5 +1679,5 @@ so the question does not come back.
   must never be traded away for convenience.
 - **A vanilla-JS frontend.** Their `main.js` is roughly 50 KB and `styles.css`
   roughly 70 KB, in one file each. Our token-driven React and Tailwind setup is
-  the reason new UI does not drift from the styleguide — a deliberate
+  the reason new UI does not drift from the design system — a deliberate
   difference, not a gap.

@@ -33,7 +33,7 @@ function isWebLink(href: string): boolean {
 function InlineRun({ run }: { run: Inline }) {
   switch (run.kind) {
     case "strong":
-      // Weight, not boldness: the styleguide has 400 and 500 and nothing else.
+      // Weight, not boldness: the Two Weights Rule allows 400 and 500, nothing else.
       return <strong className="font-medium text-fg">{run.text}</strong>;
     case "em":
       return <em className="italic">{run.text}</em>;

@@ -1,12 +1,11 @@
 /**
  * The `className` text of every component, for the tests that check a
- * styleguide rule over the source rather than over a rendered component.
+ * design system rule over the source rather than over a rendered component.
  *
- * Several rules in `docs/brand/STYLEGUIDE.md` cannot fail in a component test:
- * what goes wrong is a *new* element written next to the old ones with the
- * wrong height, weight or radius, and that element renders perfectly. So the
- * source itself is the subject, and this module is the one scanner all of those
- * tests share.
+ * Several rules in `DESIGN.md` cannot fail in a component test: what goes wrong
+ * is a *new* element written next to the old ones with the wrong height, weight
+ * or radius, and that element renders perfectly. So the source itself is the
+ * subject, and this module is the one scanner all of those tests share.
  */
 
 // Vite inlines the sources at transform time, so this needs no filesystem access.

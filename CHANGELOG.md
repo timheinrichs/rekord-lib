@@ -7,6 +7,39 @@ and this project adheres to [Semantic Versioning](https://semver.org/)
 (`MAJOR.MINOR.PATCH`). As long as the version is at `0.x`, MINOR bumps may
 contain incompatible changes.
 
+## [Unreleased]
+
+### Fixed
+- **An uncertain tempo now looks uncertain.** The BPM cell and the metadata
+  editor marked a tempo the detector was not confident about with a colour
+  utility no token defined, so nothing was generated and the value kept the
+  brighter inherited colour — an uncertain reading looked *more* reliable than a
+  sure one. It is amber now, the colour the app uses everywhere for "still needs
+  doing".
+
+### Changed
+- **The design system is one document again.** `DESIGN.md` in the repo root is
+  now binding for the visual system — colours, typography, layout, depth, shape,
+  components and the rules that govern them — and `docs/brand/STYLEGUIDE.md`
+  keeps the half only it holds: the logo, the brand assets, and the setup a
+  checkout needs. The two had described the same system for several releases and
+  drifted apart, which is how the defect above survived: the document claimed a
+  status token that had never existed.
+- **Small conformance fixes that came out of that comparison.** Ten headings
+  drop from weight 600 to 500 and four labels lose their uppercase, so the type
+  system really is the two weights and the sentence case it claims. Ten text
+  fields move from the 12 px card corner to the 8 px control corner, so a search
+  field and the buttons beside it match. Sixteen unused status variables leave
+  `tokens.css`.
+
+### Added
+- **A guard for the rules that cannot fail a component test.**
+  `src/styles/designRules.test.ts` holds the two weights, sentence case and the
+  control radius over the source, and checks that every colour utility a
+  component writes actually exists as a token — the general form of the defect
+  above, which is invisible because a missing utility generates nothing rather
+  than erroring.
+
 ## [0.9.0] - 2026-08-26
 
 ### Added

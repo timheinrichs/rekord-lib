@@ -41,7 +41,7 @@ one of the five turned out to be a defect rather than a style question.
 
 A source-scanning test in the spirit of `buttonShape.test.ts` and
 `disabledStates.test.ts`, because none of these fails in a component test:
-`src/styles/styleguideRules.test.ts` asserts the two weights, sentence case, the
+`src/styles/designRules.test.ts` asserts the two weights, sentence case, the
 control radius, and — the general form of item 3 — that every semantic colour
 utility a component writes actually exists as a token in `tokens.css`.
 
@@ -59,3 +59,42 @@ sitting inside another panel. Bigger surface, bigger corner — a consistent rul
 nobody had written down. So it is now written down in the styleguide, `DESIGN.md`
 and the sidecar, and no component changed. Forcing seven settings sections onto
 a smaller corner would have been an aesthetic change nobody asked for.
+
+## Second topic — consolidate the design docs
+
+Extracting `DESIGN.md` left the repo with two documents describing the same
+visual system, and the drift above is what that costs. So authority moves to one
+of them:
+
+- `DESIGN.md` is binding for the visual system and says so in its own header,
+  including that a `/impeccable document` refresh has to merge rather than
+  overwrite, because the named rules and their reasons are not recoverable from
+  tokens.
+- `docs/brand/STYLEGUIDE.md` shrinks from 318 lines to 95: the logo, the brand
+  assets, and the two setup mechanics (font packages, the `data-theme`
+  attribute). Its stale `/logo` paths are corrected to `src/assets/brand/`.
+- The copy-paste Tailwind recipes are **dropped** rather than moved. A recipe is
+  a third copy of a component that already exists in code, and it is the copy
+  nothing keeps honest; `DESIGN.md` now names the file each component is built
+  in instead, since a pointer to living code cannot drift.
+- Eleven references move — `CLAUDE.md`, `README.md`, `CONTRIBUTING.md`,
+  `PRODUCT.md`, `docs/README.md`, `docs/FUTURE_CONSIDERATIONS.md` — and the
+  historical `CHANGELOG.md` entry is deliberately left alone.
+- The tests stop citing section *numbers*. `buttonShape`, `designRules`,
+  `disabledStates` and `classNames.ts` now name the rule they hold (the 36 px
+  Rule, the Two Weights Rule, the Sentence Case Rule, the Opacity Rule), which a
+  renamed section cannot orphan. `styleguideRules.test.ts` is renamed to
+  `designRules.test.ts` for the same reason.
+- `.claude/skills/frontend-design.md` and `design-design-system.md` are deleted
+  and their paragraph in `CLAUDE.md` with them. The first was a generic
+  "invent a distinctive identity, take an aesthetic risk" brief with a
+  project-specific muzzle bolted on top — the muzzle carried the whole argument
+  while the body worked against a fixed identity. The second was a third-party
+  skill with no line of project context whose audit/document/extend is covered.
+  The rule they existed to protect stays in `CLAUDE.md`, now without naming a
+  tool.
+
+Still open, not done here: `docs/brand/theme.ts` is a stale near-duplicate of
+`src/styles/theme.ts` that nothing imports. The docs index now points at the
+live file, which leaves the copy unreferenced; deleting it is the maintainer's
+call.

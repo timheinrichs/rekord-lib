@@ -706,7 +706,7 @@ export default function SettingsView({
         )}
 
         {/* Support. Outlined rather than accent-filled: the page's primary
-            action is the update, and the styleguide keeps one accent. The heart
+            action is the update, and the design system keeps one accent. The heart
             is deliberately not danger-red — colour here would read as a state. */}
         <div className="mt-4 flex flex-wrap items-center gap-3 border-t border-border pt-4">
           <button

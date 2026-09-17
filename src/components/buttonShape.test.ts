@@ -8,7 +8,7 @@
  * from the same intention, and the row of controls steps up and down. That is
  * how the event log button ended up 34×34 while the buttons beside it were 36.
  *
- * The rule lives in `docs/brand/STYLEGUIDE.md` §5; this keeps it true.
+ * The rule is the 36 px Rule in `DESIGN.md`; this keeps it true.
  */
 import { describe, expect, it } from "vitest";
 
