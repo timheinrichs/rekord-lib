@@ -10,6 +10,14 @@ contain incompatible changes.
 ## [Unreleased]
 
 ### Fixed
+- **Scrolling is smooth again.** The sticky header and the filter bar below it
+  both switched on a backdrop blur at the same scroll threshold, full window
+  width, over the track list — and a blur has to be recomputed on every frame
+  the content beneath it moves, so the stutter started the moment the header
+  docked. The docked surfaces are opaque now and their shadow says they float.
+  Two more blurs went with them, for the same reason and with nothing to show
+  for themselves: the player bar was blurring behind a 95 % opaque background,
+  and the back-to-top button behind a fully opaque one.
 - **The release country now reaches the file.** It never had. The field went
   through a lookup that the tag library resolved to an *unknown* key, and
   inserting an unknown key writes nothing and reports nothing — so a country

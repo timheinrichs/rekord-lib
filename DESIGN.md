@@ -382,9 +382,8 @@ The app is a single 100 %-height column: a **64 px sticky header** (`h-16`,
 `z-30`, `px-6`) carrying the logo, the build chip and the right-aligned action
 slot, then the view. In the library view a second **56 px sticky bar** (`h-14`,
 `z-20`) docks directly beneath it at `top-16` and carries grouping, column,
-filter and search controls. Both dock on scroll over 300 ms: from
-`bg-surface` with a hairline to `bg-bg/80` with `backdrop-blur` and
-`shadow-lg shadow-black/40`.
+filter and search controls. Both dock on scroll over 300 ms, to an **opaque** `bg-bg` with a hairline and
+`shadow-lg shadow-black/40` — the shadow is what says they float.
 
 The track list is a real `<table>` (`table-fixed`, `min-w-[95rem]`) inside a
 horizontally scrolling container, virtualized, with **64 px rows** separated by
@@ -450,6 +449,18 @@ it.
   behind it scroll-locked.
 
 ### Named Rules
+
+**The No-Blur-Behind-Opacity Rule.** A `backdrop-filter` re-samples and
+re-blurs everything beneath it on **every frame the content moves**, so it costs
+most exactly where a scrolling list sits underneath. Behind a surface at 80 %
+opacity or more it produces almost nothing visible for that cost, and the app
+shipped four of them: the sticky header and the filter bar both switched on
+`backdrop-blur` at the same scroll threshold, full width, over the virtualized
+table — scrolling stuttered from the moment they docked — and the player bar
+paid it permanently behind 95 % opacity, to show five per cent. A blur is
+allowed where it is visibly doing work over content that is not moving: the
+Bandcamp cover badge at `bg-black/60` keeps it.
+`src/styles/designRules.test.ts` draws the line at 80 %.
 
 **The Tone-Before-Shadow Rule.** If two things need to be told apart, move one
 to the next surface tone. Add a shadow only when the element is actually
@@ -667,6 +678,8 @@ position), and only while the list is still empty.
   `bg-bg-danger`). Tailwind generates nothing for it and the element silently
   keeps the inherited colour — the status hues are `text-warning-500`,
   `bg-success-500/15` and so on.
+- **Don't** put `backdrop-blur` behind a surface at 80 % opacity or more, and
+  never on something a list scrolls under — see the No-Blur-Behind-Opacity Rule.
 - **Don't** stack a shadow on a bordered surface to create depth — move it to
   the next surface tone instead.
 - **Don't** animate list rows; animate the container, because the table renders

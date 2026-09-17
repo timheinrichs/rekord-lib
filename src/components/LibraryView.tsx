@@ -1991,7 +1991,12 @@ export default function LibraryView({
 
       {/* Filter bar (sticky below the header). While the cache is still being
           read its shape is held by placeholders, so the list below does not
-          jump down once it appears. */}
+          jump down once it appears.
+
+          Opaque when docked, and not blurred: see the note in `AppHeader`. This
+          bar and the header share the same scroll threshold, so the two blurs
+          used to appear in the same frame, both full width, both over the
+          scrolling table. */}
       {!hydrated ? (
         <div className="-mx-6 mb-3 flex h-14 items-center gap-2 border-b border-transparent px-6">
           <Skeleton className="h-7 w-28" />
@@ -2006,7 +2011,7 @@ export default function LibraryView({
         <div
           className={`sticky top-16 z-20 -mx-6 mb-3 flex h-14 items-center gap-2 border-b px-6 transition-[box-shadow,background-color,border-color] duration-300 ${
             scrolled
-              ? "border-border bg-bg/90 shadow-lg shadow-black/30 backdrop-blur"
+              ? "border-border bg-bg shadow-lg shadow-black/30"
               : "border-transparent bg-bg"
           }`}
         >

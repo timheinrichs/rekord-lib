@@ -252,6 +252,40 @@ describe("design system rules over the source", () => {
     expect(offenders).toEqual([]);
   });
 
+  it("does not blur behind a surface you cannot see through", () => {
+    // A `backdrop-filter` re-samples and re-blurs everything beneath it on
+    // every frame the content moves. Behind an opaque or nearly opaque
+    // background that work produces nothing visible, and it is not free: the
+    // sticky header and the filter bar both added `backdrop-blur` at the same
+    // scroll threshold, over a full-width virtualized table, and scrolling
+    // stuttered from the moment they docked. The player bar paid the same cost
+    // permanently, behind 95 % opacity, to show five per cent.
+    //
+    // 80 % is the line. Below it the blur is doing visible work — the Bandcamp
+    // cover badge at `bg-black/60` sits over a still image and keeps it.
+    // Scanned per string literal rather than per className, because a docked
+    // state lives inside a `${cond ? "…" : "…"}` and the two branches describe
+    // two different surfaces. `classes()` flattens those holes away — which is
+    // right for every other rule here and wrong for this one, and is why the
+    // first version of this test passed while the blur was still in the file.
+    const offenders: string[] = [];
+    for (const [path, src] of sources) {
+      for (const expr of classNameExpressions(src)) {
+        for (const literal of expr.split(/["'`]/)) {
+          const cls = literal.split(/\s+/).filter(Boolean);
+          if (!cls.some((c) => c.startsWith("backdrop-blur"))) continue;
+          for (const bg of cls.filter((c) => /^bg-/.test(c))) {
+            const alpha = bg.includes("/") ? Number(bg.split("/")[1]) : 100;
+            if (!Number.isNaN(alpha) && alpha >= 80) {
+              offenders.push(`${path}: backdrop-blur behind ${bg}`);
+            }
+          }
+        }
+      }
+    }
+    expect(offenders).toEqual([]);
+  });
+
   it("only writes colour utilities that tokens.css defines", () => {
     // The general form of a defect this file was written for: two places marked
     // an uncertain tempo `text-fg-warning`, `tokens.css` defines no

@@ -76,8 +76,13 @@ export default function PlayerBar() {
   const pct = duration > 0 ? (time / duration) * 100 : 0;
   const subtitle = subtitleParts(current);
 
+  // Opaque, and not blurred. This was a full-width `backdrop-filter` behind a
+  // 95 % opaque background — a per-frame re-blur of the whole window width to
+  // show five per cent of what was underneath. Not the cause of the docking
+  // stutter (it is there whether or not a track is loaded), but the same
+  // arithmetic.
   return (
-    <div className="fixed inset-x-0 bottom-0 z-50 border-t border-border bg-surface/95 backdrop-blur">
+    <div className="fixed inset-x-0 bottom-0 z-50 border-t border-border bg-surface">
       {/* Seek: the waveform once it has been computed, a plain line until then */}
       {wave ? (
         <Waveform

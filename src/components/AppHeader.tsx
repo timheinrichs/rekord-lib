@@ -20,7 +20,18 @@ interface Props {
 
 /**
  * Sticky app header with the title on the left and an actions slot on the right.
- * On scroll it gently docks with a shadow/blur.
+ * On scroll it docks with a shadow.
+ *
+ * Docking used to add `backdrop-blur` over a `bg-bg/80` background, and that is
+ * what made scrolling stutter the moment the header became sticky: a
+ * `backdrop-filter` has to re-sample and re-blur everything beneath it on every
+ * frame the content moves, and beneath this is a full-width virtualized table.
+ * The filter bar below did the same at the same scroll threshold, so two
+ * full-width blurs appeared at once.
+ *
+ * Twenty per cent show-through is what that bought. The docked surface is
+ * opaque now and the shadow does the work of saying it floats — which is what
+ * `DESIGN.md`'s Tone-Before-Shadow rule asks for anyway.
  */
 export default function AppHeader({ title, right, onTitleClick }: Props) {
   const scrolled = useScrolled(4);
@@ -28,7 +39,7 @@ export default function AppHeader({ title, right, onTitleClick }: Props) {
     <header
       className={`sticky top-0 z-30 flex h-16 items-center justify-between gap-4 border-b px-6 transition-[box-shadow,background-color,border-color] duration-300 ${
         scrolled
-          ? "border-border bg-bg/80 shadow-lg shadow-black/40 backdrop-blur"
+          ? "border-border bg-bg shadow-lg shadow-black/40"
           : "border-border bg-surface"
       }`}
     >
