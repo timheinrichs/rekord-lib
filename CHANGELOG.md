@@ -7,6 +7,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/)
 (`MAJOR.MINOR.PATCH`). As long as the version is at `0.x`, MINOR bumps may
 contain incompatible changes.
 
+## [Unreleased]
+
+### Security
+- **A real TLS flaw, patched.** `rustls` moves from 0.23.42 to 0.23.45 for
+  RUSTSEC-2026-0285, in which a TLS 1.3 handshake message could be accepted
+  across encryption level boundaries. It sits under every network path the app
+  has — the metadata lookups, the Bandcamp download, and the updater that
+  installs new versions. Nobody had filed an issue for it; it was found by
+  reading the audit rather than the issue list.
+
+### Changed
+- **The dependency audit is readable again.** It had produced 19 open issues and
+  not one of them was actionable, which is the state in which a security check
+  stops being read. Ten were advisories RustSec had already withdrawn, three are
+  against Tauri's Linux backend, which this macOS-only app never compiles, and
+  six are "unmaintained" notices with no release to move to. The nine that still
+  exist are accepted in `src-tauri/.cargo/audit.toml`, each with its reason and
+  the condition that reopens it, so a *new* finding surfaces instead of joining
+  a pile. A yanked `chacha20` moved off 0.10.1 in passing.
+
 ## [0.9.2] - 2026-09-17
 
 ### Changed

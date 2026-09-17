@@ -132,6 +132,39 @@ reads it any more.
 
 ---
 
+## Accepted advisories
+
+`cargo audit` reports nine findings against this lockfile that will not be
+fixed, and `src-tauri/.cargo/audit.toml` is the list, with the reason and the
+reopening condition per id. Summarised here because that file is not somewhere
+anyone browses.
+
+### Nine RUSTSEC findings, none of them actionable
+
+**What** — three advisories against crates that reach `Cargo.lock` only through
+Tauri's Linux backend (`glib`, `event-listener`, `proc-macro-error`), and six
+"unmaintained" notices against crates that really are in the macOS tree
+(`paste`, and the five `unic-*`).
+
+**Why not** — the first three are never compiled for `aarch64-apple-darwin`,
+which is the only target; `cargo tree --target aarch64-apple-darwin -i <crate>`
+answers "nothing to print" for each. The other six are unmaintained, which says
+a crate has no maintainer rather than that it has a flaw, and none has a patched
+release to move to — `paste` arrives through `lofty` and is still a dependency
+of `lofty` 0.25.2, the `unic-*` family arrives with Tauri itself.
+
+**What would change that** — any of the six becoming a real advisory rather than
+an unmaintained notice; a parent dropping the dependency; or a second platform
+becoming a target (**G2**), at which point the first three stop being
+irrelevant and the two unsound ones need reading properly.
+
+Worth recording separately, because it is the opposite of the above: the same
+audit run surfaced **RUSTSEC-2026-0285**, a real TLS 1.3 handshake flaw in
+`rustls` — in the macOS binary, under both `reqwest` and the updater — for which
+no issue had been filed. It was fixed rather than accepted (0.23.42 → 0.23.45),
+along with a yanked `chacha20`. A list of accepted findings is only honest if
+the actionable ones are demonstrably not on it.
+
 ## Recorded because nobody else would notice
 
 Found while writing the documentation, and not worth a change on their own.

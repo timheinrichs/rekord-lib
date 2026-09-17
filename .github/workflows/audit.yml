@@ -44,6 +44,19 @@ jobs:
       issues: write
     steps:
       - uses: actions/checkout@v4
+      # The accepted findings live in `src-tauri/.cargo/audit.toml`, next to the
+      # lockfile they are about and with the reason and the reopening condition
+      # per id — not in this file, and deliberately not in the action's `ignore`
+      # input, so a local `cargo audit` gives the maintainer the same answer CI
+      # gives. `working-directory` is what makes cargo-audit find it.
+      #
+      # Note what this job cannot do: `cargo audit` reads `Cargo.lock`, which
+      # holds every platform's crates, so it reports advisories against Tauri's
+      # Linux backend that this macOS-only app never compiles. Its
+      # `--target-os`/`--target-arch` flags do not help — measured; they filter
+      # on a platform declared in the advisory, not on the resolved tree. That
+      # is why those ids are accepted in the config with
+      # `cargo tree --target aarch64-apple-darwin -i <crate>` as the evidence.
       - uses: rustsec/audit-check@v2
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
