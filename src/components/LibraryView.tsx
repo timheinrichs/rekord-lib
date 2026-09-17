@@ -2062,7 +2062,7 @@ export default function LibraryView({
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               placeholder="Search…"
-              className="w-56 rounded-lg border border-border-strong bg-surface-2 px-3 py-1.5 text-sm outline-none focus:border-accent-500"
+              className="w-56 rounded-md border border-border-strong bg-surface-2 px-3 py-1.5 text-sm outline-none focus:border-accent-500"
             />
           </div>
         </div>
@@ -2253,7 +2253,7 @@ export default function LibraryView({
                         <td
                           key={c.id}
                           className={`whitespace-nowrap ${pad} ${
-                            bpmIsUncertain(t.bpm_confidence) ? "text-fg-warning" : "text-fg-muted"
+                            bpmIsUncertain(t.bpm_confidence) ? "text-warning-500" : "text-fg-muted"
                           }`}
                           title={
                             bpmIsUncertain(t.bpm_confidence)

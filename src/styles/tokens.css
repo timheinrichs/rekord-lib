@@ -141,11 +141,6 @@
   --fg-subtle:     #8C8C98;   /* graphite-400 */
   --fg-disabled:   #5A5A66;   /* graphite-500 – inert, see below */
 
-  --bg-success: #123026; --fg-success: #4FD6A0;
-  --bg-warning: #3A2A0E; --fg-warning: #F7B84E;
-  --bg-danger:  #3A1518; --fg-danger:  #F0696D;
-  --bg-accent:  #241F52; --fg-accent:  #9C93E9;
-
   color-scheme: dark;
 }
 
@@ -159,11 +154,6 @@
   --fg-muted:      #4A4A55;
   --fg-subtle:     #666671;
   --fg-disabled:   #A8A8B4;
-
-  --bg-success: #E6F6EF; --fg-success: #10794F;
-  --bg-warning: #FCF0D9; --fg-warning: #7A4E06;
-  --bg-danger:  #FCEBEC; --fg-danger:  #A62529;
-  --bg-accent:  #EEEDFC; --fg-accent:  #473C9E;
 
   color-scheme: light;
 }

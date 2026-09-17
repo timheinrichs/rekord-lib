@@ -129,7 +129,7 @@ export default function BandcampView({
         ) : (
           <>
             <div className="mb-4 flex items-center gap-3">
-              <h1 className="text-sm font-semibold text-fg">
+              <h1 className="text-sm font-medium text-fg">
                 Purchased collection
                 <span className="ml-2 text-fg-subtle">{collection.length}</span>
               </h1>
@@ -230,7 +230,7 @@ function BandcampRow({
           <p className="truncate text-sm text-fg" title={item.title}>
             {item.title}
           </p>
-          <span className="shrink-0 rounded-full bg-surface-2 px-1.5 py-0.5 text-[10px] uppercase text-fg-subtle ring-1 ring-border">
+          <span className="shrink-0 rounded-full bg-surface-2 px-1.5 py-0.5 text-[10px] text-fg-subtle ring-1 ring-border">
             {item.item_type}
           </span>
         </div>
@@ -271,7 +271,7 @@ function BandcampCard({
         {item.art_url && (
           <img src={item.art_url} className="h-full w-full object-cover" alt="" />
         )}
-        <span className="absolute left-1.5 top-1.5 rounded-full bg-black/60 px-1.5 py-0.5 text-[10px] uppercase text-white backdrop-blur">
+        <span className="absolute left-1.5 top-1.5 rounded-full bg-black/60 px-1.5 py-0.5 text-[10px] text-white backdrop-blur">
           {item.item_type}
         </span>
         {inLibrary && (

@@ -222,7 +222,7 @@
           "oklch(92% 0.07 70)",
           "oklch(97% 0.03 70)"
         ],
-        "note": "Ramp synthesized for display; the project defines only the 500 step."
+        "note": "Ramp synthesized for display; the project defines only the 500 step, used as a solid text colour and as a 15% tint with a 30% ring."
       },
       "danger-500": {
         "role": "tertiary",
@@ -399,9 +399,9 @@
       "name": "Search Input",
       "kind": "input",
       "refersTo": "input",
-      "description": "The border is the focus indicator — no glow, no ring.",
+      "description": "The border is the focus indicator — no glow, no ring. Same 8 px corner as every button.",
       "html": "<input class=\"ds-input\" type=\"search\" placeholder=\"Search…\" />",
-      "css": ".ds-input { width:224px; padding:6px 12px; border:1px solid var(--border-strong,#343440); border-radius:12px; background:var(--surface-2,#201F28); color:var(--fg,#F6F6F8); font-family:JetBrains Mono, ui-monospace, SFMono-Regular, Menlo, monospace; font-size:14px; outline:none; transition:border-color .15s ease-out; } .ds-input::placeholder { color:var(--fg-subtle,#8C8C98); } .ds-input:focus { border-color:var(--color-accent-500,#6A5FD6); } .ds-input:disabled { color:var(--fg-subtle,#8C8C98); }"
+      "css": ".ds-input { width:224px; padding:6px 12px; border:1px solid var(--border-strong,#343440); border-radius:8px; background:var(--surface-2,#201F28); color:var(--fg,#F6F6F8); font-family:JetBrains Mono, ui-monospace, SFMono-Regular, Menlo, monospace; font-size:14px; outline:none; transition:border-color .15s ease-out; } .ds-input::placeholder { color:var(--fg-subtle,#8C8C98); } .ds-input:focus { border-color:var(--color-accent-500,#6A5FD6); } .ds-input:disabled { color:var(--fg-subtle,#8C8C98); }"
     },
     {
       "name": "Status Pill",
@@ -423,9 +423,9 @@
       "name": "Settings Card",
       "kind": "card",
       "refersTo": "card",
-      "description": "Flat panel on the field: one hairline, no shadow, prose in Inter for the explanation under the value.",
+      "description": "Flat page-level section: one hairline, no shadow, the 16 px corner a full-width surface gets, prose in Inter for the explanation under the value.",
       "html": "<section class=\"ds-card\"><h2 class=\"ds-card-title\">Analysis</h2><p class=\"ds-card-prose\">Tempo is written into the file only when the detector is confident. The musical key stays in the database.</p></section>",
-      "css": ".ds-card { border:1px solid var(--border,#292933); border-radius:12px; background:var(--surface,#17161D); padding:20px; } .ds-card-title { margin:0 0 4px; font-family:JetBrains Mono, ui-monospace, SFMono-Regular, Menlo, monospace; font-size:14px; font-weight:500; color:var(--fg,#F6F6F8); } .ds-card-prose { margin:0; font-family:Inter, ui-sans-serif, system-ui, sans-serif; font-size:14px; line-height:1.55; color:var(--fg-subtle,#8C8C98); }"
+      "css": ".ds-card { border:1px solid var(--border,#292933); border-radius:16px; background:var(--surface,#17161D); padding:20px; } .ds-card-title { margin:0 0 4px; font-family:JetBrains Mono, ui-monospace, SFMono-Regular, Menlo, monospace; font-size:14px; font-weight:500; color:var(--fg,#F6F6F8); } .ds-card-prose { margin:0; font-family:Inter, ui-sans-serif, system-ui, sans-serif; font-size:14px; line-height:1.55; color:var(--fg-subtle,#8C8C98); }"
     },
     {
       "name": "Progress Bar",
@@ -464,17 +464,17 @@
       },
       {
         "name": "The Tinted-Ring Rule",
-        "body": "A status surface is a 15% tint of the status colour, a 30% ring of the same hue, and the solid hue as text. tokens.css also defines --bg-warning/--fg-warning pairs for this; they are currently unused, so the tint form is the live convention.",
+        "body": "A status surface is a 15% tint of the status colour, a 30% ring of the same hue, and the solid hue as text — a ring rather than a border, because a pill sits inside a row. The opaque --bg-warning/--fg-warning pairs tokens.css once carried were never used and were removed in 0.9.1, so there is no text-fg-warning utility: a colour utility no token defines generates nothing rather than failing.",
         "section": "colors"
       },
       {
         "name": "The Sentence Case Rule",
-        "body": "Sentence case everywhere. No Title Case, no ALL CAPS. The four uppercase occurrences in the source are drift, not a sanctioned style.",
+        "body": "Sentence case everywhere. No Title Case, no ALL CAPS — including for data that arrives lowercase, which is not made to shout by an uppercase class. Enforced over the source by src/styles/styleguideRules.test.ts.",
         "section": "typography"
       },
       {
         "name": "The Two Weights Rule",
-        "body": "400 regular and 500 medium, nothing else. font-semibold on ten headings today is drift to be reduced to 500, not a third weight.",
+        "body": "400 regular and 500 medium, nothing else. A heading separates itself by weight and colour, not by a third level. Enforced over the source by src/styles/styleguideRules.test.ts.",
         "section": "typography"
       },
       {
@@ -523,7 +523,8 @@
       "Don't stack a shadow on a bordered surface to create depth — move it to the next surface tone instead.",
       "Don't animate list rows; animate the container, because the table renders only its visible rows and a per-row animation refires on every scroll.",
       "Don't make it look like an enterprise data grid — no grey toolbars, no zebra striping, no border around every cell, no default framework blue.",
-      "Don't make it look like a playful consumer app — no illustrations, no coachmarks, no emoji in the UI, no encouraging copy. The app states facts about files."
+      "Don't make it look like a playful consumer app — no illustrations, no coachmarks, no emoji in the UI, no encouraging copy. The app states facts about files.",
+      "Don't write a colour utility no token defines (text-fg-warning, bg-bg-danger) — Tailwind generates nothing for it and the element silently keeps the inherited colour."
     ]
   }
 }

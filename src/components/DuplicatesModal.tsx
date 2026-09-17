@@ -114,7 +114,7 @@ export default function DuplicatesModal({
               {/* Album-level duplicates */}
               {albums.length > 0 && (
                 <section className="flex flex-col gap-3">
-                  <h3 className="text-xs font-semibold uppercase tracking-wide text-fg-subtle">
+                  <h3 className="text-xs font-medium text-fg-subtle">
                     Duplicate albums
                   </h3>
                   {albums.map((a) => {
@@ -252,7 +252,7 @@ export default function DuplicatesModal({
               {/* Track-level duplicates (not part of an album) */}
               {loneGroups.length > 0 && (
                 <section className="flex flex-col gap-3">
-                  <h3 className="text-xs font-semibold uppercase tracking-wide text-fg-subtle">
+                  <h3 className="text-xs font-medium text-fg-subtle">
                     Duplicate tracks
                   </h3>
                   <p className="text-xs text-fg-subtle">

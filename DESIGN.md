@@ -127,7 +127,7 @@ components:
     backgroundColor: "{colors.surface-2}"
     textColor: "{colors.fg}"
     typography: "{typography.body}"
-    rounded: "{rounded.lg}"
+    rounded: "{rounded.md}"
     padding: "6px 12px"
   pill-warning:
     backgroundColor: "rgb(245 166 35 / 0.15)"
@@ -265,11 +265,14 @@ source.
 
 **The Tinted-Ring Rule.** A status surface is a 15 % tint of the status colour
 with a 30 % ring of the same hue and the solid hue as text
-(`bg-warning-500/15 text-warning-500 ring-1 ring-warning-500/30`). This is what
-the implementation does everywhere. `tokens.css` also defines
-`--bg-warning`/`--fg-warning` pairs for the same purpose; they are currently
-unused, so the tint form is the live convention and the pairs are the
-alternative on record.
+(`bg-warning-500/15 text-warning-500 ring-1 ring-warning-500/30`) — a ring
+rather than a border, because a pill sits inside a row and a border would move
+the text. This is the only form: the opaque `--bg-warning`/`--fg-warning` pairs
+that `tokens.css` once carried were never used and were removed in 0.9.1.
+Consequence worth knowing: there is no `text-fg-warning` utility, and a colour
+utility no token defines generates *nothing* rather than failing — which is how
+two uncertain-tempo markers rendered in the inherited colour for several
+releases. `src/styles/styleguideRules.test.ts` now fails on one.
 
 ## Typography
 
@@ -307,13 +310,14 @@ manual*.
 ### Named Rules
 
 **The Sentence Case Rule.** Sentence case everywhere. No Title Case, no ALL
-CAPS. (Four `uppercase` occurrences exist today — two group headings in the
-duplicates modal and two format tags in the Bandcamp view — and they are drift,
-not a sanctioned style.)
+CAPS — including for data that arrives lowercase, which is not made to shout by
+an `uppercase` class. Enforced over the source by
+`src/styles/styleguideRules.test.ts`.
 
-**The Two Weights Rule.** 400 regular and 500 medium, nothing else.
-`font-semibold` (600) appears on ten headings today; treat that as drift to be
-reduced to 500, not as a third weight to reach for.
+**The Two Weights Rule.** 400 regular and 500 medium, nothing else. A heading
+separates itself by weight and colour, not by a third level — which is why 600
+is not available to reach for. Enforced over the source by
+`src/styles/styleguideRules.test.ts`.
 
 **The Mono-Default Rule.** Do not reach for `font-sans` for anything that is a
 value, a label, a control or a table cell. Reach for it exactly when you are
@@ -397,13 +401,17 @@ position.
 
 ## Shapes
 
-One corner language, three radii, and no exceptions invented per screen:
-**controls are `rounded-md` (8 px)**, cards and panels `rounded-lg` (12 px), the
-track-list container `rounded-xl` (16 px), and pills, dots, progress bars and
-transport buttons `rounded-full`. Text inputs are the one documented outlier at
-`rounded-lg` (12 px) — softer than the buttons beside them, and consistent with
-themselves everywhere. A one-sided border accent (`border-l` only) is
-`rounded-none`.
+One corner language, four radii, and no exceptions invented per screen:
+**every control is `rounded-md` (8 px)** — buttons *and* text fields, so a
+search field and the buttons beside it in a toolbar share one corner. Surfaces
+come in two tiers, and the tier follows the size: a floating panel, a menu or a
+card *inside* another panel is `rounded-lg` (12 px), while a page-level section
+is `rounded-xl` (16 px) — the seven settings sections, the empty states, the
+duplicate-group cards and the track-list shell. Pills, dots, progress bars and
+transport buttons are `rounded-full`. A
+checkbox or radio is a 14 px square and keeps Tailwind's small `rounded`, since
+an 8 px corner on a 14 px box is a circle. A one-sided border accent (`border-l`
+only) is `rounded-none`.
 
 Borders are hairlines: `border-border` for structure, `border-border-strong` for
 an interactive outline, `border-2 border-dashed border-border-strong` for a drop
@@ -458,8 +466,9 @@ than one active.
 
 ### Inputs / Fields
 
-- **Style:** `rounded-lg border border-border-strong bg-surface-2 px-3 py-1.5`
-  (`py-2` in the metadata editor), mono at `text-sm`, `outline-none`.
+- **Style:** `rounded-md border border-border-strong bg-surface-2 px-3 py-1.5`
+  (`py-2` in the metadata editor), mono at `text-sm`, `outline-none` — the same
+  8 px corner as every button.
 - **Focus:** the border becomes `accent-500`. No glow, no ring — the border
   *is* the focus indicator.
 - **Disabled / read-only:** `text-fg-subtle`, no fill change, never `opacity`.
@@ -468,12 +477,15 @@ than one active.
 
 ### Cards / Containers
 
-- **Corner:** `rounded-lg` (12 px); the track-list shell is `rounded-xl`.
+- **Corner:** `rounded-xl` (16 px) for a page-level section — a settings card,
+  an empty state, the track-list shell; `rounded-lg` (12 px) for a panel that
+  floats or sits inside another one. Bigger surface, bigger corner.
 - **Background:** `bg-surface` on `bg-bg`; `bg-surface-2` when the card is
   itself inside a panel (an event log entry, a menu row).
 - **Border:** one hairline `border-border`.
 - **Shadow:** none at rest — see Elevation & Depth.
-- **Padding:** `p-5` for a settings card, `p-2` for a compact list card.
+- **Padding:** `p-5` for a settings section, `p-4` for a menu panel, `p-2` for a
+  compact list card.
 
 ### Menus / Popovers
 
@@ -547,6 +559,10 @@ position), and only while the list is still empty.
 - **Don't** set body text in mono's place *or* set a value, label or table cell
   in Inter.
 - **Don't** use Title Case, ALL CAPS, or weight 600/700.
+- **Don't** write a colour utility no token defines (`text-fg-warning`,
+  `bg-bg-danger`). Tailwind generates nothing for it and the element silently
+  keeps the inherited colour — the status hues are `text-warning-500`,
+  `bg-success-500/15` and so on.
 - **Don't** stack a shadow on a bordered surface to create depth — move it to
   the next surface tone instead.
 - **Don't** animate list rows; animate the container, because the table renders

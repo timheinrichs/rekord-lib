@@ -108,8 +108,21 @@ This is the most important part for this app. Color encodes **compatibility**:
 | **incompatible / error risk** | `danger` (red) | "E-8305 risk", "not PCM" |
 | **brand / action / progress** | `accent` (violet) | convert button, waveform, progress |
 
-Surfaces each use a `bg-*`/`fg-*` pair (in tokens.css): e.g. warning pill
-`background: var(--bg-warning); color: var(--fg-warning)`.
+A status **surface** is a tint of its own colour, not a second token: 15 % as
+the background, the solid hue as the text, and a 30 % ring as the edge — e.g. a
+warning pill is `bg-warning-500/15 text-warning-500 ring-1 ring-warning-500/30`.
+The ring rather than a border, because a pill sits inside a row and a border
+would move the text.
+
+> Until 0.9.1 this section described opaque `--bg-warning`/`--fg-warning` pairs.
+> Nothing ever used them — every status surface in the app was built as the tint
+> above — so the pairs were removed from `tokens.css` and the recipe now says
+> what the app does. Note the consequence: a `text-fg-warning` or
+> `bg-bg-warning` utility does **not** exist. Two places had written
+> `text-fg-warning` for an uncertain tempo, Tailwind generated nothing, and the
+> marker silently rendered in the inherited colour;
+> `src/styles/styleguideRules.test.ts` now fails on a colour utility that no
+> token defines.
 
 ---
 
@@ -124,10 +137,18 @@ Monospace is deliberately prominent — it suits the tool character and lets
 technical values (`44.1 kHz`, `24-bit`, `AIFF`) align cleanly. Don't use it for
 long body text.
 
-**Scale** (Tailwind defaults): titles `text-xl`/`text-2xl` (500), body
-`text-sm`/`text-base` (400), meta `text-xs` (`text-fg-subtle`). Two weights:
-400 regular, 500 medium. No 600/700 in the UI. **Sentence case** everywhere,
-no Title Case, no ALL CAPS.
+**Scale** (Tailwind defaults), and it is a flat one on purpose — this is a
+dense tool, so a heading separates itself by weight and colour rather than by
+size: `text-lg` (500) is the largest type in the app and belongs to a dialog's
+own title or an empty state, `text-sm` is both body *and* section heading,
+`text-xs` (`text-fg-subtle`) is meta, and `text-[11px]`/`text-[10px]` exist for
+progress detail and corner badges. Nothing uses `text-xl` or `text-2xl`.
+
+Two weights: 400 regular, 500 medium. No 600/700 in the UI. **Sentence case**
+everywhere, no Title Case, no ALL CAPS — including for data that arrives
+lowercase, which is not made to shout by an `uppercase` class.
+`src/styles/styleguideRules.test.ts` holds the last two rules over the source;
+they had drifted to ten headings at 600 and four uppercase labels by 0.9.0.
 
 Include the fonts (recommended):
 ```
@@ -144,7 +165,18 @@ import '@fontsource/jetbrains-mono/700.css';
 
 ## 5. Shape & layout
 
-- **Radius:** controls `rounded-md` (8 px) — every button, without exception except the two shapes below; cards `rounded-lg` (12 px), pills and circular transport controls `rounded-full`. One-sided border accents (only `border-l`) → `rounded-none`.
+- **Radius:** controls `rounded-md` (8 px) — every button *and every text
+  field*, without exception except the shapes below; surfaces come in two tiers
+  and the tier follows the size — a floating panel, a menu or a card inside
+  another panel is `rounded-lg` (12 px), a page-level section is `rounded-xl`
+  (16 px): the settings sections, the empty states, the track-list shell. Pills,
+  dots,
+  progress bars and circular transport controls `rounded-full`. A checkbox or
+  radio is a 14 px square and keeps Tailwind's small `rounded` — an 8 px corner
+  on a 14 px box is a circle. One-sided border accents (only `border-l`) →
+  `rounded-none`. Ten fields sat on the card radius until 0.9.1, which put two
+  corners in the same toolbar; `src/styles/styleguideRules.test.ts` keeps them
+  on the control one.
 - **Border:** default `border border-border` (hairline). No double frame + shadow on the same surface.
 - **Elevation:** subtle, `shadow-md` for popover/dialog, otherwise flat. Depth comes from `surface` levels, not from shadows.
 - **Control height: one number, `h-9` (36 px), for every button.** Set as a
@@ -195,8 +227,8 @@ Secondary button
 
 Status pill (example: warning)
 ```html
-<span class="font-mono text-xs rounded-full px-2.5 py-1"
-      style="background:var(--bg-warning);color:var(--fg-warning)">
+<span class="font-mono text-xs rounded-full px-2 py-0.5
+             bg-warning-500/15 text-warning-500 ring-1 ring-warning-500/30">
   resample 48 kHz
 </span>
 ```
@@ -206,8 +238,8 @@ Track row (list)
 <div class="flex items-center gap-3 px-3 py-2 rounded-md hover:bg-surface-2">
   <span class="font-mono text-sm text-fg truncate">artist – title.wav</span>
   <span class="font-mono text-xs text-fg-subtle ml-auto">96 kHz · 24-bit</span>
-  <span class="font-mono text-xs rounded-full px-2 py-0.5"
-        style="background:var(--bg-warning);color:var(--fg-warning)">→ AIFF</span>
+  <span class="font-mono text-xs rounded-full px-2 py-0.5
+               bg-warning-500/15 text-warning-500 ring-1 ring-warning-500/30">→ AIFF</span>
 </div>
 ```
 
