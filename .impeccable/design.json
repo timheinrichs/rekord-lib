@@ -325,6 +325,12 @@
           "oklch(93% 0.03 250)"
         ],
         "note": "Theme-dependent accent text, including the active tab label on its 20% wash. Light: #473C9E."
+      },
+      "danger-600": {
+        "role": "tertiary",
+        "displayName": "Destructive fill",
+        "canonical": "#D13239",
+        "note": "The destructive button's fill, darker than danger-500 so a white label clears 4.5:1 — the 500 carried one at 3.9:1."
       }
     },
     "typographyMeta": {
@@ -447,9 +453,9 @@
       "name": "Primary Button",
       "kind": "button",
       "refersTo": "button-primary",
-      "description": "The one thing to do next in a given context — convert, scan, download.",
+      "description": "The one thing to do next. The label is a fixed white, not the theme's fg: the violet fill does not move with the theme.",
       "html": "<button class=\"ds-btn-primary\">Convert 12 files</button>",
-      "css": ".ds-btn-primary { display:inline-flex; align-items:center; justify-content:center; height:36px; padding:0 16px; border:none; border-radius:8px; background:var(--color-accent-600,#574BC0); color:var(--fg,#F6F6F8); font-family:JetBrains Mono, ui-monospace, SFMono-Regular, Menlo, monospace; font-size:14px; font-weight:500; cursor:pointer; transition:background-color .15s ease-out; } .ds-btn-primary:hover:enabled { background:var(--color-accent-500,#6A5FD6); } .ds-btn-primary:focus-visible { outline:2px solid var(--color-accent-400,#8177E0); outline-offset:2px; } .ds-btn-primary:disabled { background:var(--surface-2,#201F28); color:var(--fg-disabled,#5A5A66); cursor:default; }"
+      "css": ".ds-btn-primary { display:inline-flex; align-items:center; justify-content:center; height:36px; padding:0 16px; border:none; border-radius:8px; background:var(--color-accent-600,#574BC0); color:#fff; font-family:JetBrains Mono, ui-monospace, SFMono-Regular, Menlo, monospace; font-size:14px; font-weight:500; cursor:pointer; transition:background-color .15s ease-out; } .ds-btn-primary:hover:enabled { background:var(--color-accent-500,#6A5FD6); } .ds-btn-primary:focus-visible { outline:2px solid var(--color-accent-400,#8177E0); outline-offset:2px; } .ds-btn-primary:disabled { background:var(--surface-2,#201F28); color:var(--fg-disabled,#5A5A66); cursor:default; }"
     },
     {
       "name": "Secondary Button",
@@ -534,7 +540,7 @@
       },
       {
         "name": "The Two-Theme Rule",
-        "body": "Anything that carries type has a theme-dependent token; only fills, rings and borders may take a fixed ramp step. The ramps are fixed across themes and measured against the light surfaces warning-500 is 1.9:1 and accent-200 1.8:1, so a bare text-warning-500 is a defect. contrast.test.ts does the arithmetic over both theme blocks.",
+        "body": "Type takes its colour from what it sits on. On a theme-dependent surface (bg, surface, surface-2, or a translucent tint over one) it takes a theme-dependent token. On a fixed ramp fill (bg-accent-600, bg-danger-600) it takes a fixed text-white, because the fill does not move with the theme — and saying nothing counts as getting it wrong, since the label then inherits fg. That is how a near-black label reached dark violet at 2.9:1 in light mode.",
         "section": "colors"
       },
       {
@@ -604,6 +610,7 @@
       "Do carry meaning in text as well as colour — a coloured dot is 10 px of hue and not a message, so the tooltip and the accessible name say the level."
     ],
     "donts": [
+      "Don't put a theme-dependent text token on an opaque ramp fill, or leave such a fill's label to inheritance — the fill does not move with the theme.",
       "Don't write a focus style on a component, or suppress the shared one with outline-none — see the One Ring Rule.",
       "Don't put a fixed ramp step on type — the status and accent text weights are theme-dependent tokens (fg-success, fg-warning, fg-danger, fg-accent).",
       "Don't use a Tailwind default palette (neutral-*, sky-*, emerald-*) or a raw hex in a component.",

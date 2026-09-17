@@ -33,6 +33,24 @@ describe("AppHeader", () => {
     expect(screen.getByText("Beta")).toBeInTheDocument();
   });
 
+  it("ships both logo variants and lets CSS pick one", () => {
+    // The wordmark is paths and must not be recoloured, so the light and dark
+    // files are both rendered and the `dark:` variant hides one. A JS swap
+    // could disagree with the theme actually applied; a class cannot.
+    const { container } = render(<AppHeader title="Library" />);
+    const logos = container.querySelectorAll("header img");
+    expect(logos).toHaveLength(2);
+    const [light, dark] = Array.from(logos);
+    expect(light.className).toContain("dark:hidden");
+    expect(dark.className).toContain("dark:block");
+    expect(dark.className).toContain("hidden");
+    // Only one of them names the app, or a screen reader says it twice.
+    expect(
+      Array.from(logos).filter((l) => l.getAttribute("alt")),
+    ).toHaveLength(1);
+    expect(screen.getByAltText("rekord-lib")).toBe(light);
+  });
+
   it("names the screen in a heading the design has no room for", () => {
     // The visible header is a logo and a row of actions. The screen still has a
     // name, and a document still needs one top-level heading.

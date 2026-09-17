@@ -126,7 +126,7 @@ export default function UpdateModal({ update, onClose }: Props) {
             <button
               onClick={() => void install()}
               disabled={installing}
-              className="h-9 inline-flex items-center justify-center rounded-md bg-accent-600 px-4 text-sm font-medium enabled:hover:bg-accent-500 disabled:bg-surface-2 disabled:text-fg-disabled"
+              className="h-9 inline-flex items-center justify-center rounded-md bg-accent-600 text-white px-4 text-sm font-medium enabled:hover:bg-accent-500 disabled:bg-surface-2 disabled:text-fg-disabled"
             >
               {installing
                 ? pct != null

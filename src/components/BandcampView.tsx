@@ -95,7 +95,7 @@ export default function BandcampView({
           <button
             onClick={onSyncLibrary}
             disabled={!canAct || missingCount === 0}
-            className="h-9 inline-flex items-center justify-center rounded-md bg-accent-600 px-4 text-sm font-medium enabled:hover:bg-accent-500 disabled:bg-surface-2 disabled:text-fg-disabled"
+            className="h-9 inline-flex items-center justify-center rounded-md bg-accent-600 text-white px-4 text-sm font-medium enabled:hover:bg-accent-500 disabled:bg-surface-2 disabled:text-fg-disabled"
             title="Download only purchases that are missing locally"
           >
             {bulk?.kind === "sync"
@@ -121,7 +121,7 @@ export default function BandcampView({
             </p>
             <button
               onClick={onOpenSettings}
-              className="h-9 inline-flex items-center justify-center mt-2 rounded-md bg-accent-600 px-4 text-sm font-medium hover:bg-accent-500"
+              className="h-9 inline-flex items-center justify-center mt-2 rounded-md bg-accent-600 text-white px-4 text-sm font-medium hover:bg-accent-500"
             >
               Open settings
             </button>
@@ -244,7 +244,7 @@ function BandcampRow({
       <button
         onClick={onDownload}
         disabled={!item.download_page_url || disabled || state === "loading"}
-        className="h-9 inline-flex items-center justify-center shrink-0 rounded-md bg-accent-600 px-3 text-xs font-medium enabled:hover:bg-accent-500 disabled:bg-surface-2 disabled:text-fg-disabled"
+        className="h-9 inline-flex items-center justify-center shrink-0 rounded-md bg-accent-600 text-white px-3 text-xs font-medium enabled:hover:bg-accent-500 disabled:bg-surface-2 disabled:text-fg-disabled"
       >
         {downloadLabel(state)}
       </button>
@@ -288,7 +288,7 @@ function BandcampCard({
         <button
           onClick={onDownload}
           disabled={!item.download_page_url || disabled || state === "loading"}
-          className="h-9 inline-flex items-center justify-center mt-1 w-full rounded-md bg-accent-600 px-3 text-xs font-medium enabled:hover:bg-accent-500 disabled:bg-surface-2 disabled:text-fg-disabled"
+          className="h-9 inline-flex items-center justify-center mt-1 w-full rounded-md bg-accent-600 text-white px-3 text-xs font-medium enabled:hover:bg-accent-500 disabled:bg-surface-2 disabled:text-fg-disabled"
         >
           {downloadLabel(state)}
         </button>

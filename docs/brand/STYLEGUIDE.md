@@ -52,7 +52,7 @@ platform expects them, not next to the sources: macOS app icons in
 ### Rules
 - **Clear space:** keep at least the height of a bracket foot (≈ 1/6 of the mark height) clear all around.
 - **Minimum size:** mark from 24 px, wordmark from 120 px wide.
-- **Color choice:** on light surfaces the standard variant, on dark surfaces the `-dark` variant.
+- **Color choice:** on light surfaces the standard variant, on dark surfaces the `-dark` variant. In the app both are rendered and CSS shows one, through the `dark:` variant — a swap in JS could fall out of step with the theme that is actually applied, and the wordmark is paths, so recolouring one file is not an option.
 - **Don't:** distort, swap colors, add effects/shadows, or separate the brackets and waveform.
 - For very small UI (16–20 px, e.g. menubar) use `rekord-lib-mark-mono.svg`; the waveform visually merges there, which is acceptable.
 

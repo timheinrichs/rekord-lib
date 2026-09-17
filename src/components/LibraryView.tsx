@@ -1878,7 +1878,7 @@ export default function LibraryView({
           <button
             onClick={convertSelected}
             disabled={converting}
-            className="h-9 inline-flex items-center justify-center rounded-md bg-accent-600 px-4 text-sm font-medium enabled:hover:bg-accent-500 disabled:bg-surface-2 disabled:text-fg-disabled"
+            className="h-9 inline-flex items-center justify-center rounded-md bg-accent-600 text-white px-4 text-sm font-medium enabled:hover:bg-accent-500 disabled:bg-surface-2 disabled:text-fg-disabled"
           >
             {converting ? "Converting…" : `Convert selection (${selected.size})`}
           </button>
@@ -1927,7 +1927,7 @@ export default function LibraryView({
             </p>
             <button
               onClick={onOpenSettings}
-              className="h-9 inline-flex items-center justify-center mt-2 rounded-md bg-accent-600 px-4 text-sm font-medium hover:bg-accent-500"
+              className="h-9 inline-flex items-center justify-center mt-2 rounded-md bg-accent-600 text-white px-4 text-sm font-medium hover:bg-accent-500"
             >
               Open settings
             </button>
@@ -2018,7 +2018,7 @@ export default function LibraryView({
                 onClick={() => setGrouping(key)}
                 className={`h-9 inline-flex items-center justify-center whitespace-nowrap rounded-full px-3 text-sm transition-colors ${
  grouping === key
- ? "bg-accent-600 text-fg"
+ ? "bg-accent-600 text-white"
  : "text-fg-muted hover:text-fg"
  }`}
               >
@@ -2414,7 +2414,7 @@ export default function LibraryView({
                           <button
                             onClick={() => convertOne(t)}
                             disabled={converting}
-                            className="h-9 inline-flex items-center justify-center rounded-md bg-accent-600 px-2 text-xs font-medium enabled:hover:bg-accent-500 disabled:bg-surface-2 disabled:text-fg-disabled"
+                            className="h-9 inline-flex items-center justify-center rounded-md bg-accent-600 text-white px-2 text-xs font-medium enabled:hover:bg-accent-500 disabled:bg-surface-2 disabled:text-fg-disabled"
                             title="Convert to target format"
                           >
                             Convert

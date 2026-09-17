@@ -73,6 +73,8 @@ const TOKENS = new Set([
   "fg-warning",
   "fg-danger",
   "fg-accent",
+  // The destructive fill; see tokens.css.
+  "danger-600",
 ]);
 
 /** Strips variants (`hover:`, `enabled:hover:`, `md:`) and an alpha suffix. */
@@ -208,6 +210,46 @@ describe("design system rules over the source", () => {
       ? []
       : [...used].filter((c) => !block.includes(`.${c}`));
     expect(uncovered).toEqual([]);
+  });
+
+  it("puts a fixed label on a fixed fill", () => {
+    // The bug this is here for shipped in 0.9.2 and was found by looking at the
+    // app: a primary button is `bg-accent-600` and its label was `text-fg`,
+    // which is theme-dependent — so in light mode a near-black label sat on
+    // dark violet at 2.9:1. A fill from the ramp does not move with the theme,
+    // so its label must not either. Inheriting is the same mistake with no
+    // class to point at, which is why a bare fill counts as an offender.
+    const SOLID = /^bg-(?:accent|danger|success|warning|info)-\d00$/;
+    const THEMED_TEXT = /^text-(?:fg|fg-muted|fg-subtle|fg-accent|fg-success|fg-warning|fg-danger)$/;
+    const offenders: string[] = [];
+    for (const [path, src] of sources) {
+      for (const expr of classNameExpressions(src)) {
+        const cls = classes(expr);
+        // Only opaque fills: a `/15` tint composites over the theme's surface
+        // and a theme-dependent label is right on top of it.
+        if (!cls.some((c) => SOLID.test(c))) continue;
+        // And only fills that carry type. A notification dot, a progress bar
+        // and a waveform are accent-filled and hold no text, so a label colour
+        // would mean nothing on them. The proxy is a type size or horizontal
+        // padding, which every labelled control in this app has and none of the
+        // bare fills do. It is a proxy: an element whose text comes entirely
+        // from a child would slip through, and that is the known hole.
+        const carriesType =
+          cls.some((c) => /^text-(xs|sm|base|lg|xl|\[\d+px\])$/.test(c)) ||
+          cls.some((c) => /^px-/.test(c));
+        if (!carriesType) continue;
+        const fixed = cls.some(
+          (c) => c === "text-white" || c === "text-black" || c.startsWith("text-graphite-"),
+        );
+        const themed = cls.filter((c) => THEMED_TEXT.test(c));
+        if (themed.length) {
+          offenders.push(`${path}: ${themed.join(" ")} on a fixed fill`);
+        } else if (!fixed) {
+          offenders.push(`${path}: a fixed fill with no label colour of its own`);
+        }
+      }
+    }
+    expect(offenders).toEqual([]);
   });
 
   it("only writes colour utilities that tokens.css defines", () => {

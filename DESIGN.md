@@ -21,6 +21,7 @@ colors:
   success-500: "#22B27A"
   warning-500: "#F5A623"
   danger-500: "#E5484D"
+  danger-600: "#D13239"
   info-500: "#3B82F6"
 typography:
   display:
@@ -98,7 +99,7 @@ components:
   button-secondary-hover:
     textColor: "{colors.accent-400}"
   button-destructive:
-    backgroundColor: "{colors.danger-500}"
+    backgroundColor: "{colors.danger-600}"
     textColor: "#FFFFFF"
     typography: "{typography.title}"
     rounded: "{rounded.md}"
@@ -265,8 +266,22 @@ straight from the logo, plus three status hues that are strictly semantic.
 
 ### Named Rules
 
-**The Two-Theme Rule.** Anything that carries *type* has a theme-dependent
-token; only what carries a fill, a ring or a border may take a fixed ramp step.
+**The Two-Theme Rule.** Type takes its colour from whatever it sits *on*, and
+that is the whole rule:
+
+- on a **theme-dependent surface** (`bg`, `surface`, `surface-2`, or a
+  translucent tint composited over one) the type takes a theme-dependent token —
+  `fg`, `fg-muted`, `fg-success`, `fg-accent`, and so on;
+- on a **fixed ramp fill** (`bg-accent-600`, `bg-danger-600`) the type takes a
+  fixed colour, `text-white`, because the fill does not move with the theme and
+  a label that does will be wrong in one of them. Saying nothing counts as
+  getting this wrong: the label then inherits `fg`, which is exactly how a
+  near-black label ended up on dark violet at 2.9:1 in light mode.
+
+`bg-danger-600` (#D13239) exists for the second half of that: `danger-500`
+carried a white label at 3.9:1, on the button that moves files to the trash.
+The 500 stays the colour; the 600 is the action, the way `accent-600` already
+was.
 This is not symmetry for its own sake — the ramps are fixed across themes, and
 measured against the light surfaces `warning-500` is 1.9:1 and `accent-200`
 1.8:1, which is why `--fg-success`, `--fg-warning`, `--fg-danger`, `--fg-accent`
@@ -516,14 +531,17 @@ of these, for tools that render a preview rather than read React.
 
 - **Shape:** 8 px corner (`rounded-md`), 36 px tall (`h-9`),
   `inline-flex items-center justify-center`, mono label at `text-sm`.
-- **Primary:** violet fill (`bg-accent-600`), `px-4`, `font-medium`, hovering to
-  `accent-500` via `enabled:hover:`; disabled becomes `bg-surface-2` +
-  `text-fg-disabled`. One primary per context — it is the thing to do next.
+- **Primary:** violet fill (`bg-accent-600`) with a `text-white` label stated
+  explicitly, `px-4`, `font-medium`, hovering to `accent-500` via
+  `enabled:hover:`; disabled becomes `bg-surface-2` + `text-fg-disabled`, both
+  theme-dependent because that surface is. One primary per context — it is the
+  thing to do next.
 - **Secondary / ghost:** no fill, `border border-border-strong`, `px-3`,
   `text-fg-muted`, hovering to `border-accent-500` + `text-accent-400`;
   disabled drops to `border-border` + `text-fg-disabled`.
-- **Destructive:** filled `bg-danger-500` with white label for the confirmed
-  action inside a dialog; outlined with
+- **Destructive:** filled `bg-danger-600` with a white label for the confirmed
+  action inside a dialog — the darker step, so the label clears 4.5:1; outlined
+  with
   `enabled:hover:border-danger-500 enabled:hover:text-danger-500` where the
   button sits in a toolbar and deletion is one option among several.
 - **Icon-only:** `h-9 w-9 rounded-md border border-border-strong`,
@@ -641,6 +659,8 @@ position), and only while the list is still empty.
 - **Don't** set body text in mono's place *or* set a value, label or table cell
   in Inter.
 - **Don't** use Title Case, ALL CAPS, or weight 600/700.
+- **Don't** put a theme-dependent text token on an opaque ramp fill, and don't
+  leave such a fill's label to inheritance — see the Two-Theme Rule.
 - **Don't** write a focus style on a component, or suppress the shared one with
   `outline-none` — see the One Ring Rule.
 - **Don't** write a colour utility no token defines (`text-fg-warning`,

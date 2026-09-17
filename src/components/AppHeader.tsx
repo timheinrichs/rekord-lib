@@ -1,6 +1,7 @@
 import type { ReactNode } from "react";
 import { useScrolled } from "../lib/useScrolled";
-import logoUrl from "../assets/brand/rekord-lib-logo-horizontal-dark.svg";
+import logoDark from "../assets/brand/rekord-lib-logo-horizontal-dark.svg";
+import logoLight from "../assets/brand/rekord-lib-logo-horizontal.svg";
 
 interface Props {
   /**
@@ -38,10 +39,25 @@ export default function AppHeader({ title, right, onTitleClick }: Props) {
           className="flex min-w-0 items-center gap-3 text-left"
           title="To library"
         >
+          {/* Two files, not one recoloured: the wordmark is converted to paths
+              and the styleguide forbids recolouring it, so the light and dark
+              variants are the assets the brand ships. Swapped in CSS through
+              the `dark:` variant rather than in JS, so it cannot fall out of
+              step with the theme that is actually applied.
+
+              Only one is ever visible, so only one carries the alt text — two
+              would announce the app's name twice. */}
           <img
-            src={logoUrl}
+            src={logoLight}
             alt="rekord-lib"
-            className="h-7 w-auto shrink-0"
+            className="h-7 w-auto shrink-0 dark:hidden"
+            draggable={false}
+          />
+          <img
+            src={logoDark}
+            alt=""
+            aria-hidden="true"
+            className="hidden h-7 w-auto shrink-0 dark:block"
             draggable={false}
           />
         </button>

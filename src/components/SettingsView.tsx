@@ -277,14 +277,14 @@ export default function SettingsView({
             </span>
             <button
               onClick={openLogin}
-              className="h-9 inline-flex items-center justify-center rounded-md bg-accent-600 px-4 text-sm font-medium hover:bg-accent-500"
+              className="h-9 inline-flex items-center justify-center rounded-md bg-accent-600 text-white px-4 text-sm font-medium hover:bg-accent-500"
             >
               1 · Sign in to Bandcamp
             </button>
             <button
               onClick={connect}
               disabled={busy}
-              className="h-9 inline-flex items-center justify-center rounded-md bg-accent-600 px-4 text-sm font-medium enabled:hover:bg-accent-500 disabled:bg-surface-2 disabled:text-fg-disabled"
+              className="h-9 inline-flex items-center justify-center rounded-md bg-accent-600 text-white px-4 text-sm font-medium enabled:hover:bg-accent-500 disabled:bg-surface-2 disabled:text-fg-disabled"
             >
               {busy ? "Connecting…" : "2 · Connect"}
             </button>
@@ -588,7 +588,7 @@ export default function SettingsView({
                   void storeDiscogs(() => setDiscogsToken(discogsToken.trim()))
                 }
                 disabled={discogsBusy || !discogsToken.trim()}
-                className="h-9 inline-flex items-center justify-center rounded-md bg-accent-600 px-4 text-sm font-medium enabled:hover:bg-accent-500 disabled:bg-surface-2 disabled:text-fg-disabled"
+                className="h-9 inline-flex items-center justify-center rounded-md bg-accent-600 text-white px-4 text-sm font-medium enabled:hover:bg-accent-500 disabled:bg-surface-2 disabled:text-fg-disabled"
               >
                 {discogsBusy ? "Saving…" : "Save to Keychain"}
               </button>
@@ -678,7 +678,7 @@ export default function SettingsView({
                 <button
                   onClick={runUpdate}
                   disabled={installing}
-                  className="h-9 inline-flex items-center justify-center ml-auto rounded-md bg-accent-600 px-4 text-sm font-medium enabled:hover:bg-accent-500 disabled:bg-surface-2 disabled:text-fg-disabled"
+                  className="h-9 inline-flex items-center justify-center ml-auto rounded-md bg-accent-600 text-white px-4 text-sm font-medium enabled:hover:bg-accent-500 disabled:bg-surface-2 disabled:text-fg-disabled"
                 >
                   {installLabel}
                 </button>
@@ -710,7 +710,7 @@ export default function SettingsView({
                 <button
                   onClick={runUpdate}
                   disabled={installing}
-                  className="h-9 inline-flex items-center justify-center rounded-md bg-accent-600 px-4 text-sm font-medium enabled:hover:bg-accent-500 disabled:bg-surface-2 disabled:text-fg-disabled"
+                  className="h-9 inline-flex items-center justify-center rounded-md bg-accent-600 text-white px-4 text-sm font-medium enabled:hover:bg-accent-500 disabled:bg-surface-2 disabled:text-fg-disabled"
                 >
                   {installLabel}
                 </button>

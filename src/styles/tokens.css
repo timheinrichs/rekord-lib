@@ -50,6 +50,10 @@
   --color-success-500: #22B27A;    /* compatible / ready              */
   --color-warning-500: #F5A623;    /* conversion needed / FLAC note   */
   --color-danger-500:  #E5484D;    /* incompatible / E-8305 risk      */
+  /* The destructive *fill*, darker than the 500 so a white label clears 4.5:1
+     on it — `danger-500` carried one at 3.9:1, on the button that trashes
+     files. Mirrors accent-600: the 500 is the colour, the 600 is the action. */
+  --color-danger-600:  #D13239;
   --color-info-500:    #3B82F6;
 
   /* ---- Semantic, theme-dependent colors (via variables) ------------ */

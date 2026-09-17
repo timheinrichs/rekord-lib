@@ -39,6 +39,15 @@ contain incompatible changes.
   for two releases while amber sat at 1.9:1; arithmetic does not.
 
 ### Fixed
+- **The light theme's logo and buttons were wrong, and are not any more.** Two
+  faults found by looking at the running app rather than at a test. The header
+  drew the dark-background wordmark on a light surface, where "rekord" is nearly
+  invisible — both variants are now rendered and CSS shows the right one. And
+  every filled button had a near-black label on dark violet at 2.9:1, because
+  the label colour followed the theme while the fill did not. Labels on a solid
+  fill are fixed now, and the destructive button's fill moved a step darker so
+  its white label clears the bar too — it was at 3.9:1, on the button that
+  trashes files.
 - **The scan says what it is doing, out loud.** A run takes minutes and its
   stage was never announced — the label lives inside the scan button, whose text
   swaps to the pause action under the pointer, so it could not be the thing that

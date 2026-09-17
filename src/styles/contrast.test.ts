@@ -62,7 +62,24 @@ const RAMP = {
   "warning-500": "#F5A623",
   "danger-500": "#E5484D",
   "accent-600": "#574BC0",
+  "accent-500": "#6A5FD6",
+  "danger-600": "#D13239",
 } as const;
+
+/**
+ * The opaque fills the app puts a label on, with the label it uses.
+ *
+ * This table is the part of the file that was missing, and its absence is how a
+ * near-black label on dark violet shipped: the tests asserted text on the three
+ * *surfaces* and on translucent tints, and a solid ramp fill is neither. A fill
+ * does not move with the theme, so the label on it is fixed — and that is the
+ * assertion.
+ */
+const LABELLED_FILLS = [
+  { fill: "accent-600", label: "#FFFFFF", what: "the primary action" },
+  { fill: "accent-500", label: "#FFFFFF", what: "the primary action, hovered" },
+  { fill: "danger-600", label: "#FFFFFF", what: "the destructive action" },
+] as const;
 
 const THEMES = {
   dark: theme(':root,\n[data-theme="dark"]'),
@@ -94,6 +111,28 @@ describe("contrast, in both themes", () => {
       expect(t["fg-warning"], name).toBeDefined();
     }
     expect(NOT_ASSERTED).toContain("border-strong");
+  });
+
+  it.each(LABELLED_FILLS)(
+    "$what reads on its own fill, in both themes at once",
+    ({ fill, label }) => {
+      // One assertion for both themes on purpose: the fill and the label are
+      // both fixed, so there is one number and it holds everywhere. A label
+      // that needed a theme would be the defect.
+      const r = ratio(label, RAMP[fill]);
+      expect(r, `${label} on ${fill} is ${r.toFixed(2)}:1`).toBeGreaterThanOrEqual(
+        4.5,
+      );
+    },
+  );
+
+  it("keeps a themed text token off a fixed fill", () => {
+    // The measurement behind the rule, kept next to it: `--fg` is the label
+    // colour a fill inherits if nothing says otherwise, and on `accent-600` it
+    // is fine on dark and 2.9:1 on light. Recorded so the rule reads as a
+    // consequence rather than a preference.
+    expect(ratio(THEMES.dark.fg, RAMP["accent-600"])).toBeGreaterThanOrEqual(4.5);
+    expect(ratio(THEMES.light.fg, RAMP["accent-600"])).toBeLessThan(4.5);
   });
 
   const surfaces = ["bg", "surface", "surface-2"] as const;

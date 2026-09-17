@@ -194,7 +194,7 @@ export default function PlaylistEditor({
           )}
           <button
             onClick={onClose}
-            className="h-9 inline-flex items-center justify-center rounded-md bg-accent-600 px-4 text-sm font-medium hover:bg-accent-500"
+            className="h-9 inline-flex items-center justify-center rounded-md bg-accent-600 text-white px-4 text-sm font-medium hover:bg-accent-500"
           >
             Done
           </button>

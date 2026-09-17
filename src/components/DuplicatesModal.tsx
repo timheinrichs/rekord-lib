@@ -214,7 +214,7 @@ export default function DuplicatesModal({
                             <button
                               onClick={() => void runDelete(del)}
                               disabled={busy || del.length === 0}
-                              className="h-9 inline-flex items-center justify-center rounded-md bg-danger-500 px-3 text-xs font-medium text-white enabled:hover:bg-danger-500/90 disabled:bg-surface-2 disabled:text-fg-disabled"
+                              className="h-9 inline-flex items-center justify-center rounded-md bg-danger-600 px-3 text-xs font-medium text-white enabled:hover:bg-danger-600/90 disabled:bg-surface-2 disabled:text-fg-disabled"
                             >
                               Keep selected · delete others
                             </button>
@@ -353,7 +353,7 @@ export default function DuplicatesModal({
             <button
               onClick={() => void runDelete(toDelete.paths)}
               disabled={busy || toDelete.paths.length === 0}
-              className="h-9 inline-flex items-center justify-center rounded-md bg-danger-500 px-4 text-sm font-medium text-white enabled:hover:bg-danger-500/90 disabled:bg-surface-2 disabled:text-fg-disabled"
+              className="h-9 inline-flex items-center justify-center rounded-md bg-danger-600 px-4 text-sm font-medium text-white enabled:hover:bg-danger-600/90 disabled:bg-surface-2 disabled:text-fg-disabled"
             >
               {busy ? "Moving…" : `All tracks not kept (${toDelete.paths.length})`}
             </button>
