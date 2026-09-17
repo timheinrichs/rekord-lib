@@ -51,7 +51,7 @@ export default function PlaylistMenu({
             e.currentTarget.blur();
           }
         }}
-        className="w-40 rounded-md border border-accent-500 bg-surface-2 px-2 py-1 text-sm outline-none"
+        className="w-40 rounded-md border border-accent-500 bg-surface-2 px-2 py-1 text-sm"
         aria-label="Playlist name"
       />
     );

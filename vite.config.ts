@@ -35,6 +35,13 @@ export default defineConfig(async () => ({
   // Unit tests (Vitest). Runs in jsdom for React component tests.
   test: {
     environment: "jsdom",
+    // So a test can read a stylesheet. Without this, Vitest stubs every CSS
+    // import to an empty string — `?raw` included — and the reduced-motion
+    // guard in `src/styles/designRules.test.ts` cannot see the block it checks.
+    // Nothing in the test graph imports a stylesheet for its styles (only
+    // `main.tsx` does, and no test renders it), so this buys the read without
+    // giving jsdom a stylesheet the component tests were written without.
+    css: true,
     globals: true,
     setupFiles: ["src/test/setup.ts"],
     // `scripts/` is in here for the release-notes extractor: it runs in CI on

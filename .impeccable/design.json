@@ -245,6 +245,22 @@
         "displayName": "Info Blue",
         "canonical": "#3B82F6",
         "note": "Defined in tokens.css but currently unused; informational markers take accent-300."
+      },
+      "focus": {
+        "role": "primary",
+        "displayName": "Focus ring",
+        "canonical": "#8177E0",
+        "tonalRamp": [
+          "#191340",
+          "#282160",
+          "#3A327E",
+          "#473C9E",
+          "#574BC0",
+          "#6A5FD6",
+          "#8177E0",
+          "#9C93E9"
+        ],
+        "note": "Theme-dependent (--focus): accent-400 on dark, accent-600 on light. No single ramp step clears 3:1 against both themes' surfaces."
       }
     },
     "typographyMeta": {
@@ -401,7 +417,7 @@
       "refersTo": "input",
       "description": "The border is the focus indicator — no glow, no ring. Same 8 px corner as every button.",
       "html": "<input class=\"ds-input\" type=\"search\" placeholder=\"Search…\" />",
-      "css": ".ds-input { width:224px; padding:6px 12px; border:1px solid var(--border-strong,#343440); border-radius:8px; background:var(--surface-2,#201F28); color:var(--fg,#F6F6F8); font-family:JetBrains Mono, ui-monospace, SFMono-Regular, Menlo, monospace; font-size:14px; outline:none; transition:border-color .15s ease-out; } .ds-input::placeholder { color:var(--fg-subtle,#8C8C98); } .ds-input:focus { border-color:var(--color-accent-500,#6A5FD6); } .ds-input:disabled { color:var(--fg-subtle,#8C8C98); }"
+      "css": ".ds-input { width:224px; padding:6px 12px; border:1px solid var(--border-strong,#343440); border-radius:8px; background:var(--surface-2,#201F28); color:var(--fg,#F6F6F8); font-family:JetBrains Mono, ui-monospace, SFMono-Regular, Menlo, monospace; font-size:14px;  transition:border-color .15s ease-out; } .ds-input::placeholder { color:var(--fg-subtle,#8C8C98); } .ds-input:focus { border-color:var(--color-accent-500,#6A5FD6); } .ds-input:focus-visible { outline:2px solid var(--focus,#8177E0); outline-offset:2px; } .ds-input:disabled { color:var(--fg-subtle,#8C8C98); }"
     },
     {
       "name": "Status Pill",
@@ -447,6 +463,11 @@
       "Compact density: 64 px track rows, px-3 py-2 cells, 12 px gaps."
     ],
     "rules": [
+      {
+        "name": "The One Ring Rule",
+        "body": "Keyboard focus is one ring, defined once in index.css as :focus-visible { outline: 2px solid var(--focus); outline-offset: 2px } — never per component, never suppressed. --focus is theme-dependent because no single accent step clears 3:1 on both themes. The rules are unlayered so no Tailwind outline-* utility can outrank them, and designRules.test.ts fails on any outline-none.",
+        "section": "shapes"
+      },
       {
         "name": "The Semantic Colour Rule",
         "body": "Green, amber and red only ever describe compatibility state. A status colour used because it looks good is a defect. A build label that is merely a heads-up (\"Beta\") takes the accent, not amber.",
@@ -514,6 +535,7 @@
       "Do carry meaning in text as well as colour — a coloured dot is 10 px of hue and not a message, so the tooltip and the accessible name say the level."
     ],
     "donts": [
+      "Don't write a focus style on a component, or suppress the shared one with outline-none — see the One Ring Rule.",
       "Don't use a Tailwind default palette (neutral-*, sky-*, emerald-*) or a raw hex in a component.",
       "Don't use a status colour decoratively, or a second accent, or a gradient or glow anywhere — including a shimmer sweep across a skeleton.",
       "Don't express disabled with opacity.",

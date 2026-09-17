@@ -271,7 +271,7 @@ export default function MetadataEditor({
                       value={form[key]}
                       list={listId}
                       onChange={(e) => set(key, e.target.value)}
-                      className={`flex-1 rounded-md border bg-surface-2 px-3 py-2 outline-none focus:border-accent-500 ${
+                      className={`flex-1 rounded-md border bg-surface-2 px-3 py-2 focus:border-accent-500 ${
                         missing ? "border-danger-500/60" : "border-border-strong"
                       }`}
                     />
@@ -327,7 +327,7 @@ export default function MetadataEditor({
                   value={track.path}
                   disabled
                   readOnly
-                  className="flex-1 truncate rounded-md border border-border-strong bg-surface-2 px-3 py-2 text-fg-subtle outline-none"
+                  className="flex-1 truncate rounded-md border border-border-strong bg-surface-2 px-3 py-2 text-fg-subtle"
                   title={track.path}
                 />
                 <button
@@ -427,7 +427,7 @@ export default function MetadataEditor({
                         setEditingBpm(false);
                       }
                     }}
-                    className="w-20 rounded-md border border-border-strong bg-surface-2 px-2 py-0.5 text-fg outline-none focus:border-accent-500"
+                    className="w-20 rounded-md border border-border-strong bg-surface-2 px-2 py-0.5 text-fg focus:border-accent-500"
                   />
                 ) : (
                   <div className="flex items-baseline gap-2">

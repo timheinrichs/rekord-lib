@@ -128,7 +128,7 @@ export default function BulkMetadataEditor({
                   onChange={(e) =>
                     setValues((s) => ({ ...s, [key]: e.target.value }))
                   }
-                  className="flex-1 rounded-md border border-border-strong bg-surface-2 px-3 py-2 text-sm outline-none focus:border-accent-500 disabled:border-border disabled:text-fg-disabled"
+                  className="flex-1 rounded-md border border-border-strong bg-surface-2 px-3 py-2 text-sm focus:border-accent-500 disabled:border-border disabled:text-fg-disabled"
                 />
                 {listId && (
                   <datalist id={listId}>

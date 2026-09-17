@@ -217,7 +217,7 @@ function RangeInputs({
   // An empty field means "no bound", which is not the same as 0.
   const parse = (raw: string) => (raw.trim() === "" ? null : Number(raw));
   const cls =
-    "w-full rounded-md border border-border-strong bg-surface-2 px-2 py-1.5 text-sm outline-none focus:border-accent-500";
+    "w-full rounded-md border border-border-strong bg-surface-2 px-2 py-1.5 text-sm focus:border-accent-500";
   return (
     <div className="flex items-center gap-2">
       <input

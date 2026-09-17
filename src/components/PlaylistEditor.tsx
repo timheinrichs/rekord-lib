@@ -86,7 +86,7 @@ export default function PlaylistEditor({
                 e.currentTarget.blur();
               }
             }}
-            className="h-9 min-w-0 flex-1 rounded-md border border-transparent bg-transparent px-2 text-sm hover:border-border focus:border-accent-500 focus:bg-surface-2 focus:outline-none"
+            className="h-9 min-w-0 flex-1 rounded-md border border-transparent bg-transparent px-2 text-sm hover:border-border focus:border-accent-500 focus:bg-surface-2"
             aria-label="Playlist name"
           />
           <span className="shrink-0 text-sm text-fg-subtle">

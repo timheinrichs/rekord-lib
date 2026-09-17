@@ -1811,12 +1811,16 @@ export default function LibraryView({
         </button>
       )}
       {writing && (
+        /* The label is not decoration: under `prefers-reduced-motion` the
+           spinner does not spin, and this was the one indicator in the app that
+           had nothing but the spin to say it was working. */
         <span
-          className="flex h-9 w-9 items-center justify-center text-fg-muted"
+          className="inline-flex h-9 items-center gap-1.5 px-3 text-sm text-fg-muted"
           title="Writing tags…"
-          aria-label="Writing tags"
+          role="status"
         >
           <SpinnerIcon />
+          Writing tags…
         </span>
       )}
       {undoEntry && (
@@ -2062,7 +2066,7 @@ export default function LibraryView({
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               placeholder="Search…"
-              className="w-56 rounded-md border border-border-strong bg-surface-2 px-3 py-1.5 text-sm outline-none focus:border-accent-500"
+              className="w-56 rounded-md border border-border-strong bg-surface-2 px-3 py-1.5 text-sm focus:border-accent-500"
             />
           </div>
         </div>

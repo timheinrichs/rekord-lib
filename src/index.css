@@ -13,6 +13,33 @@ html {
   -moz-osx-font-smoothing: grayscale;
 }
 
+/* =========================================================================
+   Keyboard focus — one ring, defined once.
+
+   Not per component: a focus style written next to each control is a style that
+   the next control is written without, which is how the app reached 0.9.1 with
+   no designed focus state at all and 16 `outline-none` utilities suppressing
+   the browser's. So the UA outline goes off and `:focus-visible` gets the
+   app's ring, for everything focusable, here.
+
+   `:focus-visible` rather than `:focus` so a mouse click does not leave a ring
+   behind; the offset puts the ring on the page rather than on the control, so
+   what it needs contrast against is the surface behind it — which is what
+   `--focus` was measured on.
+
+   These rules are deliberately unlayered. Tailwind's utilities live in a
+   cascade layer, and an unlayered declaration outranks a layered one, so no
+   `outline-*` utility can silently win against this.
+   ========================================================================= */
+:focus {
+  outline: none;
+}
+
+:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+}
+
 /* Marquee for overflowing titles: two identical copies scroll left; the -50%
    shift moves exactly one copy, so the loop is seamless. Paused until the
    surrounding row (.group) is hovered. */
@@ -45,12 +72,16 @@ html {
     animation: none;
   }
 
-  /* Motion is decoration here: the content is fully readable without it, so
-     everything simply lands in its final state. */
-  .animate-fade-in,
-  .animate-fade-out,
-  .animate-skeleton,
-  .animate-eq {
+  /* Every animation, not a list of them.
+     Motion is decoration here: the content is fully readable without it, so
+     everything simply lands in its final state.
+
+     This used to name the four `--animate-*` tokens individually, and that is
+     precisely how Tailwind's own `animate-spin` and `animate-pulse` — both
+     infinite, and the two that run longest — kept animating for a user who had
+     asked for no motion. A list loses to the next utility somebody reaches
+     for; the attribute selector does not. */
+  [class*="animate-"] {
     animation: none;
   }
 }

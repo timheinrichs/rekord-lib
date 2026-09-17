@@ -6,6 +6,9 @@ import {
   componentSources as sources,
 } from "../test/classNames";
 import { accent, graphite, status } from "./theme";
+// Readable only because `vite.config.ts` sets `test.css` — Vitest stubs CSS
+// imports to an empty string otherwise, `?raw` included.
+import indexCss from "../index.css?raw";
 
 /**
  * Type, shape and colour rules from `DESIGN.md`, checked over the source for the
@@ -147,6 +150,52 @@ describe("design system rules over the source", () => {
       }
     }
     expect(offenders).toEqual([]);
+  });
+
+  it("leaves the focus ring to the base layer", () => {
+    // `index.css` gives everything focusable one `:focus-visible` ring, and it
+    // is unlayered so no utility can outrank it — except an `outline-*`
+    // utility on the element itself, which is exactly what suppressed focus
+    // everywhere before 0.9.2: sixteen `outline-none` classes and no
+    // replacement. A component that wants to opt out has to argue for it here.
+    const offenders: string[] = [];
+    for (const [path, src] of sources) {
+      for (const expr of classNameExpressions(src)) {
+        for (const cls of classes(expr)) {
+          if (/^(?:[a-z-]+:)*outline-(?:none|0)$/.test(cls)) {
+            offenders.push(`${path}: ${cls}`);
+          }
+        }
+      }
+    }
+    expect(offenders).toEqual([]);
+  });
+
+  it("switches off every animation under reduced motion", () => {
+    // The block in `index.css` used to name four animations, so Tailwind's own
+    // `animate-spin` and `animate-pulse` — the two infinite ones — kept running
+    // for a user who had asked for no motion. It now matches `[class*=
+    // "animate-"]`, and this asserts that the selector still covers everything
+    // the tree actually uses, including a future utility nobody adds to a list.
+    const used = new Set<string>();
+    for (const [, src] of sources) {
+      for (const expr of classNameExpressions(src)) {
+        for (const cls of classes(expr)) {
+          if (/^animate-/.test(cls) && cls !== "animate-none") used.add(cls);
+        }
+      }
+    }
+    // Guards the guard: a broken scan would make the assertion vacuous.
+    expect(used.size).toBeGreaterThan(3);
+
+    const block = indexCss.slice(indexCss.indexOf("prefers-reduced-motion"));
+    const generic = /\[class\*=("|')animate-\1\]\s*\{[^}]*animation:\s*none/.test(
+      block,
+    );
+    const uncovered = generic
+      ? []
+      : [...used].filter((c) => !block.includes(`.${c}`));
+    expect(uncovered).toEqual([]);
   });
 
   it("only writes colour utilities that tokens.css defines", () => {

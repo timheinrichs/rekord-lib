@@ -17,6 +17,7 @@ colors:
   fg-muted: "#B7B7C0"
   fg-subtle: "#8C8C98"
   fg-disabled: "#5A5A66"
+  focus: "#8177E0"
   success-500: "#22B27A"
   warning-500: "#F5A623"
   danger-500: "#E5484D"
@@ -389,8 +390,12 @@ Shadows are reserved for things that genuinely float above the page, and there
 are only three in the vocabulary. Motion is the same kind of hint: 150 ms fades
 for anything appearing, 300 ms for the header docking, 1.1–1.6 s loops for the
 skeleton pulse and the equalizer bars on the splash — and **all of it is
-switched off under `prefers-reduced-motion`**, with content always complete in
-its final state.
+switched off under `prefers-reduced-motion`** — by
+`[class*="animate-"] { animation: none }` rather than by a list of animation
+names, because a list is exactly what let `animate-spin` and `animate-pulse`
+keep running for two releases. Content is always complete in its final state,
+and where motion was the *only* thing saying "working", it now has words beside
+it.
 
 ### Shadow Vocabulary
 
@@ -434,6 +439,18 @@ Icons are 18–20 px stroke glyphs at `stroke-width 2`; 16 px is only for
 decoration that cannot be clicked.
 
 ### Named Rules
+
+**The One Ring Rule.** Keyboard focus is **one** ring, defined once in
+`index.css` as `:focus-visible { outline: 2px solid var(--focus); outline-offset:
+2px }` — never per component, and never suppressed. `--focus` is
+theme-dependent because no single step of the accent ramp clears 3:1 against
+both themes' surfaces: `accent-400` on dark (4.4:1 at worst), `accent-600` on
+light (5.6:1). The offset matters — it puts the ring on the page rather than on
+the control, so the surface behind it is what needs the contrast. The rules are
+deliberately *unlayered* so no Tailwind `outline-*` utility can outrank them,
+and `src/styles/designRules.test.ts` fails on a component that writes
+`outline-none` at all. Before 0.9.2 there were sixteen of those and no
+replacement.
 
 **The 36 px Rule.** Every button is `h-9` (36 px), stated as a height and never
 derived from padding — a label is 20 px tall, an icon 16, a cover 40, so padding
@@ -505,8 +522,10 @@ than one active.
 - **Style:** `rounded-md border border-border-strong bg-surface-2 px-3 py-1.5`
   (`py-2` in the metadata editor), mono at `text-sm`, `outline-none` — the same
   8 px corner as every button.
-- **Focus:** the border becomes `accent-500`. No glow, no ring — the border
-  *is* the focus indicator.
+- **Focus:** the shared ring (see the One Ring Rule) *plus* the border turning
+  `accent-500` — two signals, because a field is where a keyboard user spends
+  the most time. The border alone was the whole indicator until 0.9.2, which
+  meant the app had no designed focus state at all.
 - **Disabled / read-only:** `text-fg-subtle`, no fill change, never `opacity`.
   The path field in the metadata editor is the canonical example.
 - Search is a native `type="search"` at `w-56` in the docked filter bar.
@@ -576,8 +595,10 @@ position), and only while the list is still empty.
   `disabled:text-fg-disabled`, `disabled:border-border`) and guard hovers with
   `enabled:`.
 - **Do** open menus with `right-0 top-full mt-2 z-40`.
-- **Do** give a new animation a token in `tokens.css` and add it to the
-  `prefers-reduced-motion` block in `index.css`.
+- **Do** give a new animation a token in `tokens.css`. The
+  `prefers-reduced-motion` block already covers every `animate-*` class, so
+  there is no list to maintain — but check that whatever the motion was saying
+  is still said without it.
 - **Do** let the later value truncate first when a line carries several
   (`shrink-[999]`).
 - **Do** carry meaning in text as well as colour — a coloured dot is 10 px of
@@ -595,6 +616,8 @@ position), and only while the list is still empty.
 - **Don't** set body text in mono's place *or* set a value, label or table cell
   in Inter.
 - **Don't** use Title Case, ALL CAPS, or weight 600/700.
+- **Don't** write a focus style on a component, or suppress the shared one with
+  `outline-none` — see the One Ring Rule.
 - **Don't** write a colour utility no token defines (`text-fg-warning`,
   `bg-bg-danger`). Tailwind generates nothing for it and the element silently
   keeps the inherited colour — the status hues are `text-warning-500`,

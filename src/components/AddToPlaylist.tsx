@@ -97,7 +97,7 @@ export default function AddToPlaylist({
                 if (e.key === "Escape") setCreating(false);
               }}
               onBlur={() => setCreating(false)}
-              className="mx-2 my-1 w-[calc(100%-1rem)] rounded-md border border-accent-500 bg-surface px-2 py-1 text-sm outline-none"
+              className="mx-2 my-1 w-[calc(100%-1rem)] rounded-md border border-accent-500 bg-surface px-2 py-1 text-sm"
               aria-label="New playlist name"
             />
           ) : (

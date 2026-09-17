@@ -330,7 +330,7 @@ export default function SettingsView({
               onChange={(e) =>
                 onSettingsChange({ format: e.target.value as TargetFormat })
               }
-              className="rounded-md border border-border-strong bg-surface-2 px-3 py-2 outline-none focus:border-accent-500"
+              className="rounded-md border border-border-strong bg-surface-2 px-3 py-2 focus:border-accent-500"
             >
               {(Object.keys(FORMAT_LABELS) as TargetFormat[]).map((f) => (
                 <option key={f} value={f}>
@@ -352,7 +352,7 @@ export default function SettingsView({
               onChange={(e) =>
                 onSettingsChange({ bit_depth: Number(e.target.value) })
               }
-              className="rounded-md border border-border-strong bg-surface-2 px-3 py-2 outline-none focus:border-accent-500 disabled:border-border disabled:text-fg-disabled"
+              className="rounded-md border border-border-strong bg-surface-2 px-3 py-2 focus:border-accent-500 disabled:border-border disabled:text-fg-disabled"
             >
               <option value={16}>16-bit (safe)</option>
               <option value={24}>24-bit</option>
@@ -407,7 +407,7 @@ export default function SettingsView({
               const [min, max] = e.target.value.split("-").map(Number);
               onSettingsChange({ bpm_min: min, bpm_max: max });
             }}
-            className="w-64 rounded-md border border-border-strong bg-surface-2 px-2 py-1.5 text-fg outline-none focus:border-accent-500"
+            className="w-64 rounded-md border border-border-strong bg-surface-2 px-2 py-1.5 text-fg focus:border-accent-500"
           >
             {BPM_RANGE_PRESETS.map((p) => (
               <option key={p.label} value={`${p.min}-${p.max}`}>
@@ -471,7 +471,7 @@ export default function SettingsView({
                 download_format: e.target.value as DownloadFormat,
               })
             }
-            className="rounded-md border border-border-strong bg-surface-2 px-3 py-2 outline-none focus:border-accent-500"
+            className="rounded-md border border-border-strong bg-surface-2 px-3 py-2 focus:border-accent-500"
           >
             {(Object.keys(DOWNLOAD_FORMAT_LABELS) as DownloadFormat[]).map((f) => (
               <option key={f} value={f}>
@@ -545,7 +545,7 @@ export default function SettingsView({
                   type="password"
                   value={discogsToken}
                   onChange={(e) => setDiscogsTokenInput(e.target.value)}
-                  className="rounded-md border border-border-strong bg-surface-2 px-3 py-2 outline-none focus:border-accent-500"
+                  className="rounded-md border border-border-strong bg-surface-2 px-3 py-2 focus:border-accent-500"
                 />
               </label>
               <button
@@ -580,7 +580,7 @@ export default function SettingsView({
                     <input
                       value={discogsKey}
                       onChange={(e) => setDiscogsKey(e.target.value)}
-                      className="rounded-md border border-border-strong bg-surface-2 px-3 py-2 outline-none focus:border-accent-500"
+                      className="rounded-md border border-border-strong bg-surface-2 px-3 py-2 focus:border-accent-500"
                     />
                   </label>
                   <label className="flex flex-col gap-1 text-sm">
@@ -589,7 +589,7 @@ export default function SettingsView({
                       type="password"
                       value={discogsSecret}
                       onChange={(e) => setDiscogsSecret(e.target.value)}
-                      className="rounded-md border border-border-strong bg-surface-2 px-3 py-2 outline-none focus:border-accent-500"
+                      className="rounded-md border border-border-strong bg-surface-2 px-3 py-2 focus:border-accent-500"
                     />
                   </label>
                 </div>
