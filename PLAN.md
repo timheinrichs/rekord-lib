@@ -21,8 +21,10 @@ grows. Doing it deliberately now beats doing it under pressure later.
 ## What actually breaks
 
 Measured, not estimated: `lofty = "0.25"` plus `cargo check` gives **15 errors
-in two files** (`src/metadata/read.rs`, `src/metadata/write.rs`), from three
-causes.
+in two files** (`src/metadata/read.rs`, `src/metadata/write.rs`) — fourteen real
+ones plus the "could not compile" summary — from three causes. **Twelve of the
+fourteen are mechanical.** Two are not, and they are the whole reason this is a
+plan.
 
 ### 1. `ItemKey` is taken by value (11 errors) — mechanical
 
@@ -51,23 +53,36 @@ be a silent regression in exactly the thing this app promises.
 
 **So this is verified, not assumed** — see Verification below.
 
-### 3. `Picture::new_unchecked` is gone (1 error) — needs a decision
+### 3. `Picture::new_unchecked` was renamed (1 error) — mechanical after all
 
-The remaining constructors (`from_jpeg`, `from_png`, `from_reader`) validate and
-return `Result<_, PictureParseError>`. `apply_cover` in `write.rs:288` cannot
-fail today; after the upgrade the cover path can.
+**This entry was wrong when first written, and the correction matters more than
+the entry.** It said the only remaining constructors validate and return a
+`Result`, so the cover path could now fail and somebody had to decide what a bad
+image should cost. That was a wrong reading of the crate: `Picture::unchecked`
+still exists in 0.25, as a builder rather than a function, and it returns a
+`Picture` with no `Result` in sight:
 
-Better behaviour — an invalid image stops being embedded as garbage — but it
-needs a choice, and it is the maintainer's:
+```rust
+Picture::unchecked(bytes)
+    .pic_type(PictureType::CoverFront)
+    .mime_type(mime)
+    .build()
+```
 
-- **fail the whole metadata write** (loud, but loses the text edits over a bad
-  cover), or
-- **skip the cover, write the rest, and record it in the event log** (the log
-  exists for exactly this, and the app already reports per-file write failures).
+So the port is one call site rewritten into builder form, `apply_cover` keeps
+its signature, and no behaviour changes. The validating constructors
+(`from_jpeg`, `from_png`, `from_reader`) are an *addition*, not a replacement.
 
-Recommendation: the second. A bad `cover.jpg` next to a track should not cost
-the user their tag edits, and the event log is the established place for "this
-one thing did not work".
+Worth keeping the analysis that came out of the mistake, because it is the thing
+to weigh if validation is ever adopted deliberately: a cover reaches
+`apply_cover` from five places (`CoverInput`), and they do not deserve the same
+treatment. `Musicbrainz` is a download and `File` is user input — validating
+those would be a gain, and `CLAUDE.md` asks for exactly that of third-party
+content. But `Data { base64 }` **is the undo path**: bytes the app itself
+captured from a file it is about to overwrite. Rejecting there would mean undo
+silently failing to restore the artwork it exists to restore, on a file that was
+fine before. That asymmetry is the argument, and adopting validation is its own
+change with its own tests — not a side effect of an upgrade.
 
 ## Steps
 
@@ -76,9 +91,8 @@ one thing did not work".
 3. Port the year through `date()`/`set_date()`, keeping the app's `Option<String>`
    contract: parse a leading four-digit year, drop what is not that, exactly as
    `parse::<u32>()` does today. Preserve the `clear_empty` semantics.
-4. Port `apply_cover` to a checked constructor and thread the failure per the
-   decision above; pick the constructor by the mime the caller already has
-   (`CoverImage` carries it), falling back to `from_reader`.
+4. Rewrite the one `Picture::new_unchecked` call into the builder form. No
+   signature change, no new failure path.
 5. Re-read `docs/METADATA.md` against the result. It documents what the app
    writes and is the document that becomes wrong first if a frame moves.
 
@@ -102,6 +116,15 @@ The four gates are necessary and nowhere near sufficient here.
 - **`cargo test`** for the Rust unit tests around `metadata::{read,write}`.
 - **A running app**, on copies in `.dev/`: edit a year, edit a cover, convert a
   file, and look at the result in something else.
+
+## Nothing here needs deciding
+
+Stated plainly because the first draft of this plan claimed otherwise: there is
+no open question for the maintainer. Twelve of the fourteen errors are
+mechanical, the thirteenth and fourteenth are the year, and the year is settled
+by measurement rather than by preference — either it lands in the same frame or
+the port is wrong. A decision only appears if that measurement fails, and then
+it is about whether to wait, which is the section below.
 
 ## What would stop this
 
