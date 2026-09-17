@@ -2117,7 +2117,7 @@ export default function LibraryView({
           </div>
         ) : (
           <div ref={listRef} className="animate-fade-in overflow-x-auto">
-          <table className="w-full min-w-[95rem] table-fixed text-sm">
+          <table className="track-list w-full min-w-[95rem] table-fixed text-sm">
             <thead className="text-left text-fg-muted">
               <tr className="border-b border-border">
                 {cols.map((c) =>
@@ -2525,7 +2525,7 @@ export default function LibraryView({
                           }
                         : undefined
                     }
-                    className={`group h-16 cursor-pointer border-b border-border last:border-0 hover:bg-surface-2 ${
+                    className={`group h-16 cursor-pointer border-b border-border hover:bg-surface-2 ${
                       dropHere ? "border-t-2 border-t-accent-500" : ""
                     }`}
                   >

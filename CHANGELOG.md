@@ -7,9 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/)
 (`MAJOR.MINOR.PATCH`). As long as the version is at `0.x`, MINOR bumps may
 contain incompatible changes.
 
-## [Unreleased]
+## [0.9.3] - 2026-09-18
 
 ### Fixed
+- **No stray line under the last row.** A collapsed group at the end of the
+  list drew a divider across the container's rounded corner. The track row
+  dropped its bottom line when it was last; the group header, written later
+  beside it, did not — so the rule now lives on the table once instead of on
+  each kind of row, where the next kind would have forgotten it again.
 - **Scrolling is smooth again.** The sticky header and the filter bar below it
   both switched on a backdrop blur at the same scroll threshold, full window
   width, over the track list — and a blur has to be recomputed on every frame

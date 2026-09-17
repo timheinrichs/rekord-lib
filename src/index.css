@@ -40,6 +40,27 @@ html {
   outline-offset: 2px;
 }
 
+/* =========================================================================
+   The last row of the track table draws no bottom line.
+
+   On the container rather than on each row, because "each row" is how it broke:
+   the track row carried `last:border-0` and the group header — written later,
+   next to it — did not, so a collapsed group at the end of the list drew a line
+   across the container's rounded corner. A third row variant would have
+   forgotten it too.
+
+   The virtualizer's bottom spacer is a `<tr>`, so while one exists it is the
+   `:last-child` and this rule lands on it, which is a no-op — correct, because
+   a spacer only exists when there is more list below and the last *rendered*
+   row should keep its line. The spacer is gone exactly when the window reaches
+   the end, which is when the rule is wanted.
+
+   Unlayered, so no `border-*` utility can outrank it.
+   ========================================================================= */
+.track-list tbody > tr:last-child {
+  border-bottom-width: 0;
+}
+
 /* Marquee for overflowing titles: two identical copies scroll left; the -50%
    shift moves exactly one copy, so the loop is seamless. Paused until the
    surrounding row (.group) is hovered. */
