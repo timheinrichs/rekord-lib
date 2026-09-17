@@ -47,6 +47,27 @@ absent from the check for the same reason, and is never written into a file at
 all — see [DSP_BENCHMARK.md](DSP_BENCHMARK.md) for why a detected key stays in
 the database.
 
+### Which tag field each value lands in
+
+Written by `lofty`, so the per-format mapping is the crate's. Two of them are
+worth stating because they changed in 0.9.3, when `lofty` went from 0.22 to
+0.25:
+
+- **The year** is written as a recording date: `TDRC` on ID3v2, `DATE` on Vorbis
+  comments. Before 0.9.3 the Vorbis case wrote the legacy `YEAR` field instead.
+  Both are read, so a file this app tagged earlier keeps showing its year, and
+  re-writing one replaces the old field rather than leaving a stale copy beside
+  the new one — measured with `ffprobe` on all five formats rather than assumed.
+- **The country** is written at all, which it was not before 0.9.3. It went
+  through `ItemKey::from_key(tag_type, "RELEASECOUNTRY")`, which lofty 0.22
+  resolved to an *unknown* key because it had no `ReleaseCountry` variant, and
+  inserting an unknown key is a silent no-op. A country the user typed lived in
+  the database and the Rekordbox export and never reached the file. It now lands
+  in `MusicBrainz Album Release Country` on ID3v2 and MP4 and `RELEASECOUNTRY`
+  on Vorbis — the names the rest of the ecosystem uses.
+
+The musical key is still written nowhere; see above.
+
 `metadata_incomplete` is recomputed on read like `compat`, so changing this rule
 takes effect immediately rather than leaving stale verdicts in rows.
 
@@ -244,6 +265,8 @@ anonymous limit.
 | Claim | Test |
 | --- | --- |
 | Only the four text fields are required | `models.rs` · `is_complete_true_when_all_text_fields_set`, `is_complete_ignores_optional_catalog_label_genre_year_and_bpm` |
+| A year written before 0.9.3 still reads | `read.rs` · `the_year_reads_from_the_new_field_and_the_legacy_one` |
+| The country reaches the file | `write.rs` · `the_country_is_actually_written` |
 | "No cover" removes every picture | `write.rs` · `no_cover_strips_every_picture_not_just_the_front_one`, `no_cover_removes_the_artwork_from_the_file` |
 | Keeping a cover touches nothing; a new one replaces the front | `write.rs` · `keeping_the_cover_leaves_the_pictures_alone`, `a_new_cover_replaces_only_the_front_cover` |
 | Sidecar covers prefer a known name, else the first image | `write.rs` · `sidecar_prefers_known_cover_name`, `sidecar_falls_back_to_first_image`, `sidecar_none_when_no_image` |

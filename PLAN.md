@@ -132,3 +132,57 @@ If the year cannot be made to land in the same frame as before, the upgrade
 waits. A tag this app writes wrongly is worse than a dependency three versions
 behind, and `paste` — the thing that started this — is not fixed by the upgrade
 anyway.
+
+---
+
+## Outcome
+
+Done, and the plan's two guesses were both wrong in the useful direction.
+
+**The year: safe, and measured before the port rather than after.** Written with
+0.22 and with 0.25 into all five formats, read back with `ffprobe` — the bundled
+one, because a library must not judge its own output:
+
+| Format | 0.22 writes | 0.25 writes |
+| --- | --- | --- |
+| AIFF, MP3, WAV (ID3v2) | `date=1997` | `date=1997` — identical |
+| M4A | `date=1997` | `date=1997` — identical |
+| FLAC (Vorbis) | `YEAR=1997` | `DATE=1997` — **changed** |
+
+`DATE` is the field the Vorbis comment spec recommends and `YEAR` the legacy
+alias, so the change is toward the standard. The two facts that make it safe
+were measured too: 0.25's `date()` finds a year in the legacy field as well, so
+files tagged by 0.9.2 still read; and re-writing one **replaces** it rather than
+leaving `YEAR=1997` beside `DATE=2001`. `remove_date()` clears both, which is
+why the clear path uses it instead of `remove_key(ItemKey::Year)`.
+
+**The country: a bug nobody knew about.** `ItemKey::from_key(tag_type,
+"RELEASECOUNTRY")` resolved to `ItemKey::Unknown(..)` in 0.22 — the crate had no
+`ReleaseCountry` variant at all — and `insert_text` of an unknown key returns
+false and writes nothing. The app ignored the return value. So a country the
+user typed reached the database and the Rekordbox export and **never reached the
+file**, in every release up to 0.9.2. 0.25 has the key, `insert_text` returns
+true, and `ffprobe` reads it back. Fixed as a side effect, and called out in the
+changelog because it changes what lands in files.
+
+**The cover: as corrected, mechanical.** `Picture::unchecked` is a builder now;
+three call sites, no behaviour change, nothing to decide.
+
+## One thing the upgrade brought with it
+
+`lofty` 0.25.2 panics — `attempt to subtract with overflow` at
+`id3/v2/write/chunk_file.rs:105` — when it *rewrites* an existing ID3v2 chunk in
+a RIFF file and the new tag is larger than the file's whole audio stream. It
+subtracts where it should add.
+
+Unreachable with real audio, and that was checked rather than reasoned: a 300 KB
+cover embedded into the 5 MB `plain.wav` fixture comes out with the right
+duration and size. Reachable with a test fixture of 64 samples, which is what
+`wav_bytes()` was and why `an_undo_puts_the_original_bytes_back` failed. The
+fixture now carries a second of silence, the reason is written above it, and
+`a_cover_larger_than_the_audio_still_panics_upstream` pins the bug with
+`#[should_panic]` — so the day lofty fixes it, the canary fails, and the fixture
+can shrink again.
+
+Not yet reported upstream. Worth doing, and it is the maintainer's call whether
+to open it.

@@ -9,6 +9,23 @@ contain incompatible changes.
 
 ## [Unreleased]
 
+### Fixed
+- **The release country now reaches the file.** It never had. The field went
+  through a lookup that the tag library resolved to an *unknown* key, and
+  inserting an unknown key writes nothing and reports nothing — so a country
+  typed into the editor lived in the database and the Rekordbox export and was
+  silently dropped on its way to the file, in every release up to 0.9.2. It now
+  lands in the field name the rest of the ecosystem uses.
+
+### Changed
+- **The tag library is current** (`lofty` 0.22 → 0.25). Two visible
+  consequences, both measured with `ffprobe` on all five formats rather than
+  assumed. A year written into a FLAC now uses the standard `DATE` field instead
+  of the legacy `YEAR`; both are still read, so a file this app tagged earlier
+  keeps showing its year, and re-writing one replaces the old field rather than
+  leaving a stale copy next to the new one. Nothing changes for AIFF, MP3, WAV
+  or M4A.
+
 ### Security
 - **A real TLS flaw, patched.** `rustls` moves from 0.23.42 to 0.23.45 for
   RUSTSEC-2026-0285, in which a TLS 1.3 handshake message could be accepted

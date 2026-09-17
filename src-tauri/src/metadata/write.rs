@@ -3,6 +3,7 @@ use lofty::config::WriteOptions;
 use lofty::picture::{MimeType, Picture, PictureType};
 use lofty::prelude::*;
 use lofty::read_from_path;
+use lofty::tag::items::Timestamp;
 use lofty::tag::{ItemKey, Tag, TagExt, TagType};
 
 use crate::error::{AppError, AppResult};
@@ -180,7 +181,20 @@ pub async fn finalize_cover(
     //    field removes the tag instead of leaving the old value — needed so an
     //    undo can restore a field that used to be empty.
     if let Some(md) = metadata {
-        let country_key = ItemKey::from_key(tag.tag_type(), "RELEASECOUNTRY");
+        // The country used to go through `ItemKey::from_key(tag_type,
+        // "RELEASECOUNTRY")`, which 0.22 resolved to `ItemKey::Unknown(..)`
+        // because it had no `ReleaseCountry` at all — and `insert_text` of an
+        // unknown key is a **silent no-op**. Measured on all five formats: the
+        // item never reached the file. So a country the user typed lived in the
+        // database and the Rekordbox export and nowhere else, for every release
+        // up to 0.9.2.
+        //
+        // 0.25 has the key as a first-class variant, mapped per format, and
+        // `insert_text` returns true. `ffprobe` reads back
+        // "MusicBrainz Album Release Country" on ID3v2/MP4 and
+        // "RELEASECOUNTRY" on Vorbis — the names Picard and the rest of the
+        // ecosystem use. The upgrade fixes the no-op as a side effect, which is
+        // why this one is called out in the changelog.
         // (field value, its ItemKey) for the text fields.
         let text: [(&Option<String>, ItemKey); 8] = [
             (&md.title, ItemKey::TrackTitle),
@@ -190,7 +204,7 @@ pub async fn finalize_cover(
             (&md.album_artist, ItemKey::AlbumArtist),
             (&md.catalog_number, ItemKey::CatalogNumber),
             (&md.label, ItemKey::Label),
-            (&md.country, country_key),
+            (&md.country, ItemKey::ReleaseCountry),
         ];
         for (value, key) in text {
             match clean(value) {
@@ -198,22 +212,40 @@ pub async fn finalize_cover(
                     tag.insert_text(key, v);
                 }
                 None if clear_empty => {
-                    tag.remove_key(&key);
+                    tag.remove_key(key);
                 }
                 None => {}
             }
         }
-        match md.year.as_ref().and_then(|s| s.trim().parse::<u32>().ok()) {
-            Some(y) => tag.set_year(y),
+        // `set_year` became `set_date` over a `Timestamp`. Only the year
+        // component is ever set, because that is all the app has — its year is
+        // a free-form string, and anything that is not a bare year (Discogs
+        // hands back "1997-05") has always been dropped here rather than
+        // guessed at.
+        //
+        // Removal goes through `remove_date` rather than `remove_key`: the
+        // written item is the recording date, and on a Vorbis tag written by an
+        // older version the value sits in the legacy `YEAR` field instead.
+        // Measured — `remove_date` clears both, `remove_key(ItemKey::Year)`
+        // would have left one of them behind depending on who wrote the file.
+        match md.year.as_ref().and_then(|s| s.trim().parse::<u16>().ok()) {
+            Some(y) => tag.set_date(Timestamp {
+                year: y,
+                month: None,
+                day: None,
+                hour: None,
+                minute: None,
+                second: None,
+            }),
             None if clear_empty => {
-                tag.remove_key(&ItemKey::Year);
+                tag.remove_date();
             }
             None => {}
         }
         match md.track_number {
             Some(n) => tag.set_track(n),
             None if clear_empty => {
-                tag.remove_key(&ItemKey::TrackNumber);
+                tag.remove_key(ItemKey::TrackNumber);
             }
             None => {}
         }
@@ -226,8 +258,8 @@ pub async fn finalize_cover(
                 tag.insert_text(bpm_key, format_bpm(n));
             }
             None if clear_empty => {
-                tag.remove_key(&ItemKey::IntegerBpm);
-                tag.remove_key(&ItemKey::Bpm);
+                tag.remove_key(ItemKey::IntegerBpm);
+                tag.remove_key(ItemKey::Bpm);
             }
             None => {}
         }
@@ -289,12 +321,19 @@ fn apply_cover(tag: &mut Tag, cover_image: Option<CoverImage>, cover: &CoverInpu
     match cover_image {
         Some((bytes, mime)) => {
             tag.remove_picture_type(PictureType::CoverFront);
-            tag.push_picture(Picture::new_unchecked(
-                PictureType::CoverFront,
-                Some(mime),
-                None,
-                bytes,
-            ));
+            // `new_unchecked` became the `unchecked` builder. Still
+            // unvalidated and still infallible, which is deliberate: one of the
+            // five `CoverInput` sources is the undo path, replaying bytes this
+            // app captured from a file it is about to overwrite. Validating
+            // there would mean undo failing to restore artwork on a file that
+            // was fine before. Validating the download and the user-picked file
+            // would be worth doing, and is its own change.
+            tag.push_picture(
+                Picture::unchecked(bytes)
+                    .pic_type(PictureType::CoverFront)
+                    .mime_type(mime)
+                    .build(),
+            );
         }
         // lofty has no "clear all pictures"; removing the first one repeatedly
         // is the whole list.
@@ -345,18 +384,47 @@ pub(crate) mod testing {
             tagged.insert_tag(Tag::new(tag_type));
         }
         let tag = tagged.primary_tag_mut().unwrap();
-        tag.push_picture(Picture::new_unchecked(
-            PictureType::CoverFront,
-            Some(MimeType::Jpeg),
-            None,
-            cover.to_vec(),
-        ));
+        tag.push_picture(
+            Picture::unchecked(cover.to_vec())
+                .pic_type(PictureType::CoverFront)
+                .mime_type(MimeType::Jpeg)
+                .build(),
+        );
         tag.save_to_path(path, WriteOptions::default()).unwrap();
     }
 
     /// Smallest WAV lofty will parse: 16-bit mono PCM with a handful of samples.
+    /// A minimal WAV.
+    ///
+    /// The sample count is not arbitrary. lofty 0.25.2 has an arithmetic bug
+    /// when it rewrites the ID3v2 chunk of a RIFF file and the *new* tag is
+    /// larger than the file's whole audio stream: `chunk_file.rs:105` does
+    /// `updated_stream_len -= tag_chunk_size - existing_tag_len` where it should
+    /// add, and the subtraction underflows and panics. Sixty-four samples plus a
+    /// 1400×1400 cover hit it every time.
+    ///
+    /// Real audio cannot: a cover is never larger than the track it belongs to,
+    /// and this was checked rather than assumed — a 300 KB cover into the 5 MB
+    /// `plain.wav` fixture produces a file `ffprobe` reads back at the right
+    /// duration and size. So the fixture carries a second of silence instead of
+    /// 64 samples, which is still minimal and no longer tests the library's
+    /// arithmetic instead of our undo.
+    ///
+    /// `a_cover_larger_than_the_audio_still_panics_upstream` pins the bug, so
+    /// the day lofty fixes it the canary fails and this can shrink again.
     pub fn wav_bytes() -> Vec<u8> {
-        let samples = [0u8; 64];
+        // One second, mono, 16-bit, 44.1 kHz.
+        wav_of(88_200)
+    }
+
+    /// The fixture as it used to be: a few dozen samples. Only the canary wants
+    /// it, because only the canary is about the upstream bug.
+    pub fn tiny_wav() -> Vec<u8> {
+        wav_of(64)
+    }
+
+    fn wav_of(data_len: usize) -> Vec<u8> {
+        let samples = vec![0u8; data_len];
         let mut fmt = Vec::new();
         fmt.extend_from_slice(&1u16.to_le_bytes()); // PCM
         fmt.extend_from_slice(&1u16.to_le_bytes()); // mono
@@ -401,17 +469,17 @@ mod tests {
         for tag_type in WRITTEN_TAG_TYPES {
             let key = bpm_key(tag_type);
             assert!(
-                key.map_key(tag_type, false).is_some(),
+                key.map_key(tag_type).is_some(),
                 "{tag_type:?} silently drops {key:?}"
             );
         }
-        assert_eq!(bpm_key(TagType::Id3v2).map_key(TagType::Id3v2, false), Some("TBPM"));
+        assert_eq!(bpm_key(TagType::Id3v2).map_key(TagType::Id3v2), Some("TBPM"));
         assert_eq!(
-            bpm_key(TagType::Mp4Ilst).map_key(TagType::Mp4Ilst, false),
+            bpm_key(TagType::Mp4Ilst).map_key(TagType::Mp4Ilst),
             Some("tmpo")
         );
         assert_eq!(
-            bpm_key(TagType::VorbisComments).map_key(TagType::VorbisComments, false),
+            bpm_key(TagType::VorbisComments).map_key(TagType::VorbisComments),
             Some("BPM")
         );
     }
@@ -420,9 +488,9 @@ mod tests {
     fn a_single_hardcoded_bpm_key_would_be_dropped() {
         // This is why bpm_key exists: neither variant works everywhere.
         assert!(ItemKey::IntegerBpm
-            .map_key(TagType::VorbisComments, false)
+            .map_key(TagType::VorbisComments)
             .is_none());
-        assert!(ItemKey::Bpm.map_key(TagType::Id3v2, false).is_none());
+        assert!(ItemKey::Bpm.map_key(TagType::Id3v2).is_none());
     }
 
     #[test]
@@ -480,7 +548,10 @@ mod tests {
     use super::testing::wav_bytes;
 
     fn picture(kind: PictureType, data: &[u8]) -> Picture {
-        Picture::new_unchecked(kind, Some(MimeType::Jpeg), None, data.to_vec())
+        Picture::unchecked(data.to_vec())
+            .pic_type(kind)
+            .mime_type(MimeType::Jpeg)
+            .build()
     }
 
     #[test]
@@ -580,6 +651,68 @@ mod tests {
             .write_to(&mut buf, image::ImageFormat::Jpeg)
             .unwrap();
         buf.into_inner()
+    }
+
+    /// The country reaches the file now, which it did not before 0.9.3.
+    ///
+    /// `ItemKey::from_key(tag_type, "RELEASECOUNTRY")` resolved to
+    /// `ItemKey::Unknown(..)` in lofty 0.22, because the crate had no
+    /// `ReleaseCountry` variant — and `insert_text` of an unknown key returns
+    /// false and writes nothing. It was never checked, so a country the user
+    /// typed lived in the database and the Rekordbox export and nowhere else.
+    /// Measured on all five formats the app handles before this was believed.
+    ///
+    /// The assertion is on the return value as much as on the read-back: a
+    /// silent false is what hid this for eight releases.
+    #[test]
+    fn the_country_is_actually_written() {
+        for tag_type in [TagType::Id3v2, TagType::VorbisComments, TagType::Mp4Ilst] {
+            let mut tag = Tag::new(tag_type);
+            assert!(
+                tag.insert_text(ItemKey::ReleaseCountry, "DE".to_string()),
+                "{tag_type:?} refused the country"
+            );
+            assert_eq!(tag.get_string(ItemKey::ReleaseCountry), Some("DE"));
+        }
+    }
+
+    /// A canary for an upstream bug, not a rule of ours.
+    ///
+    /// lofty 0.25.2's `id3/v2/write/chunk_file.rs:105` subtracts where it should
+    /// add when a new ID3v2 chunk is larger than a RIFF file's whole audio
+    /// stream, and the subtraction underflows. Unreachable with real audio — a
+    /// cover is never bigger than its track, and a 300 KB cover into the 5 MB
+    /// `plain.wav` fixture was checked to come out intact — but it is reachable
+    /// with a fixture of a few dozen samples, which is why `wav_bytes` carries
+    /// a second of silence.
+    ///
+    /// When lofty fixes it this test fails, and that is the point: the fixture
+    /// can shrink again and this can go.
+    #[test]
+    #[should_panic(expected = "attempt to subtract with overflow")]
+    fn a_cover_larger_than_the_audio_still_panics_upstream() {
+        let dir = tempfile::tempdir().unwrap();
+        let audio = dir.path().join("tiny.wav");
+        // Deliberately the old fixture size: a handful of samples.
+        fs::write(&audio, super::testing::tiny_wav()).unwrap();
+
+        // Twice, and that matters: the arithmetic is in the branch that
+        // *rewrites* an existing ID3v2 chunk. A first write appends and is
+        // fine, which is why the app's own suite only ever hit this on the
+        // second cover of an undo round-trip.
+        let mut tag = Tag::new(TagType::Id3v2);
+        tag.insert_text(ItemKey::TrackTitle, "t".to_string());
+        tag.save_to_path(&audio, WriteOptions::default()).unwrap();
+
+        let mut tagged = lofty::read_from_path(&audio).unwrap();
+        let tag = tagged.primary_tag_mut().unwrap();
+        tag.push_picture(
+            Picture::unchecked(vec![0u8; 64 * 1024])
+                .pic_type(PictureType::CoverFront)
+                .mime_type(MimeType::Jpeg)
+                .build(),
+        );
+        let _ = tag.save_to_path(&audio, WriteOptions::default());
     }
 
     #[test]
