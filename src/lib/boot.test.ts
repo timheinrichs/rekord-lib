@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { bootLabel, scanButtonState, scanLabel } from "./boot";
+import {
+  bootLabel,
+  scanAnnouncement,
+  scanButtonState,
+  scanLabel,
+} from "./boot";
 import {
   STAGE_ANALYZING,
   STAGE_BPM,
@@ -163,5 +168,57 @@ describe("the analysis stage in the scan label", () => {
     expect(scanLabel({ ...at(STAGE_BPM_KEY), paused: true })).toBe(
       "Paused · BPM/Key 412/2223",
     );
+  });
+});
+
+describe("scanAnnouncement", () => {
+  const progress = (over: Partial<ScanProgress> = {}): ScanProgress =>
+    ({
+      running: true,
+      paused: false,
+      stage: STAGE_BPM,
+      done: 43,
+      total: 1200,
+      ...over,
+    }) as ScanProgress;
+
+  it("says nothing while no scan has run", () => {
+    expect(scanAnnouncement(null, false, false)).toBeNull();
+  });
+
+  it("leaves the counters out, so the stage is what changes", () => {
+    // The whole point: `scanLabel` says "BPM 43/1200", and a polite live region
+    // re-announcing that once a second is worse than silence.
+    const a = scanAnnouncement(progress({ done: 43 }), true, false);
+    const b = scanAnnouncement(progress({ done: 44 }), true, false);
+    expect(a).toBe(b);
+    expect(a).not.toMatch(/\d/);
+  });
+
+  it("announces each stage in words", () => {
+    expect(scanAnnouncement(progress({ stage: STAGE_BPM }), true, false)).toBe(
+      "Detecting BPM",
+    );
+    expect(
+      scanAnnouncement(progress({ stage: STAGE_DUPLICATES }), true, false),
+    ).toBe("Finding duplicates");
+    // The bare stage word is the one that reads badly on its own.
+    expect(
+      scanAnnouncement(progress({ stage: STAGE_ANALYZING }), true, false),
+    ).toBe("Analyzing files");
+  });
+
+  it("says paused, and says finished", () => {
+    expect(scanAnnouncement(progress({ paused: true }), true, false)).toBe(
+      "Scan paused",
+    );
+    expect(scanAnnouncement(null, false, true)).toBe("Scan finished");
+  });
+
+  it("prefers the running stage over a stale finished flag", () => {
+    // A finished run that has already queued the next pass is the case that
+    // made the button's colour and content disagree once; the announcement must
+    // not repeat it.
+    expect(scanAnnouncement(progress(), true, true)).toBe("Detecting BPM");
   });
 });

@@ -108,6 +108,7 @@ import { listenerGroup } from "../lib/listenerGroup";
 import { useScrolled } from "../lib/useScrolled";
 import {
   scanButtonState,
+  scanAnnouncement,
   scanLabel as buildScanLabel,
   type BootPhase,
 } from "../lib/boot";
@@ -1194,6 +1195,11 @@ export default function LibraryView({
   const scanRunning = !!scanProgress?.running;
   const scanPaused = !!scanProgress?.paused;
   const scanState = scanButtonState(scanRunning, scanFinished, scanPaused);
+  // What a screen reader hears. The visible label lives inside the scan button
+  // and swaps to the pause action on hover, so it cannot carry the
+  // announcement: the button's accessible name would change under the pointer.
+  // This is its own region, and it says the stage without the counters.
+  const announcement = scanAnnouncement(scanProgress, scanRunning, scanFinished);
 
   // Whether the scan button shows what a click would do instead of what the
   // run is doing. Armed by pointer *movement* rather than by `:hover`: a click
@@ -1703,6 +1709,13 @@ export default function LibraryView({
   // Primary actions for the header.
   const headerActions = (
     <>
+      {/* The scan, for a screen reader. Visually hidden and outside the button
+          on purpose: the button's own label swaps to the pause action under the
+          pointer, so it cannot also be the thing that announces progress. A
+          run takes minutes and used to be announced not at all. */}
+      <span className="sr-only" role="status" aria-live="polite">
+        {announcement ?? ""}
+      </span>
       {/* One button, two jobs. While nothing runs it starts a scan; while one
           runs it *is* the pause control, so the running state and the action it
           offers share the same place instead of competing for header space.
@@ -1905,7 +1918,7 @@ export default function LibraryView({
   if (!libraryDir) {
     return (
       <>
-        <AppHeader onTitleClick={scrollToTop} right={nav} />
+        <AppHeader title="Library" onTitleClick={scrollToTop} right={nav} />
         <main className="mx-auto max-w-6xl px-6 py-16">
           <div className="flex flex-col items-center gap-3 rounded-xl border border-dashed border-border bg-surface py-20 text-center text-fg-subtle">
             <p className="text-lg text-fg-muted">No library folder selected</p>
@@ -1926,7 +1939,7 @@ export default function LibraryView({
 
   return (
     <>
-      <AppHeader onTitleClick={scrollToTop} right={headerActions} />
+      <AppHeader title="Library" onTitleClick={scrollToTop} right={headerActions} />
       <main className="w-full px-6 py-6">
       {error && (
         <div className="mb-4 rounded-lg border border-danger-500/30 bg-danger-500/10 px-4 py-2 text-sm text-fg-danger">
@@ -2104,7 +2117,7 @@ export default function LibraryView({
               <tr className="border-b border-border">
                 {cols.map((c) =>
                   c.id === "select" ? (
-                    <th key={c.id} className={`${c.width} px-4 py-3`}>
+                    <th key={c.id} scope="col" className={`${c.width} px-4 py-3`}>
                       <input
                         type="checkbox"
                         checked={allVisibleSelected}
@@ -2127,6 +2140,7 @@ export default function LibraryView({
                     // Title is the column with no width: it absorbs the slack.
                     <th
                       key={c.id}
+                      scope="col"
                       className={`${c.width ?? ""} ${
                         c.tight ? "px-1" : "px-4"
                       } py-3 font-medium`}
@@ -2172,7 +2186,23 @@ export default function LibraryView({
                       // instead pushed the checkbox out of its 40 px column at
                       // depth 2, where it vanished behind the next one.
                       return (
-                        <td key={c.id} className={pad} onClick={(e) => e.stopPropagation()}>
+                        // The whole padded cell toggles, not just the 16 px box:
+                        // WCAG 2.2 wants a 24 px pointer target, and this cell
+                        // used to *stop* the click without doing anything with
+                        // it, so its padding was dead space around an undersized
+                        // control. Growing the box instead would put a 24 px
+                        // checkbox next to a 40 px cover in a 64 px row. The
+                        // inner input keeps its own handler and stops
+                        // propagation, so a click on the box does not toggle
+                        // twice.
+                        <td
+                          key={c.id}
+                          className={`${pad} cursor-pointer`}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleRowSelect(index, e.shiftKey);
+                          }}
+                        >
                           <input
                             type="checkbox"
                             checked={selected.has(t.id)}
@@ -2542,7 +2572,15 @@ export default function LibraryView({
                   switch (c.id) {
                     case "select":
                       return (
-                        <td key={c.id} className={pad} onClick={(e) => e.stopPropagation()}>
+                        // As on a track row: the padded cell is the target.
+                        <td
+                          key={c.id}
+                          className={`${pad} cursor-pointer`}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            toggleAlbumSelect(gTracks);
+                          }}
+                        >
                           <input
                             type="checkbox"
                             checked={allSel}
@@ -2550,6 +2588,7 @@ export default function LibraryView({
                               if (el) el.indeterminate = someSel;
                             }}
                             onChange={() => toggleAlbumSelect(gTracks)}
+                            onClick={(e) => e.stopPropagation()}
                             className="h-4 w-4 rounded border-border-strong bg-surface-2"
                             aria-label={`Select ${opts.title}`}
                           />
@@ -3054,7 +3093,7 @@ function SortableHeader({
 }) {
   const active = activeKey === sortKey;
   return (
-    <th className={`px-4 py-3 font-medium ${className ?? ""}`} aria-sort={active ? (dir === "asc" ? "ascending" : "descending") : "none"}>
+    <th scope="col" className={`px-4 py-3 font-medium ${className ?? ""}`} aria-sort={active ? (dir === "asc" ? "ascending" : "descending") : "none"}>
       <button
         onClick={() => onSort(sortKey)}
         className="group inline-flex items-center gap-1 hover:text-fg"

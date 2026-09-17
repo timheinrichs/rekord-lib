@@ -3,6 +3,14 @@ import { useScrolled } from "../lib/useScrolled";
 import logoUrl from "../assets/brand/rekord-lib-logo-horizontal-dark.svg";
 
 interface Props {
+  /**
+   * What this screen is, as one word or two. Rendered as the view's `h1` and
+   * visually hidden — the design's header is a logo and a row of actions, with
+   * nowhere to put a page title, but the screen still has a name and a document
+   * still needs a top-level heading. Every view that renders a header passes
+   * one, which is what keeps it at exactly one `h1` per screen.
+   */
+  title: string;
   /** Right-aligned actions (primary buttons, gear, "Done" …). */
   right?: ReactNode;
   /** Click on the title (usually back to the library). */
@@ -13,7 +21,7 @@ interface Props {
  * Sticky app header with the title on the left and an actions slot on the right.
  * On scroll it gently docks with a shadow/blur.
  */
-export default function AppHeader({ right, onTitleClick }: Props) {
+export default function AppHeader({ title, right, onTitleClick }: Props) {
   const scrolled = useScrolled(4);
   return (
     <header
@@ -23,6 +31,7 @@ export default function AppHeader({ right, onTitleClick }: Props) {
           : "border-border bg-surface"
       }`}
     >
+      <h1 className="sr-only">{title}</h1>
       <div className="flex min-w-0 items-center gap-2">
         <button
           onClick={onTitleClick}

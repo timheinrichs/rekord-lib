@@ -1,4 +1,5 @@
 import {
+  STAGE_ANALYZING,
   STAGE_BPM,
   STAGE_BPM_KEY,
   STAGE_DUPLICATES,
@@ -73,6 +74,33 @@ function stageLabel(progress?: ScanProgress | null): string {
     return `Analyzing ${progress.done}/${progress.total}`;
   }
   return "Scanning…";
+}
+
+/**
+ * What a screen reader is told a scan is doing.
+ *
+ * Deliberately not `scanLabel`: that carries the counters, which change on every
+ * file, and a polite live region that re-announces "BPM 43 of 1200" once a
+ * second is worse than silence. This changes only when the *stage* does, so the
+ * announcements are "Detecting BPM", then "Finding duplicates", then done —
+ * about four for a run that takes minutes.
+ *
+ * Returns null when there is nothing to say, so the region can render empty
+ * rather than announcing a scan that is not running.
+ */
+export function scanAnnouncement(
+  progress: ScanProgress | null | undefined,
+  running: boolean,
+  finished: boolean,
+): string | null {
+  if (finished && !running) return "Scan finished";
+  if (!running) return null;
+  if (progress?.paused) return "Scan paused";
+  const stage = progress?.stage;
+  if (!stage) return "Scanning";
+  // The stage constants are already written as words a person would read, so
+  // there is no second table of labels to keep in step with them.
+  return stage === STAGE_ANALYZING ? "Analyzing files" : stage;
 }
 
 /**

@@ -9,6 +9,17 @@ contain incompatible changes.
 
 ## [Unreleased]
 
+### Changed
+- **Type has a floor, and one of them.** Two hand-written micro sizes were doing
+  the same job — a corner badge, a format tag, a progress detail line. They are
+  one documented 11 px step now, the smallest type in the app, and it needs a
+  physical reason to be used.
+- Two transitions that animated *every* property now name the ones they mean.
+  One of them sits on an element that also carries a backdrop blur, so `all`
+  included the filter.
+- The library table's column headers declare their scope, which is what lets a
+  screen reader say which column a cell belongs to.
+
 ### Added
 - **A theme setting.** *Settings → Appearance* offers dark, light, and
   **System**, which follows the macOS appearance and keeps following it — a Mac
@@ -28,6 +39,20 @@ contain incompatible changes.
   for two releases while amber sat at 1.9:1; arithmetic does not.
 
 ### Fixed
+- **The scan says what it is doing, out loud.** A run takes minutes and its
+  stage was never announced — the label lives inside the scan button, whose text
+  swaps to the pause action under the pointer, so it could not be the thing that
+  announces progress either. There is now a live region beside it that names the
+  stage without the counters, so it speaks about four times per run rather than
+  once per file.
+- **Every screen has a name.** The app had one heading of its own across all
+  views. Each screen now carries a top-level heading — visually hidden, because
+  the header is a logo and a row of actions with nowhere to put a page title,
+  but a screen still has a name.
+- **Selecting a row no longer needs a 16 px hit.** The padded cell around the
+  checkbox is the target, which clears the 24 px minimum; it previously
+  swallowed the click and did nothing with it, so the padding was dead space
+  around an undersized control.
 - **Keyboard focus is visible.** The app had no focus style of its own: buttons
   borrowed the macOS ring and text fields suppressed the browser's outline in
   sixteen places, replacing it with a border shift. There is now one ring,

@@ -47,6 +47,12 @@ typography:
     fontWeight: 400
     lineHeight: 1.55
     letterSpacing: "normal"
+  micro:
+    fontFamily: "JetBrains Mono, ui-monospace, SFMono-Regular, Menlo, monospace"
+    fontSize: "11px"
+    fontWeight: 400
+    lineHeight: 1.3
+    letterSpacing: "normal"
   label:
     fontFamily: "JetBrains Mono, ui-monospace, SFMono-Regular, Menlo, monospace"
     fontSize: "0.75rem"
@@ -328,10 +334,18 @@ manual*.
   sentences only, usually `text-fg-subtle` or `text-fg-muted`.
 - **Label** (mono 400, 12px/`text-xs`): meta and secondary values — sample rate
   next to a format, download progress, tallies, pill text (≈75 occurrences).
-  Below that, `text-[11px]` and `text-[10px]` exist for progress detail lines
-  and tiny corner badges.
+- **Micro** (mono 400, 11px/`text-[11px]`): the floor, and only where 12 px does
+  not physically fit — a corner badge inside a 16 px circle, a format tag on a
+  cover, a progress detail line under a download. There was briefly a second
+  micro size at 10 px doing the same job; one step is enough, and nine usages
+  now share it.
 
 ### Named Rules
+
+**The Floor Rule.** 11 px is the smallest type in the app and needs a physical
+reason — something that does not fit at 12 px. A third micro size is not a
+refinement, it is two sizes doing one job, which is what `10px` and `11px` were
+until 0.9.2.
 
 **The Sentence Case Rule.** Sentence case everywhere. No Title Case, no ALL
 CAPS — including for data that arrives lowercase, which is not made to shout by

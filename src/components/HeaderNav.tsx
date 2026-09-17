@@ -103,7 +103,7 @@ export default function HeaderNav({
           >
             <DownloadIcon />
             {active > 0 && (
-              <span className="absolute -right-1 -top-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-accent-600 px-1 text-[10px] font-medium text-white">
+              <span className="absolute -right-1 -top-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-accent-600 px-1 text-[11px] font-medium text-white">
                 {active}
               </span>
             )}
@@ -165,7 +165,7 @@ export default function HeaderNav({
                       {d.state === "loading" && (
                         <div className="mt-1.5 h-1.5 w-full overflow-hidden rounded-full bg-surface-2">
                           <div
-                            className={`h-full rounded-full bg-accent-500 transition-all duration-300 ${
+                            className={`h-full rounded-full bg-accent-500 transition-[width] duration-300 ${
                               d.total > 0 ? "" : "w-1/3 animate-pulse"
                             }`}
                             style={d.total > 0 ? { width: `${pct}%` } : undefined}

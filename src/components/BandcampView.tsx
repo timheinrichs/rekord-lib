@@ -110,7 +110,7 @@ export default function BandcampView({
 
   return (
     <>
-      <AppHeader onTitleClick={onTitleClick} right={actions} />
+      <AppHeader title="Bandcamp" onTitleClick={onTitleClick} right={actions} />
       <main className="mx-auto max-w-5xl px-6 py-6">
         {!account ? (
           <div className="flex flex-col items-center gap-3 rounded-xl border border-dashed border-border bg-surface py-20 text-center text-fg-subtle">
@@ -129,10 +129,10 @@ export default function BandcampView({
         ) : (
           <>
             <div className="mb-4 flex items-center gap-3">
-              <h1 className="text-sm font-medium text-fg">
+              <h2 className="text-sm font-medium text-fg">
                 Purchased collection
                 <span className="ml-2 text-fg-subtle">{collection.length}</span>
-              </h1>
+              </h2>
               <button
                 onClick={onRefresh}
                 disabled={refreshing}
@@ -230,7 +230,7 @@ function BandcampRow({
           <p className="truncate text-sm text-fg" title={item.title}>
             {item.title}
           </p>
-          <span className="shrink-0 rounded-full bg-surface-2 px-1.5 py-0.5 text-[10px] text-fg-subtle ring-1 ring-border">
+          <span className="shrink-0 rounded-full bg-surface-2 px-1.5 py-0.5 text-[11px] text-fg-subtle ring-1 ring-border">
             {item.item_type}
           </span>
         </div>
@@ -271,11 +271,11 @@ function BandcampCard({
         {item.art_url && (
           <img src={item.art_url} className="h-full w-full object-cover" alt="" />
         )}
-        <span className="absolute left-1.5 top-1.5 rounded-full bg-black/60 px-1.5 py-0.5 text-[10px] text-white backdrop-blur">
+        <span className="absolute left-1.5 top-1.5 rounded-full bg-black/60 px-1.5 py-0.5 text-[11px] text-white backdrop-blur">
           {item.item_type}
         </span>
         {inLibrary && (
-          <span className="absolute right-1.5 top-1.5 rounded-full bg-success-500/90 px-1.5 py-0.5 text-[10px] font-medium text-white">
+          <span className="absolute right-1.5 top-1.5 rounded-full bg-success-500/90 px-1.5 py-0.5 text-[11px] font-medium text-white">
             In library
           </span>
         )}

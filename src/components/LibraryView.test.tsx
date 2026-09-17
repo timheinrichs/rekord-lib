@@ -1,4 +1,5 @@
 import { render, screen, waitFor } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { makeMetadata, makeTrack } from "../test/factories";
 import { DEFAULT_SETTINGS, type Settings } from "../lib/settings";
@@ -444,5 +445,39 @@ describe("row waveforms", () => {
     await waitFor(() =>
       expect(container.querySelectorAll("canvas")).toHaveLength(1),
     );
+  });
+});
+
+describe("the selection target", () => {
+  it("selects from the padding around the checkbox, not only from the box", async () => {
+    // WCAG 2.2 wants a 24 px pointer target and the box is 16 px, so the padded
+    // cell is the target. It used to `stopPropagation` and nothing else, which
+    // made the padding dead space around an undersized control — a click just
+    // missing the box did nothing at all.
+    mocks.loadLibraryTracks.mockResolvedValue([untagged("a.aiff")]);
+    mocks.listAudioFiles.mockResolvedValue(["/lib/a.aiff"]);
+    renderLibrary();
+    await waitFor(() => expect(mocks.storedWaveforms).toHaveBeenCalled());
+
+    const box = await screen.findByLabelText("Select a.aiff");
+    expect(box).not.toBeChecked();
+
+    const cell = box.closest("td");
+    expect(cell).not.toBeNull();
+    await userEvent.click(cell!);
+    await waitFor(() => expect(box).toBeChecked());
+  });
+
+  it("does not toggle twice when the box itself is clicked", async () => {
+    // The cell and the input both handle the click; the input stops
+    // propagation, which is the only reason one click is one toggle.
+    mocks.loadLibraryTracks.mockResolvedValue([untagged("a.aiff")]);
+    mocks.listAudioFiles.mockResolvedValue(["/lib/a.aiff"]);
+    renderLibrary();
+    await waitFor(() => expect(mocks.storedWaveforms).toHaveBeenCalled());
+
+    const box = await screen.findByLabelText("Select a.aiff");
+    await userEvent.click(box);
+    await waitFor(() => expect(box).toBeChecked());
   });
 });
