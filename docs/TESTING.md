@@ -158,6 +158,28 @@ value only acquires at runtime. They read text, so a colour computed in JS or a
 class assembled from fragments is invisible to them — which is why the scanner
 flattens `${…}` holes rather than guessing what is inside.
 
+### The one test that does arithmetic
+
+`src/styles/contrast.test.ts` is its own thing again: it reads both theme blocks
+out of `tokens.css` and computes WCAG contrast for every pair the app actually
+renders — text on the three surfaces, status text on its own 15 % tint, the
+active tab label on its wash, a white label on each opaque fill, and the focus
+ring at the non-text threshold.
+
+It exists because this is the one class of claim a document cannot hold.
+`DESIGN.md` said "plenty of contrast on small text" for two releases while
+`warning-500` sat at 1.9:1 on a light surface, and nobody could have noticed by
+reading. Two of the defects it now pins shipped anyway, in the release that
+introduced it, because the table was incomplete rather than wrong: it asserted
+text on *surfaces* and on *tints*, and a solid ramp fill is neither — which is
+how a near-black label reached dark violet at 2.9:1. The lesson is in the file:
+a contrast test is only as good as its list of pairs.
+
+It also records what it deliberately does not assert, with the numbers —
+`fg-disabled`, which WCAG exempts, and the two hairline borders, which are
+below the 3:1 for the information that identifies a control and are an open
+question rather than a settled exclusion.
+
 ### Isolation: three bundle identifiers
 
 Nothing that runs a test may touch a real collection. A scan writes tempo tags,
@@ -219,7 +241,7 @@ costs less than a short one.
 | … · `restore` | leaves no-ops behind, because a listener may subscribe or unsubscribe after a test ends |
 | `src/test/appDom.ts` · `libraryView`, `bandcampView`, `overlay` | narrowing a query to the view on screen, or the dialog on top |
 | `src/test/factories.ts` · `makeTrack`, `makeMetadata`, `makeCompat` | the seed data, shared with the unit tests |
-| `src/e2e/*.e2e.test.tsx` | one file per flow: first run, scan, convert, duplicates, metadata, undo, Bandcamp |
+| `src/e2e/*.e2e.test.tsx` | one file per flow: first run, scan, convert, duplicates, metadata, undo, Bandcamp, theme |
 | `src-tauri/src/lib.rs` · the `compile_error!` | the release guard |
 | `src-tauri/Cargo.toml` · `[features] wdio` | the optional dependency |
 | `scripts/e2e-app.mjs` · `prepare`, `build`, `writeManifest` | fixture, wiped data dir, debug bundle, and the paths the config reads |
@@ -257,6 +279,11 @@ costs less than a short one.
 | Disabled is said in colour, never with `opacity` | `disabledStates.test.ts` · the Opacity Rule |
 | Type stays on two weights and sentence case | `designRules.test.ts` · the Two Weights and Sentence Case rules |
 | No component writes a colour utility no token defines | `designRules.test.ts` · "only writes colour utilities that tokens.css defines" |
+| Nothing suppresses the shared focus ring | `designRules.test.ts` · "leaves the focus ring to the base layer" |
+| Every animation stops under reduced motion | `designRules.test.ts` · "switches off every animation under reduced motion" |
+| An opaque fill's label is fixed, not theme-dependent | `designRules.test.ts` · "puts a fixed label on a fixed fill" |
+| Every rendered colour pair clears WCAG AA, in both themes | `contrast.test.ts` · the 25 cases |
+| The theme setting reaches `<html>`, and `system` resolves | `theme.e2e.test.tsx` · the three cases |
 | Nothing reaches the database without `db::require` | `commands.rs` · `nothing_reaches_the_database_without_require` |
 | A release cannot contain the automation server | `.github/workflows/e2e.yml` · "The release guard still guards" |
 

@@ -182,7 +182,8 @@ hardware, and the file says which.
 ### Design
 
 The visual identity is fixed: colors only through tokens
-(`src/styles/tokens.css`), dark as the default. The system those tokens
+(`src/styles/tokens.css`), dark as the default — with light and "follow the
+system" available in *Settings → Appearance*. The system those tokens
 implement — colors, typography, shape, components and the rules that govern
 them — is [DESIGN.md](DESIGN.md); the logo and brand assets are
 [docs/brand/STYLEGUIDE.md](docs/brand/STYLEGUIDE.md).

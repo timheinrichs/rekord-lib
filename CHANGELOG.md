@@ -7,7 +7,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/)
 (`MAJOR.MINOR.PATCH`). As long as the version is at `0.x`, MINOR bumps may
 contain incompatible changes.
 
-## [Unreleased]
+## [0.9.2] - 2026-09-17
 
 ### Changed
 - **Type has a floor, and one of them.** Two hand-written micro sizes were doing
