@@ -7,7 +7,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/)
 (`MAJOR.MINOR.PATCH`). As long as the version is at `0.x`, MINOR bumps may
 contain incompatible changes.
 
-## [Unreleased]
+## [0.9.1] - 2026-09-17
 
 ### Fixed
 - **An uncertain tempo now looks uncertain.** The BPM cell and the metadata

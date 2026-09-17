@@ -129,6 +129,35 @@ Stated here rather than papered over in a test:
   the source for the spellings that cannot be right, and `e2e/menus.spec.ts`
   measures the real rectangle in the real window.
 
+### Tests that read the source instead of running it
+
+A fifth kind, alongside the four levels above, and the only one whose subject is
+the code as text: `src/styles/designRules.test.ts`,
+`src/styles/disabledStates.test.ts`, `src/components/buttonShape.test.ts` and
+`src/components/menuPlacement.test.ts`, sharing one scanner in
+`src/test/classNames.ts`.
+
+They exist because of a failure mode no other level has: what goes wrong is not
+a broken component but a **new** one, written next to the old ones with the
+wrong height, weight, radius or colour — and it renders perfectly. A component
+test asserts what the component does, and the component does exactly what it
+says. Only the collection has the defect.
+
+So these read every `className` in the tree and assert the rules in
+[`DESIGN.md`](../DESIGN.md) over it: every button is `h-9`, only weights 400 and
+500, sentence case, text fields on the control radius, `disabled` never
+expressed with `opacity`, a menu never anchored `bottom-full`, and — the one
+that is a bug detector rather than a style rule — **every colour utility a
+component writes must exist as a token**. That last one is there because a
+missing utility is silent: `text-fg-warning` generated no CSS for several
+releases and the element simply kept its inherited colour, which made an
+uncertain tempo look more reliable than a sure one.
+
+What they cannot answer for: whether the rule is the right rule, and anything a
+value only acquires at runtime. They read text, so a colour computed in JS or a
+class assembled from fragments is invisible to them — which is why the scanner
+flattens `${…}` holes rather than guessing what is inside.
+
 ### Isolation: three bundle identifiers
 
 Nothing that runs a test may touch a real collection. A scan writes tempo tags,
@@ -224,6 +253,10 @@ costs less than a short one.
 | The window may read the library folder over `asset:`, and nothing else | `e2e/playback.spec.ts` · "plays a track from the library folder", "will not read an audio file outside it" |
 | An opened menu is inside the window, below the header | `e2e/menus.spec.ts` · "puts the playlist panel inside the window, below the header" |
 | …and no component spells a placement that could not be | `menuPlacement.test.ts` · the three cases |
+| Every button is one height and one corner | `buttonShape.test.ts` · the 36 px Rule |
+| Disabled is said in colour, never with `opacity` | `disabledStates.test.ts` · the Opacity Rule |
+| Type stays on two weights and sentence case | `designRules.test.ts` · the Two Weights and Sentence Case rules |
+| No component writes a colour utility no token defines | `designRules.test.ts` · "only writes colour utilities that tokens.css defines" |
 | Nothing reaches the database without `db::require` | `commands.rs` · `nothing_reaches_the_database_without_require` |
 | A release cannot contain the automation server | `.github/workflows/e2e.yml` · "The release guard still guards" |
 
