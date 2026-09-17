@@ -450,17 +450,29 @@ it.
 
 ### Named Rules
 
-**The No-Blur-Behind-Opacity Rule.** A `backdrop-filter` re-samples and
-re-blurs everything beneath it on **every frame the content moves**, so it costs
-most exactly where a scrolling list sits underneath. Behind a surface at 80 %
-opacity or more it produces almost nothing visible for that cost, and the app
-shipped four of them: the sticky header and the filter bar both switched on
-`backdrop-blur` at the same scroll threshold, full width, over the virtualized
-table — scrolling stuttered from the moment they docked — and the player bar
-paid it permanently behind 95 % opacity, to show five per cent. A blur is
-allowed where it is visibly doing work over content that is not moving: the
-Bandcamp cover badge at `bg-black/60` keeps it.
-`src/styles/designRules.test.ts` draws the line at 80 %.
+**The No-Blur-Over-Motion Rule.** A `backdrop-filter` re-samples and re-blurs
+everything beneath it on **every frame the content moves**. That is the whole
+cost and the whole rule: it is expensive exactly where something scrolls
+underneath, and free where nothing moves. The app shipped four of them — the
+sticky header and the filter bar switched on `backdrop-blur` at the same scroll
+threshold, full width, over the virtualized table, and scrolling stuttered from
+the moment they docked; the player bar paid the same cost permanently. A blur
+over something still is fine, and the Bandcamp cover badge at `bg-black/60`
+keeps its own.
+
+`src/styles/designRules.test.ts` enforces a **proxy** for this, not the rule
+itself: no `backdrop-blur` behind a surface at 80 % opacity or more. A test
+reading class strings cannot know what scrolls under what, and in this app the
+two coincided. Do not mistake the proxy for the reason — the first version of
+this rule claimed a blur behind 80 % opacity is "almost invisible", and that was
+simply wrong. It was visible, the maintainer liked it, and it went anyway
+because of the frame cost. A blur is worth having where nothing moves beneath
+it; the docked bars are not that place.
+
+For the record, since the question will come back: the only way to keep the
+effect *unchanged* is to blur at rest and drop it during the gesture — the look
+is only perceivable when the content is still. That costs a scroll-idle state
+and a short delay after release, and it was offered and not taken.
 
 **The Tone-Before-Shadow Rule.** If two things need to be told apart, move one
 to the next surface tone. Add a shadow only when the element is actually
@@ -679,7 +691,7 @@ position), and only while the list is still empty.
   keeps the inherited colour — the status hues are `text-warning-500`,
   `bg-success-500/15` and so on.
 - **Don't** put `backdrop-blur` behind a surface at 80 % opacity or more, and
-  never on something a list scrolls under — see the No-Blur-Behind-Opacity Rule.
+  never on something a list scrolls under — see the No-Blur-Over-Motion Rule.
 - **Don't** stack a shadow on a bordered surface to create depth — move it to
   the next surface tone instead.
 - **Don't** animate list rows; animate the container, because the table renders

@@ -95,8 +95,15 @@ describe("converting a file the players cannot read", () => {
     await search.waitForExist({ timeout: 420_000, interval: 5_000 });
     await search.setValue("96khz-24bit");
 
+    // The same generous timeout as the search box above, and for a stronger
+    // reason: this one waits for the *scan* to reach this file, and a 96 kHz
+    // file's tempo analysis is the most expensive work the app does. 120 s was
+    // enough on an idle machine and not enough on a busy one — it turned a
+    // green suite red while the frontend and Rust suites happened to be running
+    // alongside it, which looked exactly like a regression in the conversion
+    // path and was not. How long a scan takes is not what this test is about.
     const checkbox = $('input[aria-label="Select 96khz-24bit.aiff"]');
-    await checkbox.waitForExist({ timeout: 120_000, interval: 5_000 });
+    await checkbox.waitForExist({ timeout: 420_000, interval: 5_000 });
     await checkbox.click();
 
     const convert = $("button*=Convert selection");

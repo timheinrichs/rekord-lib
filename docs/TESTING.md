@@ -180,6 +180,25 @@ It also records what it deliberately does not assert, with the numbers —
 below the 3:1 for the information that identifies a control and are an open
 question rather than a settled exclusion.
 
+### One test asserts a bug, on purpose
+
+`metadata::write::tests::a_cover_larger_than_the_audio_still_panics_upstream` is
+`#[should_panic]`, and what it pins is not our behaviour but **lofty's**: 0.25.2
+subtracts where it should add when it rewrites an existing ID3v2 chunk in a RIFF
+file whose new tag is larger than the whole audio stream, and the subtraction
+underflows.
+
+It is unreachable with real audio — a cover is never larger than its track, and
+a 300 KB cover into the 5 MB `plain.wav` fixture was checked to come out intact
+— but it was reachable with a 64-sample test fixture, which is why
+`testing::wav_bytes` carries a second of silence and `testing::tiny_wav` exists
+for this one test.
+
+A test that asserts a defect is a canary, not a rule: when lofty fixes it, this
+test fails, and that failure is the signal to delete it and shrink the fixture
+back. Written down here because a `#[should_panic]` with no explanation is the
+kind of thing a later reader deletes for the wrong reason.
+
 ### Isolation: three bundle identifiers
 
 Nothing that runs a test may touch a real collection. A scan writes tempo tags,
@@ -230,6 +249,14 @@ So the suite is minutes rather than seconds, which is affordable because it runs
 on demand. Keep the number of WebDriver calls per spec low for the same reason —
 a `waitUntil` that polls the DOM pays the probe on every poll, so a long interval
 costs less than a short one.
+
+**Run it alone.** The specs wait on real work — a scan analysing a 96 kHz file
+is the most expensive thing the app does — so a machine also running `npm test`
+and `cargo test` can push a wait past its timeout. That happened before the
+0.9.3 release: `convert.spec.ts` failed on a busy machine and passed in 1m44s on
+an idle one, which reads exactly like a regression in the conversion path and
+was not. The timeouts are generous now for that reason, and a failure here is
+still worth reproducing on a quiet machine before it is believed.
 
 ## Implementation anchors
 
@@ -282,6 +309,9 @@ costs less than a short one.
 | Nothing suppresses the shared focus ring | `designRules.test.ts` · "leaves the focus ring to the base layer" |
 | Every animation stops under reduced motion | `designRules.test.ts` · "switches off every animation under reduced motion" |
 | An opaque fill's label is fixed, not theme-dependent | `designRules.test.ts` · "puts a fixed label on a fixed fill" |
+| Nothing blurs a surface a list scrolls under | `designRules.test.ts` · "does not blur behind a surface you cannot see through" |
+| A year written before 0.9.3 still reads | `metadata/read.rs` · `the_year_reads_from_the_new_field_and_the_legacy_one` |
+| The release country reaches the file | `metadata/write.rs` · `the_country_is_actually_written` |
 | Every rendered colour pair clears WCAG AA, in both themes | `contrast.test.ts` · the 25 cases |
 | The theme setting reaches `<html>`, and `system` resolves | `theme.e2e.test.tsx` · the three cases |
 | Nothing reaches the database without `db::require` | `commands.rs` · `nothing_reaches_the_database_without_require` |
