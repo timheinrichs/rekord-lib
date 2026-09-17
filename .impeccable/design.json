@@ -261,6 +261,70 @@
           "#9C93E9"
         ],
         "note": "Theme-dependent (--focus): accent-400 on dark, accent-600 on light. No single ramp step clears 3:1 against both themes' surfaces."
+      },
+      "fg-success": {
+        "role": "secondary",
+        "displayName": "fg-success",
+        "canonical": "#22B27A",
+        "tonalRamp": [
+          "oklch(20% 0.05 250)",
+          "oklch(30% 0.07 250)",
+          "oklch(40% 0.09 250)",
+          "oklch(50% 0.11 250)",
+          "oklch(60% 0.12 250)",
+          "oklch(70% 0.10 250)",
+          "oklch(82% 0.06 250)",
+          "oklch(93% 0.03 250)"
+        ],
+        "note": "Theme-dependent status text. Dark = success-500; light darkens to clear 4.5:1 on its own tint. Light: #0E6B46."
+      },
+      "fg-warning": {
+        "role": "secondary",
+        "displayName": "fg-warning",
+        "canonical": "#F5A623",
+        "tonalRamp": [
+          "oklch(20% 0.05 250)",
+          "oklch(30% 0.07 250)",
+          "oklch(40% 0.09 250)",
+          "oklch(50% 0.11 250)",
+          "oklch(60% 0.12 250)",
+          "oklch(70% 0.10 250)",
+          "oklch(82% 0.06 250)",
+          "oklch(93% 0.03 250)"
+        ],
+        "note": "Theme-dependent status text. warning-500 measures 1.9:1 on a light surface, which is why this exists. Light: #7A4E06."
+      },
+      "fg-danger": {
+        "role": "secondary",
+        "displayName": "fg-danger",
+        "canonical": "#F0696D",
+        "tonalRamp": [
+          "oklch(20% 0.05 250)",
+          "oklch(30% 0.07 250)",
+          "oklch(40% 0.09 250)",
+          "oklch(50% 0.11 250)",
+          "oklch(60% 0.12 250)",
+          "oklch(70% 0.10 250)",
+          "oklch(82% 0.06 250)",
+          "oklch(93% 0.03 250)"
+        ],
+        "note": "Theme-dependent status text. Brighter than danger-500 on dark, which measured 4.2:1 on surface-2. Light: #A62529."
+      },
+      "fg-accent": {
+        "role": "secondary",
+        "displayName": "fg-accent",
+        "canonical": "#9C93E9",
+        "tonalRamp": [
+          "oklch(20% 0.05 250)",
+          "oklch(30% 0.07 250)",
+          "oklch(40% 0.09 250)",
+          "oklch(50% 0.11 250)",
+          "oklch(60% 0.12 250)",
+          "oklch(70% 0.10 250)",
+          "oklch(82% 0.06 250)",
+          "oklch(93% 0.03 250)"
+        ],
+        "note": "Theme-dependent accent text, including the active tab label on its 20% wash. Light: #473C9E."
       }
     },
     "typographyMeta": {
@@ -469,6 +533,11 @@
         "section": "shapes"
       },
       {
+        "name": "The Two-Theme Rule",
+        "body": "Anything that carries type has a theme-dependent token; only fills, rings and borders may take a fixed ramp step. The ramps are fixed across themes and measured against the light surfaces warning-500 is 1.9:1 and accent-200 1.8:1, so a bare text-warning-500 is a defect. contrast.test.ts does the arithmetic over both theme blocks.",
+        "section": "colors"
+      },
+      {
         "name": "The Semantic Colour Rule",
         "body": "Green, amber and red only ever describe compatibility state. A status colour used because it looks good is a defect. A build label that is merely a heads-up (\"Beta\") takes the accent, not amber.",
         "section": "colors"
@@ -536,6 +605,7 @@
     ],
     "donts": [
       "Don't write a focus style on a component, or suppress the shared one with outline-none — see the One Ring Rule.",
+      "Don't put a fixed ramp step on type — the status and accent text weights are theme-dependent tokens (fg-success, fg-warning, fg-danger, fg-accent).",
       "Don't use a Tailwind default palette (neutral-*, sky-*, emerald-*) or a raw hex in a component.",
       "Don't use a status colour decoratively, or a second accent, or a gradient or glow anywhere — including a shimmer sweep across a skeleton.",
       "Don't express disabled with opacity.",

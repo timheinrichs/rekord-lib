@@ -9,8 +9,8 @@ const RELEASES_URL = "https://github.com/timheinrichs/rekord-lib/releases/tag/v"
 
 /** Tag colour per level, in the shape the collection view uses for status. */
 const TAG_CLASS: Record<Severity, string> = {
-  critical: "bg-danger-500/15 text-danger-500 ring-danger-500/30",
-  important: "bg-warning-500/15 text-warning-500 ring-warning-500/30",
+  critical: "bg-danger-500/15 text-fg-danger ring-danger-500/30",
+  important: "bg-warning-500/15 text-fg-warning ring-warning-500/30",
 };
 
 interface Props {
@@ -90,7 +90,7 @@ export default function UpdateModal({ update, onClose }: Props) {
               everything there is to say. Colour alone carries it: the tag above
               is already the marker, and a panel repeating it says it twice. */}
           {critical && (
-            <p className="mb-3 font-sans text-sm text-danger-500">
+            <p className="mb-3 font-sans text-sm text-fg-danger">
               This release fixes a security or data-loss problem.
             </p>
           )}
@@ -106,12 +106,12 @@ export default function UpdateModal({ update, onClose }: Props) {
         <footer className="flex items-center gap-3 border-t border-border px-5 py-3">
           <button
             onClick={() => void openUrl(RELEASES_URL + update.version)}
-            className="font-sans text-sm text-fg-muted underline decoration-dotted underline-offset-2 hover:text-accent-400"
+            className="font-sans text-sm text-fg-muted underline decoration-dotted underline-offset-2 hover:text-fg-accent"
           >
             View on GitHub
           </button>
           {error && (
-            <p className="min-w-0 truncate text-sm text-danger-500" title={error}>
+            <p className="min-w-0 truncate text-sm text-fg-danger" title={error}>
               {error}
             </p>
           )}

@@ -1737,7 +1737,7 @@ export default function LibraryView({
  // plus a pseudo-class and so outranks a bare status colour, which
  // left the label and icon grey inside an already-green outline
  // until the button happened to re-enable.
- "border-success-500 text-success-500"
+ "border-success-500 text-fg-success"
  : "border-border-strong enabled:hover:border-accent-500 disabled:border-border disabled:text-fg-disabled"
  }`}
       >
@@ -1804,7 +1804,7 @@ export default function LibraryView({
       {skippedLabel(skipped) && (
         <button
           onClick={() => setSkippedOpen(true)}
-          className="h-9 justify-center inline-flex items-center gap-1.5 rounded-md border border-warning-500/40 px-3 text-sm text-warning-500 hover:border-warning-500"
+          className="h-9 justify-center inline-flex items-center gap-1.5 rounded-md border border-warning-500/40 px-3 text-sm text-fg-warning hover:border-warning-500"
           title="Files the analysis could not use — see why"
         >
           {skippedLabel(skipped)}
@@ -1838,7 +1838,7 @@ export default function LibraryView({
         <button
           onClick={flushPendingEdits}
           disabled={writing || converting}
-          className="h-9 justify-center inline-flex items-center gap-1.5 rounded-md border border-warning-500/40 px-3 text-sm text-warning-500 enabled:hover:border-warning-500 disabled:text-fg-disabled"
+          className="h-9 justify-center inline-flex items-center gap-1.5 rounded-md border border-warning-500/40 px-3 text-sm text-fg-warning enabled:hover:border-warning-500 disabled:text-fg-disabled"
           title="Write metadata changes made earlier (not yet saved to the files) into the files"
         >
           {writing ? (
@@ -1891,7 +1891,7 @@ export default function LibraryView({
               )
             }
             disabled={converting}
-            className="h-9 inline-flex items-center justify-center rounded-md border border-border-strong px-3 text-sm enabled:hover:border-danger-500 enabled:hover:text-danger-500 disabled:border-border disabled:text-fg-disabled"
+            className="h-9 inline-flex items-center justify-center rounded-md border border-border-strong px-3 text-sm enabled:hover:border-danger-500 enabled:hover:text-fg-danger disabled:border-border disabled:text-fg-disabled"
           >
             Delete ({selected.size})
           </button>
@@ -1929,7 +1929,7 @@ export default function LibraryView({
       <AppHeader onTitleClick={scrollToTop} right={headerActions} />
       <main className="w-full px-6 py-6">
       {error && (
-        <div className="mb-4 rounded-lg border border-danger-500/30 bg-danger-500/10 px-4 py-2 text-sm text-danger-500">
+        <div className="mb-4 rounded-lg border border-danger-500/30 bg-danger-500/10 px-4 py-2 text-sm text-fg-danger">
           {error}
         </div>
       )}
@@ -1939,7 +1939,7 @@ export default function LibraryView({
           because there is no partial mode to fall back to. */}
       {sidecarBroken && (
         <div className="mb-4 rounded-lg border border-danger-500/40 bg-danger-500/10 px-4 py-3 text-sm">
-          <p className="text-danger-500">
+          <p className="text-fg-danger">
             Audio tools unavailable — analysis and conversion cannot run
           </p>
           <p className="mt-0.5 break-all text-fg-muted">{sidecarBroken}</p>
@@ -1955,7 +1955,7 @@ export default function LibraryView({
       {dirMissing && (
         <div className="mb-4 flex flex-wrap items-center gap-x-3 gap-y-2 rounded-lg border border-warning-500/40 bg-warning-500/10 px-4 py-3 text-sm">
           <div className="min-w-0">
-            <p className="text-warning-500">Library folder not found</p>
+            <p className="text-fg-warning">Library folder not found</p>
             <p className="mt-0.5 truncate text-fg-muted" title={libraryDir}>
               {libraryDir}
             </p>
@@ -2257,7 +2257,7 @@ export default function LibraryView({
                         <td
                           key={c.id}
                           className={`whitespace-nowrap ${pad} ${
-                            bpmIsUncertain(t.bpm_confidence) ? "text-warning-500" : "text-fg-muted"
+                            bpmIsUncertain(t.bpm_confidence) ? "text-fg-warning" : "text-fg-muted"
                           }`}
                           title={
                             bpmIsUncertain(t.bpm_confidence)
@@ -2307,7 +2307,7 @@ export default function LibraryView({
                           {result ? (
                             result.success ? (
                               <span
-                                className="flex text-success-500"
+                                className="flex text-fg-success"
                                 title="Converted"
                                 aria-label="Converted"
                                 role="img"
@@ -2316,7 +2316,7 @@ export default function LibraryView({
                               </span>
                             ) : (
                               <span
-                                className="flex text-danger-500"
+                                className="flex text-fg-danger"
                                 title={result.error ?? "Conversion failed"}
                                 aria-label="Conversion failed"
                                 role="img"
@@ -2353,7 +2353,7 @@ export default function LibraryView({
                             <button
                               onClick={() => void playlists.step(inPlaylist.id, t.path, -1)}
                               disabled={inPlaylist.position === 1}
-                              className="flex h-8 w-8 items-center justify-center rounded-md text-fg-subtle enabled:hover:bg-surface enabled:hover:text-accent-400 disabled:text-fg-disabled"
+                              className="flex h-8 w-8 items-center justify-center rounded-md text-fg-subtle enabled:hover:bg-surface enabled:hover:text-fg-accent disabled:text-fg-disabled"
                               title="Move up in the playlist"
                               aria-label="Move up"
                             >
@@ -2362,7 +2362,7 @@ export default function LibraryView({
                             <button
                               onClick={() => void playlists.step(inPlaylist.id, t.path, 1)}
                               disabled={inPlaylist.position === inPlaylist.of}
-                              className="flex h-8 w-8 items-center justify-center rounded-md text-fg-subtle enabled:hover:bg-surface enabled:hover:text-accent-400 disabled:text-fg-disabled"
+                              className="flex h-8 w-8 items-center justify-center rounded-md text-fg-subtle enabled:hover:bg-surface enabled:hover:text-fg-accent disabled:text-fg-disabled"
                               title="Move down in the playlist"
                               aria-label="Move down"
                             >
@@ -2372,7 +2372,7 @@ export default function LibraryView({
                               onClick={() =>
                                 void playlists.removeTracks(inPlaylist.id, [t.path])
                               }
-                              className="flex h-8 w-8 items-center justify-center rounded-md text-fg-subtle hover:bg-surface hover:text-danger-500"
+                              className="flex h-8 w-8 items-center justify-center rounded-md text-fg-subtle hover:bg-surface hover:text-fg-danger"
                               title="Remove from this playlist (the file stays)"
                               aria-label="Remove from playlist"
                             >
@@ -2393,7 +2393,7 @@ export default function LibraryView({
                         <button
                           onClick={() => setEditingId(t.id)}
                           disabled={converting}
-                          className="flex h-8 w-8 items-center justify-center rounded-md text-fg-subtle enabled:hover:bg-surface enabled:hover:text-accent-400 disabled:text-fg-disabled"
+                          className="flex h-8 w-8 items-center justify-center rounded-md text-fg-subtle enabled:hover:bg-surface enabled:hover:text-fg-accent disabled:text-fg-disabled"
                           title="Edit metadata"
                           aria-label="Edit metadata"
                         >
@@ -2414,7 +2414,7 @@ export default function LibraryView({
                               )
                             }
                             disabled={converting}
-                            className="flex h-8 w-8 items-center justify-center rounded-md text-fg-subtle enabled:hover:bg-surface enabled:hover:text-danger-500 disabled:text-fg-disabled"
+                            className="flex h-8 w-8 items-center justify-center rounded-md text-fg-subtle enabled:hover:bg-surface enabled:hover:text-fg-danger disabled:text-fg-disabled"
                             title="Delete (move to trash)"
                             aria-label="Delete track"
                           >
@@ -2741,7 +2741,7 @@ export default function LibraryView({
                         <button
                           onClick={() => editFolder(node)}
                           disabled={writing}
-                          className="flex h-8 w-8 items-center justify-center rounded-md text-fg-subtle enabled:hover:bg-surface enabled:hover:text-accent-400 disabled:text-fg-disabled"
+                          className="flex h-8 w-8 items-center justify-center rounded-md text-fg-subtle enabled:hover:bg-surface enabled:hover:text-fg-accent disabled:text-fg-disabled"
                           title="Edit metadata for all tracks in this folder"
                           aria-label="Edit folder metadata"
                         >
@@ -2750,7 +2750,7 @@ export default function LibraryView({
                         <button
                           onClick={() => void confirmAndDeleteFolder(node)}
                           disabled={converting}
-                          className="flex h-8 w-8 items-center justify-center rounded-md text-fg-subtle enabled:hover:bg-surface enabled:hover:text-danger-500 disabled:text-fg-disabled"
+                          className="flex h-8 w-8 items-center justify-center rounded-md text-fg-subtle enabled:hover:bg-surface enabled:hover:text-fg-danger disabled:text-fg-disabled"
                           title="Delete folder (move to trash)"
                           aria-label="Delete folder"
                         >
@@ -2786,7 +2786,7 @@ export default function LibraryView({
                       <button
                         onClick={() => editTracks(node.all)}
                         disabled={writing}
-                        className="flex h-8 w-8 items-center justify-center rounded-md text-fg-subtle enabled:hover:bg-surface enabled:hover:text-accent-400 disabled:text-fg-disabled"
+                        className="flex h-8 w-8 items-center justify-center rounded-md text-fg-subtle enabled:hover:bg-surface enabled:hover:text-fg-accent disabled:text-fg-disabled"
                         title="Edit metadata for all tracks of this label"
                         aria-label="Edit label metadata"
                       >
@@ -2818,7 +2818,7 @@ export default function LibraryView({
                             )
                           }
                           disabled={converting}
-                          className="flex h-8 w-8 items-center justify-center rounded-md text-fg-subtle enabled:hover:bg-surface enabled:hover:text-danger-500 disabled:text-fg-disabled"
+                          className="flex h-8 w-8 items-center justify-center rounded-md text-fg-subtle enabled:hover:bg-surface enabled:hover:text-fg-danger disabled:text-fg-disabled"
                           title="Delete album (move to trash)"
                           aria-label="Delete album"
                         >
@@ -2927,7 +2927,7 @@ export default function LibraryView({
                             )
                           }
                           disabled={converting}
-                          className="flex h-8 w-8 items-center justify-center rounded-md text-fg-subtle enabled:hover:bg-surface enabled:hover:text-danger-500 disabled:text-fg-disabled"
+                          className="flex h-8 w-8 items-center justify-center rounded-md text-fg-subtle enabled:hover:bg-surface enabled:hover:text-fg-danger disabled:text-fg-disabled"
                           title="Delete album (move to trash)"
                           aria-label="Delete album"
                         >
@@ -3063,7 +3063,7 @@ function SortableHeader({
         <span
           className={`text-xs ${
             active
-              ? "text-accent-400"
+              ? "text-fg-accent"
               : "text-fg-subtle opacity-0 group-hover:opacity-60"
           }`}
         >
@@ -3083,11 +3083,11 @@ function FilterChip({
   onRemove: () => void;
 }) {
   return (
-    <span className="flex shrink-0 items-center gap-1 whitespace-nowrap rounded-full bg-accent-600/20 py-0.5 pl-2.5 pr-1 text-xs text-accent-200 ring-1 ring-accent-500/40">
+    <span className="flex shrink-0 items-center gap-1 whitespace-nowrap rounded-full bg-accent-600/20 py-0.5 pl-2.5 pr-1 text-xs text-fg-accent ring-1 ring-accent-500/40">
       {label}
       <button
         onClick={onRemove}
-        className="flex h-4 w-4 items-center justify-center rounded-full text-accent-200/70 transition-colors hover:bg-accent-500/20 hover:text-accent-200"
+        className="flex h-4 w-4 items-center justify-center rounded-full text-fg-accent/70 transition-colors hover:bg-accent-500/20 hover:text-fg-accent"
         title={`Remove filter: ${label}`}
         aria-label={`Remove filter: ${label}`}
       >

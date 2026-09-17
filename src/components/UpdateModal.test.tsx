@@ -77,9 +77,9 @@ describe("UpdateModal", () => {
       <UpdateModal update={update({ severity: "critical" })} onClose={() => {}} />,
     );
     expect(screen.getByText("Update available")).toBeInTheDocument();
-    expect(screen.getByText("critical")).toHaveClass("text-danger-500");
+    expect(screen.getByText("critical")).toHaveClass("text-fg-danger");
     expect(screen.getByText(/security or data-loss/)).toHaveClass(
-      "text-danger-500",
+      "text-fg-danger",
     );
   });
 
@@ -87,7 +87,7 @@ describe("UpdateModal", () => {
     // `important` makes no claim about what is at risk, so there is nothing for
     // a sentence to add that the tag has not already said.
     render(<UpdateModal update={update({ severity: "important" })} onClose={() => {}} />);
-    expect(screen.getByText("important")).toHaveClass("text-warning-500");
+    expect(screen.getByText("important")).toHaveClass("text-fg-warning");
     expect(screen.queryByText(/security or data-loss/)).toBeNull();
   });
 

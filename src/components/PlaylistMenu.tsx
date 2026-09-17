@@ -61,7 +61,7 @@ export default function PlaylistMenu({
     <div ref={ref} className="relative" onClick={(e) => e.stopPropagation()}>
       <button
         onClick={() => setOpen((v) => !v)}
-        className="flex h-8 w-8 items-center justify-center rounded-md text-fg-subtle hover:bg-surface hover:text-accent-400"
+        className="flex h-8 w-8 items-center justify-center rounded-md text-fg-subtle hover:bg-surface hover:text-fg-accent"
         title={`Actions for “${playlist.name}”`}
         aria-label="Playlist actions"
       >
@@ -77,7 +77,7 @@ export default function PlaylistMenu({
               setOpen(false);
               onEdit();
             }}
-            className="h-9 inline-flex items-center justify-center block w-full px-3 text-left text-sm hover:bg-surface hover:text-accent-400"
+            className="h-9 inline-flex items-center justify-center block w-full px-3 text-left text-sm hover:bg-surface hover:text-fg-accent"
           >
             Edit…
           </button>
@@ -86,7 +86,7 @@ export default function PlaylistMenu({
               setOpen(false);
               setRenaming(true);
             }}
-            className="h-9 inline-flex items-center justify-center block w-full px-3 text-left text-sm hover:bg-surface hover:text-accent-400"
+            className="h-9 inline-flex items-center justify-center block w-full px-3 text-left text-sm hover:bg-surface hover:text-fg-accent"
           >
             Rename
           </button>
@@ -97,14 +97,14 @@ export default function PlaylistMenu({
                 setConfirming(false);
                 onDelete();
               }}
-              className="h-9 inline-flex items-center justify-center block w-full px-3 text-left text-sm text-danger-500 hover:bg-surface"
+              className="h-9 inline-flex items-center justify-center block w-full px-3 text-left text-sm text-fg-danger hover:bg-surface"
             >
               Delete “{playlist.name}”?
             </button>
           ) : (
             <button
               onClick={() => setConfirming(true)}
-              className="h-9 inline-flex items-center justify-center block w-full px-3 text-left text-sm hover:bg-surface hover:text-danger-500"
+              className="h-9 inline-flex items-center justify-center block w-full px-3 text-left text-sm hover:bg-surface hover:text-fg-danger"
             >
               Delete
             </button>

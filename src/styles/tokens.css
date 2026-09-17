@@ -66,6 +66,16 @@
      accent ramp clears 3:1 against both themes' surfaces — accent-400 measures
      4.4 at worst on dark and 3.2 on light, accent-600 the reverse. */
   --color-focus:         var(--focus);
+  /* Status and accent as *text*. The ramps below are fixed across themes, which
+     works for a fill or a ring and cannot work for type: measured against the
+     light surfaces, `warning-500` is 1.9:1 and `accent-200` 1.8:1. So the text
+     weight is theme-dependent and the ramps stay for everything that is not
+     type. 0.9.1 removed tokens of these names because nothing used them; these
+     exist because something does. */
+  --color-fg-success:    var(--fg-success);
+  --color-fg-warning:    var(--fg-warning);
+  --color-fg-danger:     var(--fg-danger);
+  --color-fg-accent:     var(--fg-accent);
 
   /* ---- Radius ------------------------------------------------------- */
   --radius-sm: 4px;
@@ -146,6 +156,15 @@
   --fg-disabled:   #5A5A66;   /* graphite-500 – inert, see below */
   --focus:         #8177E0;   /* accent-400 – 5.1 / 4.8 / 4.4 on the three surfaces */
 
+  /* Status/accent text. Worst case across the three surfaces and each colour's
+     own 15 % tint, all ≥ 4.5. Danger is accent-adjacent to the ramp rather than
+     equal to it: `danger-500` measures 4.2 on surface-2, which is the one value
+     that did not clear the bar. */
+  --fg-success:    #22B27A;   /* = success-500, worst case 6.0 */
+  --fg-warning:    #F5A623;   /* = warning-500, worst case 8.0 */
+  --fg-danger:     #F0696D;   /* brighter than danger-500, worst case 4.6 */
+  --fg-accent:     #9C93E9;   /* = accent-300, worst case 5.7 on the tab wash */
+
   color-scheme: dark;
 }
 
@@ -160,6 +179,12 @@
   --fg-subtle:     #666671;
   --fg-disabled:   #A8A8B4;
   --focus:         #574BC0;   /* accent-600 – 6.1 / 6.6 / 5.6 on the three surfaces */
+
+  /* Same rule, measured against the light surfaces. */
+  --fg-success:    #0E6B46;   /* worst case 4.9 on its own tint over surface-2 */
+  --fg-warning:    #7A4E06;   /* worst case 5.6 */
+  --fg-danger:     #A62529;   /* worst case 5.1 */
+  --fg-accent:     #473C9E;   /* worst case 6.4 on the tab wash */
 
   color-scheme: light;
 }

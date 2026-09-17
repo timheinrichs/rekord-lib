@@ -264,7 +264,7 @@ export default function MetadataEditor({
                 <label key={key} className="flex flex-col gap-1 text-sm">
                   <span className="text-fg-muted">
                     {label}
-                    {required && <span className="ml-0.5 text-danger-500">*</span>}
+                    {required && <span className="ml-0.5 text-fg-danger">*</span>}
                   </span>
                   <div className="flex gap-2">
                     <input
@@ -286,7 +286,7 @@ export default function MetadataEditor({
                       <button
                         onClick={() => set(key, guess!)}
                         title={`Apply suggestion: ${guess}`}
-                        className="h-9 inline-flex items-center justify-center max-w-[40%] truncate rounded-md border border-accent-600/40 bg-accent-600/10 px-2 text-xs text-accent-300 hover:bg-accent-600/20"
+                        className="h-9 inline-flex items-center justify-center max-w-[40%] truncate rounded-md border border-accent-600/40 bg-accent-600/10 px-2 text-xs text-fg-accent hover:bg-accent-600/20"
                       >
                         ↩ {guess}
                       </button>
@@ -307,7 +307,7 @@ export default function MetadataEditor({
                             key={v}
                             onClick={() => set(key, v)}
                             title={`Use "${v}"`}
-                            className="h-9 inline-flex items-center justify-center max-w-full truncate rounded-full border border-accent-600/40 bg-accent-600/10 px-2 text-xs text-accent-300 hover:bg-accent-600/20"
+                            className="h-9 inline-flex items-center justify-center max-w-full truncate rounded-full border border-accent-600/40 bg-accent-600/10 px-2 text-xs text-fg-accent hover:bg-accent-600/20"
                           >
                             {v}
                           </button>
@@ -332,7 +332,7 @@ export default function MetadataEditor({
                 />
                 <button
                   onClick={() => void revealItemInDir(track.path)}
-                  className="h-9 inline-flex items-center justify-center shrink-0 rounded-md border border-border-strong px-3 text-xs text-fg-muted hover:border-accent-500 hover:text-accent-400"
+                  className="h-9 inline-flex items-center justify-center shrink-0 rounded-md border border-border-strong px-3 text-xs text-fg-muted hover:border-accent-500 hover:text-fg-accent"
                 >
                   Open in Finder
                 </button>
@@ -446,7 +446,7 @@ export default function MetadataEditor({
                       <span
                         className={`text-xs ${
                           bpmIsUncertain(track.bpm_confidence)
-                            ? "text-warning-500"
+                            ? "text-fg-warning"
                             : "text-fg-subtle"
                         }`}
                         title={
@@ -528,7 +528,7 @@ export default function MetadataEditor({
 
         <footer className="flex items-center justify-end gap-3 border-t border-border px-5 py-3">
           {!canSave && (
-            <span className="mr-auto text-xs text-danger-500">
+            <span className="mr-auto text-xs text-fg-danger">
               Title and Artist are required.
             </span>
           )}

@@ -12,7 +12,7 @@ describe("BuildChip", () => {
     render(<BuildChip />);
     const chip = screen.getByTitle("Development build");
     expect(chip).toHaveTextContent("dev");
-    expect(chip).toHaveClass("text-warning-500");
+    expect(chip).toHaveClass("text-fg-warning");
   });
 
   it("marks a shipped build as beta, in accent rather than a status colour", () => {
@@ -20,8 +20,8 @@ describe("BuildChip", () => {
     render(<BuildChip />);
     const chip = screen.getByTitle("Beta build – expect rough edges");
     expect(chip).toHaveTextContent("Beta");
-    expect(chip).toHaveClass("text-accent-300");
-    expect(chip).not.toHaveClass("text-warning-500");
+    expect(chip).toHaveClass("text-fg-accent");
+    expect(chip).not.toHaveClass("text-fg-warning");
   });
 });
 

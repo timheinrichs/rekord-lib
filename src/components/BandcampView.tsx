@@ -136,7 +136,7 @@ export default function BandcampView({
               <button
                 onClick={onRefresh}
                 disabled={refreshing}
-                className="h-9 inline-flex items-center justify-center ml-auto rounded-md border border-border-strong px-3 text-sm text-fg-muted enabled:hover:border-accent-500 enabled:hover:text-accent-400 disabled:border-border disabled:text-fg-disabled"
+                className="h-9 inline-flex items-center justify-center ml-auto rounded-md border border-border-strong px-3 text-sm text-fg-muted enabled:hover:border-accent-500 enabled:hover:text-fg-accent disabled:border-border disabled:text-fg-disabled"
               >
                 {refreshing ? "Refreshing…" : "Refresh"}
               </button>
@@ -160,7 +160,7 @@ export default function BandcampView({
             </div>
 
             {error && (
-              <div className="mb-4 rounded-lg border border-danger-500/30 bg-danger-500/10 px-4 py-2 text-sm text-danger-500">
+              <div className="mb-4 rounded-lg border border-danger-500/30 bg-danger-500/10 px-4 py-2 text-sm text-fg-danger">
                 {error}
               </div>
             )}
@@ -237,7 +237,7 @@ function BandcampRow({
         <p className="truncate text-xs text-fg-subtle">{item.band_name}</p>
       </div>
       {inLibrary && (
-        <span className="shrink-0 rounded-full bg-success-500/15 px-2 py-0.5 text-xs text-success-500 ring-1 ring-success-500/30">
+        <span className="shrink-0 rounded-full bg-success-500/15 px-2 py-0.5 text-xs text-fg-success ring-1 ring-success-500/30">
           In library
         </span>
       )}
@@ -325,7 +325,7 @@ function ViewToggle({
       aria-label={label}
       aria-pressed={active}
       className={`flex h-9 w-9 items-center justify-center rounded-md ${
-        active ? "bg-accent-600/20 text-accent-200" : "text-fg-muted hover:text-fg"
+        active ? "bg-accent-600/20 text-fg-accent" : "text-fg-muted hover:text-fg"
       }`}
     >
       {children}

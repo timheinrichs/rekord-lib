@@ -18,6 +18,10 @@ import { relocateLibrary } from "../lib/library";
 import { relocateMessage, shouldRelocate } from "../lib/relocate";
 import { checkForUpdate, installUpdate, type UpdateInfo } from "../lib/updater";
 import { renderableNotes } from "../lib/changelog";
+import {
+  THEME_LABELS,
+  type ThemePreference,
+} from "../lib/theme";
 import { HeartIcon } from "./icons";
 import ReleaseNotes from "./ReleaseNotes";
 import {
@@ -254,13 +258,13 @@ export default function SettingsView({
 
         {account ? (
           <div className="mt-4 flex flex-wrap items-center gap-3 text-sm">
-            <span className="inline-flex items-center gap-2 rounded-full bg-success-500/15 px-3 py-1 text-success-500 ring-1 ring-success-500/30">
+            <span className="inline-flex items-center gap-2 rounded-full bg-success-500/15 px-3 py-1 text-fg-success ring-1 ring-success-500/30">
               <span className="h-1.5 w-1.5 rounded-full bg-success-500" />
               Connected as {account.username || account.fan_id}
             </span>
             <button
               onClick={disconnect}
-              className="h-9 inline-flex items-center justify-center ml-auto rounded-md border border-border-strong px-3 hover:border-danger-500 hover:text-danger-500"
+              className="h-9 inline-flex items-center justify-center ml-auto rounded-md border border-border-strong px-3 hover:border-danger-500 hover:text-fg-danger"
             >
               Disconnect
             </button>
@@ -288,7 +292,7 @@ export default function SettingsView({
         )}
 
         {error && (
-          <div className="mt-4 rounded-lg border border-danger-500/30 bg-danger-500/10 px-4 py-2 text-sm text-danger-500">
+          <div className="mt-4 rounded-lg border border-danger-500/30 bg-danger-500/10 px-4 py-2 text-sm text-fg-danger">
             {error}
           </div>
         )}
@@ -373,12 +377,43 @@ export default function SettingsView({
         </div>
 
         {newerOnly && (
-          <div className="mt-4 rounded-lg border border-warning-500/30 bg-warning-500/10 px-4 py-2 text-sm text-warning-500">
+          <div className="mt-4 rounded-lg border border-warning-500/30 bg-warning-500/10 px-4 py-2 text-sm text-fg-warning">
             ⚠️ {settings.format.toUpperCase()} only works on newer players
             (CDJ-3000/NXS2), not on all CDJ/XDJ. Choose AIFF for maximum
             compatibility.
           </div>
         )}
+      </section>
+
+      {/* Appearance */}
+      <section className="rounded-xl border border-border bg-surface p-5">
+        <h2 className="text-sm font-medium text-fg">Appearance</h2>
+        <p className="mt-1 font-sans text-sm text-fg-subtle">
+          Dark is the default. <em>System</em> follows the macOS setting and
+          keeps following it, so a machine that switches in the evening takes
+          the app with it.
+        </p>
+        <div
+          role="radiogroup"
+          aria-label="Theme"
+          className="mt-4 inline-flex items-center gap-1 rounded-lg border border-border-strong p-0.5"
+        >
+          {(Object.keys(THEME_LABELS) as ThemePreference[]).map((t) => (
+            <button
+              key={t}
+              role="radio"
+              aria-checked={settings.theme === t}
+              onClick={() => onSettingsChange({ theme: t })}
+              className={`h-9 inline-flex items-center justify-center rounded-md px-3 text-sm transition-colors ${
+                settings.theme === t
+                  ? "bg-accent-600/20 text-fg-accent"
+                  : "text-fg-muted hover:text-fg"
+              }`}
+            >
+              {THEME_LABELS[t]}
+            </button>
+          ))}
+        </div>
       </section>
 
       {/* Analysis */}
@@ -506,7 +541,7 @@ export default function SettingsView({
             lost, and entering the credential again is the way out. What it costs
             is the rate limit, not the suggestions. */}
         {discogs?.unavailable && (
-          <p className="mt-3 rounded-lg border border-warning-500/40 bg-warning-500/10 px-4 py-3 font-sans text-sm text-warning-500">
+          <p className="mt-3 rounded-lg border border-warning-500/40 bg-warning-500/10 px-4 py-3 font-sans text-sm text-fg-warning">
             The Keychain could not be read, so a stored credential cannot be
             used. Suggestions keep working at the anonymous rate limit until it
             is entered again; everything else works as usual.
@@ -515,7 +550,7 @@ export default function SettingsView({
 
         {discogs?.stored && !discogs.unavailable ? (
           <div className="mt-4 flex flex-wrap items-center gap-3 text-sm">
-            <span className="inline-flex items-center gap-2 rounded-full bg-success-500/15 px-3 py-1 text-success-500 ring-1 ring-success-500/30">
+            <span className="inline-flex items-center gap-2 rounded-full bg-success-500/15 px-3 py-1 text-fg-success ring-1 ring-success-500/30">
               <span className="h-1.5 w-1.5 rounded-full bg-success-500" />
               Stored in the Keychain
             </span>
@@ -531,7 +566,7 @@ export default function SettingsView({
             <button
               onClick={forgetDiscogs}
               disabled={discogsBusy}
-              className="h-9 inline-flex items-center justify-center ml-auto rounded-md border border-border-strong px-3 enabled:hover:border-danger-500 enabled:hover:text-danger-500 disabled:border-border disabled:text-fg-disabled"
+              className="h-9 inline-flex items-center justify-center ml-auto rounded-md border border-border-strong px-3 enabled:hover:border-danger-500 enabled:hover:text-fg-danger disabled:border-border disabled:text-fg-disabled"
             >
               Remove
             </button>
@@ -605,7 +640,7 @@ export default function SettingsView({
                   disabled={
                     discogsBusy || !discogsKey.trim() || !discogsSecret.trim()
                   }
-                  className="h-9 mt-3 inline-flex items-center justify-center rounded-md border border-border-strong px-4 text-sm enabled:hover:border-accent-500 enabled:hover:text-accent-500 disabled:border-border disabled:text-fg-disabled"
+                  className="h-9 mt-3 inline-flex items-center justify-center rounded-md border border-border-strong px-4 text-sm enabled:hover:border-accent-500 enabled:hover:text-fg-accent disabled:border-border disabled:text-fg-disabled"
                 >
                   {discogsBusy ? "Saving…" : "Save key + secret"}
                 </button>
@@ -615,7 +650,7 @@ export default function SettingsView({
         )}
 
         {discogsError && (
-          <p className="mt-3 text-sm text-danger-500">{discogsError}</p>
+          <p className="mt-3 text-sm text-fg-danger">{discogsError}</p>
         )}
       </section>
 
@@ -632,7 +667,7 @@ export default function SettingsView({
             {update.severity === "critical" ? (
               <div className="mt-3 flex flex-wrap items-center gap-3 rounded-lg border border-danger-500/40 bg-danger-500/10 px-4 py-3 text-sm">
                 <div className="min-w-0">
-                  <p className="text-danger-500">
+                  <p className="text-fg-danger">
                     Critical update available — v{update.version}
                   </p>
                   <p className="mt-0.5 font-sans text-fg-muted">
@@ -656,8 +691,8 @@ export default function SettingsView({
                 <span
                   className={`inline-flex items-center gap-2 rounded-full px-3 py-1 text-sm ring-1 ${
                     update.severity === "important"
-                      ? "bg-warning-500/15 text-warning-500 ring-warning-500/30"
-                      : "bg-accent-500/15 text-accent-300 ring-accent-500/30"
+                      ? "bg-warning-500/15 text-fg-warning ring-warning-500/30"
+                      : "bg-accent-500/15 text-fg-accent ring-accent-500/30"
                   }`}
                 >
                   <span
@@ -711,7 +746,7 @@ export default function SettingsView({
         <div className="mt-4 flex flex-wrap items-center gap-3 border-t border-border pt-4">
           <button
             onClick={() => void openUrl(DONATE_URL)}
-            className="h-9 justify-center inline-flex items-center gap-1.5 rounded-md border border-border-strong px-3 text-sm enabled:hover:border-accent-500 enabled:hover:text-accent-400"
+            className="h-9 justify-center inline-flex items-center gap-1.5 rounded-md border border-border-strong px-3 text-sm enabled:hover:border-accent-500 enabled:hover:text-fg-accent"
           >
             <HeartIcon />
             Donate

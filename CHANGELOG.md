@@ -7,6 +7,38 @@ and this project adheres to [Semantic Versioning](https://semver.org/)
 (`MAJOR.MINOR.PATCH`). As long as the version is at `0.x`, MINOR bumps may
 contain incompatible changes.
 
+## [Unreleased]
+
+### Added
+- **A theme setting.** *Settings → Appearance* offers dark, light, and
+  **System**, which follows the macOS appearance and keeps following it — a Mac
+  that switches in the evening takes the app with it, without a restart. Dark
+  stays the default, because an update that silently changed how the app looks
+  would be worse than a suboptimal default; System is one click away.
+- **A working light theme.** It has been in the tokens since the beginning and
+  was unreachable, which was just as well: measured against its own surfaces,
+  the status and accent colours were unreadable as text — amber at 1.9:1, the
+  active tab label at 1.8:1, where 4.5:1 is the bar. The fixed colour ramps are
+  right for a fill and cannot work for type, so the text weights are now
+  theme-dependent tokens and the ramps keep everything that is not type.
+- **The contrast is a test, not a claim.** `src/styles/contrast.test.ts` reads
+  both theme blocks out of `tokens.css` and checks every pair the app renders —
+  text on all three surfaces, status text on its own tint, the active tab label
+  on its wash, the focus ring — at WCAG AA. A document said "plenty of contrast"
+  for two releases while amber sat at 1.9:1; arithmetic does not.
+
+### Fixed
+- **Keyboard focus is visible.** The app had no focus style of its own: buttons
+  borrowed the macOS ring and text fields suppressed the browser's outline in
+  sixteen places, replacing it with a border shift. There is now one ring,
+  defined once, on everything focusable — and its colour is theme-dependent,
+  because no single step of the accent ramp is visible enough on both themes.
+- **Reduced motion now means every animation.** The rule named four animations
+  individually, so the two infinite ones — the scan spinner and the indeterminate
+  download bar, the two that run longest — kept moving for a user who had asked
+  them not to. The "writing tags" indicator gained a label in the process: its
+  whole signal used to be the spin.
+
 ## [0.9.1] - 2026-09-17
 
 ### Fixed

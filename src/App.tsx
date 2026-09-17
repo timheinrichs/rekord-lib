@@ -14,6 +14,7 @@ import { CloseIcon } from "./components/icons";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { bandcampStatus, startScan } from "./lib/api";
 import { allowLibraryPlayback } from "./lib/library";
+import { applyTheme, resolveTheme, SYSTEM_LIGHT_QUERY } from "./lib/theme";
 import { syncCollection } from "./lib/bandcampSync";
 import {
   badgeLevel,
@@ -72,7 +73,7 @@ function BackToTop() {
     <button
       onClick={() => window.scrollTo({ top: 0, behavior: "smooth" })}
       aria-label="Back to top"
-      className={`fixed bottom-6 right-6 z-40 flex h-11 w-11 items-center justify-center rounded-full border border-border-strong bg-surface text-fg shadow-lg shadow-black/40 backdrop-blur transition-all duration-300 hover:border-accent-500 hover:text-accent-400 ${
+      className={`fixed bottom-6 right-6 z-40 flex h-11 w-11 items-center justify-center rounded-full border border-border-strong bg-surface text-fg shadow-lg shadow-black/40 backdrop-blur transition-all duration-300 hover:border-accent-500 hover:text-fg-accent ${
         showTop
           ? "translate-y-0 opacity-100"
           : "pointer-events-none translate-y-4 opacity-0"
@@ -172,6 +173,25 @@ export default function App() {
         .catch(() => {});
     }
   }, []);
+
+  // The theme on `<html>`, kept in step with the setting *and* with the system.
+  //
+  // The listener is the reason this is an effect rather than a one-off at load:
+  // `system` has to keep resolving, so a machine that switches to light at
+  // sunset takes the app with it without a restart. `matchMedia` is guarded
+  // because jsdom has it only in newer versions and a component test that never
+  // touches the theme should not need it.
+  useEffect(() => {
+    const mq =
+      typeof window.matchMedia === "function"
+        ? window.matchMedia(SYSTEM_LIGHT_QUERY)
+        : null;
+    const paint = () => applyTheme(resolveTheme(settings.theme, mq?.matches ?? false));
+    paint();
+    if (!mq || settings.theme !== "system") return;
+    mq.addEventListener("change", paint);
+    return () => mq.removeEventListener("change", paint);
+  }, [settings.theme]);
 
   // Re-runs tempo detection over the whole library, overwriting existing values.
   // Needed when the detector improves: tracks that already carry a BPM are
@@ -349,7 +369,7 @@ export default function App() {
                 right={
                   <button
                     onClick={() => setSettingsOpen(false)}
-                    className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-border-strong text-fg-muted hover:border-accent-500 hover:text-accent-400"
+                    className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-border-strong text-fg-muted hover:border-accent-500 hover:text-fg-accent"
                     title="Close settings"
                     aria-label="Close settings"
                   >

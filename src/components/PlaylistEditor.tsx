@@ -139,7 +139,7 @@ export default function PlaylistEditor({
                     <button
                       onClick={() => onStep(row.path, -1)}
                       disabled={row.position === 1}
-                      className="flex h-9 w-9 items-center justify-center rounded-md text-fg-subtle enabled:hover:bg-surface enabled:hover:text-accent-400 disabled:text-fg-disabled"
+                      className="flex h-9 w-9 items-center justify-center rounded-md text-fg-subtle enabled:hover:bg-surface enabled:hover:text-fg-accent disabled:text-fg-disabled"
                       title="Move up in the playlist"
                       aria-label={`Move “${row.title}” up`}
                     >
@@ -148,7 +148,7 @@ export default function PlaylistEditor({
                     <button
                       onClick={() => onStep(row.path, 1)}
                       disabled={row.position === rows.length}
-                      className="flex h-9 w-9 items-center justify-center rounded-md text-fg-subtle enabled:hover:bg-surface enabled:hover:text-accent-400 disabled:text-fg-disabled"
+                      className="flex h-9 w-9 items-center justify-center rounded-md text-fg-subtle enabled:hover:bg-surface enabled:hover:text-fg-accent disabled:text-fg-disabled"
                       title="Move down in the playlist"
                       aria-label={`Move “${row.title}” down`}
                     >
@@ -156,7 +156,7 @@ export default function PlaylistEditor({
                     </button>
                     <button
                       onClick={() => onRemove(row.path)}
-                      className="flex h-9 w-9 items-center justify-center rounded-md text-fg-subtle hover:bg-surface hover:text-danger-500"
+                      className="flex h-9 w-9 items-center justify-center rounded-md text-fg-subtle hover:bg-surface hover:text-fg-danger"
                       title="Remove from this playlist (the file stays)"
                       aria-label={`Remove “${row.title}” from the playlist`}
                     >
@@ -179,14 +179,14 @@ export default function PlaylistEditor({
                 onDelete();
                 onClose();
               }}
-              className="h-9 inline-flex items-center justify-center rounded-md border border-danger-500 px-3 text-sm text-danger-500 hover:bg-danger-500/10"
+              className="h-9 inline-flex items-center justify-center rounded-md border border-danger-500 px-3 text-sm text-fg-danger hover:bg-danger-500/10"
             >
               Delete “{playlist.name}”? The files stay.
             </button>
           ) : (
             <button
               onClick={() => setConfirming(true)}
-              className="h-9 inline-flex items-center gap-1.5 justify-center rounded-md border border-border-strong px-3 text-sm hover:border-danger-500 hover:text-danger-500"
+              className="h-9 inline-flex items-center gap-1.5 justify-center rounded-md border border-border-strong px-3 text-sm hover:border-danger-500 hover:text-fg-danger"
             >
               <TrashIcon />
               Delete playlist

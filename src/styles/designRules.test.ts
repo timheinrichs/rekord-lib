@@ -66,6 +66,13 @@ const TOKENS = new Set([
   "fg-muted",
   "fg-subtle",
   "fg-disabled",
+  "focus",
+  // The status/accent *text* weights, theme-dependent because the fixed ramps
+  // cannot serve both themes as type. See tokens.css.
+  "fg-success",
+  "fg-warning",
+  "fg-danger",
+  "fg-accent",
 ]);
 
 /** Strips variants (`hover:`, `enabled:hover:`, `md:`) and an alpha suffix. */
@@ -94,8 +101,13 @@ describe("design system rules over the source", () => {
     expect(sources.length).toBeGreaterThan(10);
     expect(TOKENS.has("accent-600")).toBe(true);
     expect(TOKENS.has("fg-muted")).toBe(true);
-    // The defect this file was written for, as a positive control.
-    expect(TOKENS.has("fg-warning")).toBe(false);
+    // A positive control: a name that looks like a token and is not one, so the
+    // lookup below is known to be capable of saying no. It used to be
+    // `fg-warning` — the utility whose absence made an uncertain tempo render
+    // brighter than a sure one — but 0.9.2 made that a real token, for the
+    // theme reason in tokens.css. `bg-warning` is the half of the deleted pair
+    // that stayed deleted: the surfaces are built as a tint of the ramp.
+    expect(TOKENS.has("bg-warning")).toBe(false);
   });
 
   it("uses only the two weights", () => {

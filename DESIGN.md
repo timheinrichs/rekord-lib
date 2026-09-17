@@ -203,8 +203,10 @@ encouraging copy).
 
 **Key Characteristics:**
 
-- Dark by default (`data-theme="dark"` on `<html>`); light is a full, supported
-  theme, not an afterthought.
+- Dark by default (`data-theme="dark"` on `<html>`); light is a shipped theme
+  the user can pick in Settings, along with "System" to follow
+  `prefers-color-scheme`. It earned that sentence in 0.9.2 — before then it was
+  unreachable and, measured, unusable.
 - Monospace as the *default* voice of the UI — Inter is opted into for prose.
 - Exactly one accent (violet), and status color that only ever means
   compatibility.
@@ -256,6 +258,15 @@ straight from the logo, plus three status hues that are strictly semantic.
   reaches for `accent-300` for informational markers instead.
 
 ### Named Rules
+
+**The Two-Theme Rule.** Anything that carries *type* has a theme-dependent
+token; only what carries a fill, a ring or a border may take a fixed ramp step.
+This is not symmetry for its own sake — the ramps are fixed across themes, and
+measured against the light surfaces `warning-500` is 1.9:1 and `accent-200`
+1.8:1, which is why `--fg-success`, `--fg-warning`, `--fg-danger`, `--fg-accent`
+and `--focus` exist and why a bare `text-warning-500` is a defect.
+`src/styles/contrast.test.ts` does the arithmetic over both theme blocks, so the
+claim is checked rather than asserted.
 
 **The Semantic Colour Rule.** Green, amber and red only ever describe
 compatibility state. A status colour used because it looks good is a defect —

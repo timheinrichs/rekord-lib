@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { render, screen, waitFor } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { DEFAULT_SETTINGS } from "../lib/settings";
 import type { UpdateInfo } from "../lib/updater";
@@ -56,6 +56,56 @@ function renderSettings(pending: UpdateInfo | null) {
   );
 }
 
+describe("SettingsView · Appearance", () => {
+  function renderWith(theme: "dark" | "light" | "system", onChange = () => {}) {
+    return render(
+      <SettingsView
+        settings={{ ...DEFAULT_SETTINGS, theme }}
+        onSettingsChange={onChange}
+        account={null}
+        onAccountChange={() => {}}
+        update={null}
+        onUpdateChange={() => {}}
+      />,
+    );
+  }
+
+  it("offers exactly the three states", () => {
+    renderWith("dark");
+    const group = screen.getByRole("radiogroup", { name: "Theme" });
+    expect(
+      within(group)
+        .getAllByRole("radio")
+        .map((r) => r.textContent),
+    ).toEqual(["Dark", "Light", "System"]);
+  });
+
+  it("marks the stored choice, and only that one", () => {
+    // `aria-checked` rather than a colour class: the state has to be readable
+    // by something that cannot see the accent wash.
+    for (const theme of ["dark", "light", "system"] as const) {
+      const { unmount } = renderWith(theme);
+      const checked = screen
+        .getAllByRole("radio")
+        .filter((r) => r.getAttribute("aria-checked") === "true");
+      expect(checked).toHaveLength(1);
+      expect(checked[0].textContent?.toLowerCase()).toBe(theme);
+      unmount();
+    }
+  });
+
+  it("stores the choice instead of applying it locally", async () => {
+    // The section is not allowed to touch `<html>` itself — App.tsx owns that,
+    // because `system` has to keep resolving after the click.
+    const onChange = vi.fn();
+    const before = document.documentElement.dataset.theme;
+    renderWith("dark", onChange);
+    await userEvent.click(screen.getByRole("radio", { name: "Light" }));
+    expect(onChange).toHaveBeenCalledWith({ theme: "light" });
+    expect(document.documentElement.dataset.theme).toBe(before);
+  });
+});
+
 describe("SettingsView · About", () => {
   it("offers a check when nothing is waiting", () => {
     renderSettings(null);
@@ -79,7 +129,7 @@ describe("SettingsView · About", () => {
       screen.getByText(/Important update available/),
     ).toBeInTheDocument();
     expect(container.querySelector(".border-danger-500\\/40")).toBeNull();
-    expect(container.querySelector(".text-warning-500")).not.toBeNull();
+    expect(container.querySelector(".text-fg-warning")).not.toBeNull();
   });
 
   it("states a critical update as a banner, in danger", () => {

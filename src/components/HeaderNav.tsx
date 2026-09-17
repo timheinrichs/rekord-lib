@@ -75,7 +75,7 @@ export default function HeaderNav({
           attention. */}
       <button
         onClick={onOpenEventLog}
-        className="relative flex h-9 w-9 shrink-0 items-center justify-center rounded-md border border-border-strong text-fg-muted hover:border-accent-500 hover:text-accent-400"
+        className="relative flex h-9 w-9 shrink-0 items-center justify-center rounded-md border border-border-strong text-fg-muted hover:border-accent-500 hover:text-fg-accent"
         title="Event log"
         aria-label="Event log"
       >
@@ -97,7 +97,7 @@ export default function HeaderNav({
         <div ref={downloadsRef} className="relative shrink-0">
           <button
             onClick={() => setDownloadsOpen((o) => !o)}
-            className="relative flex h-9 w-9 items-center justify-center rounded-md border border-border-strong text-fg-muted hover:border-accent-500 hover:text-accent-400"
+            className="relative flex h-9 w-9 items-center justify-center rounded-md border border-border-strong text-fg-muted hover:border-accent-500 hover:text-fg-accent"
             title="Downloads"
             aria-label="Downloads"
           >
@@ -152,7 +152,7 @@ export default function HeaderNav({
                           {d.state === "loading" && (
                             <button
                               onClick={() => onCancelDownload(d.key)}
-                              className="flex h-9 w-9 items-center justify-center rounded-md text-fg-subtle hover:text-danger-500"
+                              className="flex h-9 w-9 items-center justify-center rounded-md text-fg-subtle hover:text-fg-danger"
                               title="Cancel download"
                               aria-label="Cancel download"
                             >
@@ -178,7 +178,7 @@ export default function HeaderNav({
                         </p>
                       )}
                       {d.state === "error" && d.error && (
-                        <p className="mt-1 truncate text-[11px] text-danger-500" title={d.error}>
+                        <p className="mt-1 truncate text-[11px] text-fg-danger" title={d.error}>
                           {d.error}
                         </p>
                       )}
@@ -193,7 +193,7 @@ export default function HeaderNav({
 
       <button
         onClick={onOpenSettings}
-        className="relative flex h-9 w-9 shrink-0 items-center justify-center rounded-md border border-border-strong text-fg-muted hover:border-accent-500 hover:text-accent-400"
+        className="relative flex h-9 w-9 shrink-0 items-center justify-center rounded-md border border-border-strong text-fg-muted hover:border-accent-500 hover:text-fg-accent"
         title={updateAvailable ? settingsHint(updateSeverity, " · ") : "Settings"}
         aria-label={
           updateAvailable ? settingsHint(updateSeverity, ", ") : "Settings"
@@ -243,7 +243,7 @@ function TabButton({
       onClick={onClick}
       className={`h-9 inline-flex items-center justify-center rounded-md px-3 text-sm transition-colors ${
  active
- ? "bg-accent-600/20 text-accent-200"
+ ? "bg-accent-600/20 text-fg-accent"
  : "text-fg-muted hover:text-fg"
  }`}
     >

@@ -1,5 +1,6 @@
 import { Store } from "@tauri-apps/plugin-store";
 import type { TargetFormat } from "../types";
+import type { ThemePreference } from "./theme";
 
 /** Format to request from Bandcamp when downloading. */
 export type DownloadFormat =
@@ -93,6 +94,13 @@ export interface Settings {
    * the default is everything visible, and a column is hidden only on request.
    */
   hidden_columns: string[];
+  /**
+   * Which palette to show: `dark`, `light`, or `system` to follow
+   * `prefers-color-scheme`. `system` is not a third palette — it resolves to one
+   * of the other two, and keeps resolving, so a machine that switches at sunset
+   * takes the app with it. See `theme.ts`.
+   */
+  theme: ThemePreference;
 }
 
 export const DEFAULT_SETTINGS: Settings = {
@@ -107,6 +115,12 @@ export const DEFAULT_SETTINGS: Settings = {
   bpm_min: 60,
   bpm_max: 200,
   hidden_columns: [],
+  // Dark, not `system`, for the same reason the tempo range above is the wide
+  // one: a default that silently moves an existing user's experience on update
+  // is worse than a suboptimal default. Everyone on 0.9.1 is on dark, and a
+  // light-mode Mac would otherwise come back from an update looking like a
+  // different application. `system` is one click away.
+  theme: "dark",
 };
 
 // Same store file as the Rust backend (separate keys).

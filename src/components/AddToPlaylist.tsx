@@ -69,7 +69,7 @@ export default function AddToPlaylist({
                   onAdd(p.id);
                 }}
                 disabled={gain === 0}
-                className="h-9 items-center flex w-full items-baseline justify-between gap-2 px-3 text-left text-sm enabled:hover:bg-surface enabled:hover:text-accent-400 disabled:text-fg-disabled"
+                className="h-9 items-center flex w-full items-baseline justify-between gap-2 px-3 text-left text-sm enabled:hover:bg-surface enabled:hover:text-fg-accent disabled:text-fg-disabled"
               >
                 <span className="min-w-0 truncate">{p.name}</span>
                 <span className="shrink-0 text-xs text-fg-subtle">
@@ -103,7 +103,7 @@ export default function AddToPlaylist({
           ) : (
             <button
               onClick={() => setCreating(true)}
-              className="h-9 inline-flex items-center justify-center block w-full px-3 text-left text-sm text-accent-400 hover:bg-surface"
+              className="h-9 inline-flex items-center justify-center block w-full px-3 text-left text-sm text-fg-accent hover:bg-surface"
             >
               New playlist…
             </button>

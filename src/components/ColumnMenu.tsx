@@ -35,8 +35,8 @@ export default function ColumnMenu({ hidden, onChange }: Props) {
         onClick={() => setOpen((o) => !o)}
         className={`relative flex h-9 w-9 items-center justify-center rounded-md border transition-colors ${
           open || someHidden
-            ? "border-accent-500 text-accent-400"
-            : "border-border-strong text-fg-muted hover:border-accent-500 hover:text-accent-400"
+            ? "border-accent-500 text-fg-accent"
+            : "border-border-strong text-fg-muted hover:border-accent-500 hover:text-fg-accent"
         }`}
         title="Choose columns"
         aria-label="Choose columns"

@@ -70,7 +70,7 @@ export default function SkippedModal({ files, onClose }: Props) {
                 <p className="mt-0.5 truncate text-xs text-fg-subtle" title={f.path}>
                   {f.path}
                 </p>
-                <p className="mt-1 text-xs text-warning-500">{f.reason}</p>
+                <p className="mt-1 text-xs text-fg-warning">{f.reason}</p>
               </li>
             ))}
           </ul>

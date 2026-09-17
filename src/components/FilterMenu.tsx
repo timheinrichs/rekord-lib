@@ -65,8 +65,8 @@ export default function FilterMenu({
         onClick={() => setOpen((o) => !o)}
         className={`relative flex h-9 w-9 items-center justify-center rounded-md border transition-colors ${
           open || active
-            ? "border-accent-500 text-accent-400"
-            : "border-border-strong text-fg-muted hover:border-accent-500 hover:text-accent-400"
+            ? "border-accent-500 text-fg-accent"
+            : "border-border-strong text-fg-muted hover:border-accent-500 hover:text-fg-accent"
         }`}
         title="Filter tracks"
         aria-label="Filter tracks"

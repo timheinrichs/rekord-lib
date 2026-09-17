@@ -84,11 +84,18 @@ no more — see the two-weights rule in `DESIGN.md`.
 
 ### Theme
 
-Dark is the default. Toggle via the attribute on `<html>`:
+Dark is the default, and the user picks from three states in
+**Settings → Appearance**: dark, light, or *System* to follow
+`prefers-color-scheme` and keep following it. The preference is stored;
+what reaches the DOM is the resolved palette, one of two:
 
 ```html
 <html data-theme="dark">   <!-- or "light" -->
 ```
+
+`index.html` ships the attribute already set to `dark` so the first paint is
+styled; `src/lib/theme.ts` resolves the preference and `App.tsx` writes it.
+There is no third palette — *System* is a question, not a colour set.
 
 All semantic tokens (`bg`, `surface`, `fg`, …) and status surfaces switch
 automatically. The ramps (`accent-*`, `graphite-*`) are fixed across themes —

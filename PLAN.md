@@ -73,9 +73,26 @@ fixed across themes"*, which cannot hold for text colour.
   white is a pale wash and works in both themes; only the text needed to move.
 - Switch every unconditional status/accent **text** colour over. The surfaces,
   rings, fills and the waveform keep the ramps.
-- A switch in Settings plus persistence in the JSON store (`settings`, which is
-  where config-shaped state belongs), and `index.html` stops hardcoding the
-  attribute.
+- **A theme setting in Settings, with three states: dark, light, and follow the
+  system.** Persisted in the JSON store under `settings`, which is where
+  config-shaped state belongs. "Follow the system" is not a third palette — it
+  resolves to one of the two at runtime via `prefers-color-scheme` and keeps
+  resolving, so a Mac switching to light at sunset takes the app with it without
+  a restart.
+  - The **default stays `dark`**, not `system`. The same reasoning the tempo
+    range already carries in `settings.ts`: a default that silently moves an
+    existing user's experience on update is worse than a suboptimal default, and
+    everyone on 0.9.1 is on dark today. A light-mode Mac would otherwise come
+    back from an update looking like a different application.
+  - `index.html` keeps `data-theme="dark"` as the pre-paint value so there is no
+    flash before the setting is read; the app overrides it once settings load.
+    Dropping the attribute entirely would mean an unstyled first frame.
+  - The resolver is pure and lives in `src/lib/theme.ts` — setting plus system
+    preference in, applied theme out — so the three-way logic is testable
+    without a DOM, and only the applying touches `documentElement`.
+  - The control is the segmented pattern the Library/Bandcamp switch already
+    uses, not a fourth kind of picker: `DESIGN.md` documents it for exactly this
+    shape of choice, mutually exclusive with one active.
 - Extend the contrast measurement to a **test**, not a one-off script: every
   token pair the app actually renders, both themes, asserted against 4.5:1 for
   text and 3:1 for non-text. This is the finding that a document cannot hold —

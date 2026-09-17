@@ -58,8 +58,8 @@ export function BuildChip() {
     <span
       className={`shrink-0 rounded-full px-2 py-0.5 text-xs ring-1 ${
         dev
-          ? "bg-warning-500/15 text-warning-500 ring-warning-500/30"
-          : "bg-accent-500/15 text-accent-300 ring-accent-500/30"
+          ? "bg-warning-500/15 text-fg-warning ring-warning-500/30"
+          : "bg-accent-500/15 text-fg-accent ring-accent-500/30"
       }`}
       title={dev ? "Development build" : "Beta build – expect rough edges"}
     >

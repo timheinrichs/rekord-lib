@@ -13,8 +13,8 @@ interface Props {
 /** Status colour per level — the same three the rest of the app uses. */
 const LEVEL_CLASS: Record<EventLevel, string> = {
   info: "text-fg-subtle",
-  warn: "text-warning-500",
-  error: "text-danger-500",
+  warn: "text-fg-warning",
+  error: "text-fg-danger",
 };
 
 function time(ms: number): string {
@@ -77,7 +77,7 @@ export default function EventLogModal({ events, onClose, onCleared }: Props) {
                 <button
                   onClick={() => void clear()}
                   disabled={busy}
-                  className="h-9 inline-flex items-center justify-center rounded-md border border-border-strong px-3 text-sm text-fg-muted enabled:hover:border-danger-500 enabled:hover:text-danger-500 disabled:text-fg-disabled"
+                  className="h-9 inline-flex items-center justify-center rounded-md border border-border-strong px-3 text-sm text-fg-muted enabled:hover:border-danger-500 enabled:hover:text-fg-danger disabled:text-fg-disabled"
                   title="Empty the log"
                 >
                   Clear

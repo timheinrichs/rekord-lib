@@ -136,7 +136,7 @@ export default function DuplicatesModal({
                           <button
                             onClick={() => a.tracks.forEach((g) => onDismissGroup(g.id))}
                             title="These albums are not duplicates – remove them from the list"
-                            className="h-9 inline-flex items-center justify-center ml-auto shrink-0 rounded-md border border-border-strong px-2 text-xs text-fg-muted hover:border-warning-500 hover:text-warning-500"
+                            className="h-9 inline-flex items-center justify-center ml-auto shrink-0 rounded-md border border-border-strong px-2 text-xs text-fg-muted hover:border-warning-500 hover:text-fg-warning"
                           >
                             Not a duplicate
                           </button>
@@ -170,7 +170,7 @@ export default function DuplicatesModal({
                                       {folderName(v.key)}
                                     </span>
                                     {v.lossless ? (
-                                      <span className="shrink-0 rounded-full bg-accent-500/15 px-2 py-0.5 text-[11px] text-accent-300 ring-1 ring-accent-500/30">
+                                      <span className="shrink-0 rounded-full bg-accent-500/15 px-2 py-0.5 text-[11px] text-fg-accent ring-1 ring-accent-500/30">
                                         Lossless
                                       </span>
                                     ) : (
@@ -184,7 +184,7 @@ export default function DuplicatesModal({
                                     {formatBytes(v.sizeBytes)}
                                   </p>
                                   {isKeep && (
-                                    <span className="mt-1 inline-block text-[11px] text-success-500">
+                                    <span className="mt-1 inline-block text-[11px] text-fg-success">
                                       Keep this version
                                     </span>
                                   )}
@@ -207,7 +207,7 @@ export default function DuplicatesModal({
                           <div className="ml-auto flex items-center gap-3">
                             <span className="text-xs text-fg-subtle">
                               {del.length} file{del.length === 1 ? "" : "s"} ·{" "}
-                              <span className="text-success-500">
+                              <span className="text-fg-success">
                                 {formatBytes(delBytes)} free
                               </span>
                             </span>
@@ -268,7 +268,7 @@ export default function DuplicatesModal({
                           <button
                             onClick={() => onDismissGroup(g.id)}
                             title="This group is not a duplicate – remove it from the list"
-                            className="h-9 inline-flex items-center justify-center rounded-md border border-border-strong px-2 text-xs text-fg-muted hover:border-warning-500 hover:text-warning-500"
+                            className="h-9 inline-flex items-center justify-center rounded-md border border-border-strong px-2 text-xs text-fg-muted hover:border-warning-500 hover:text-fg-warning"
                           >
                             Not a duplicate
                           </button>
@@ -307,7 +307,7 @@ export default function DuplicatesModal({
                               </div>
                               <QualityBadge f={f} />
                               {isKeep ? (
-                                <span className="rounded-full bg-success-500/15 px-2 py-0.5 text-xs text-success-500 ring-1 ring-success-500/30">
+                                <span className="rounded-full bg-success-500/15 px-2 py-0.5 text-xs text-fg-success ring-1 ring-success-500/30">
                                   Keep
                                 </span>
                               ) : (
@@ -316,7 +316,7 @@ export default function DuplicatesModal({
                                   disabled={busy}
                                   title="Move this file to the trash"
                                   aria-label="Move to trash"
-                                  className="flex h-8 w-8 items-center justify-center rounded-md text-fg-subtle enabled:hover:bg-surface-2 enabled:hover:text-danger-500 disabled:text-fg-disabled"
+                                  className="flex h-8 w-8 items-center justify-center rounded-md text-fg-subtle enabled:hover:bg-surface-2 enabled:hover:text-fg-danger disabled:text-fg-disabled"
                                 >
                                   <TrashIcon />
                                 </button>
@@ -337,10 +337,10 @@ export default function DuplicatesModal({
           <footer className="flex items-center gap-3 border-t border-border px-5 py-3">
             <div className="mr-auto text-sm text-fg-muted">
               {toDelete.paths.length} track file(s) ·{" "}
-              <span className="text-success-500">{formatBytes(toDelete.bytes)} free</span>
+              <span className="text-fg-success">{formatBytes(toDelete.bytes)} free</span>
             </div>
             {error && (
-              <span className="max-w-sm truncate text-xs text-danger-500" title={error}>
+              <span className="max-w-sm truncate text-xs text-fg-danger" title={error}>
                 {error}
               </span>
             )}
@@ -362,7 +362,7 @@ export default function DuplicatesModal({
         {loneGroups.length === 0 && !empty && (
           <footer className="flex items-center justify-end gap-3 border-t border-border px-5 py-3">
             {error && (
-              <span className="mr-auto max-w-sm truncate text-xs text-danger-500" title={error}>
+              <span className="mr-auto max-w-sm truncate text-xs text-fg-danger" title={error}>
                 {error}
               </span>
             )}
@@ -386,7 +386,7 @@ function dirOf(path: string): string {
 
 function QualityBadge({ f }: { f: DuplicateFile }) {
   return f.lossless ? (
-    <span className="rounded-full bg-accent-500/15 px-2 py-0.5 text-xs text-accent-300 ring-1 ring-accent-500/30">
+    <span className="rounded-full bg-accent-500/15 px-2 py-0.5 text-xs text-fg-accent ring-1 ring-accent-500/30">
       Lossless
     </span>
   ) : (

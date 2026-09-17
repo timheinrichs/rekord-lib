@@ -7,11 +7,11 @@ import { ConvertIcon, DownloadIcon, InfoIcon, TagIcon } from "./icons";
  * still needs doing, success = done, accent = informational.
  */
 const LOOK: Record<StatusKind, { Icon: ComponentType; tone: string }> = {
-  convert: { Icon: ConvertIcon, tone: "text-warning-500" },
-  incomplete: { Icon: TagIcon, tone: "text-warning-500" },
-  complete: { Icon: TagIcon, tone: "text-success-500" },
-  note: { Icon: InfoIcon, tone: "text-accent-300" },
-  bandcamp: { Icon: DownloadIcon, tone: "text-accent-300" },
+  convert: { Icon: ConvertIcon, tone: "text-fg-warning" },
+  incomplete: { Icon: TagIcon, tone: "text-fg-warning" },
+  complete: { Icon: TagIcon, tone: "text-fg-success" },
+  note: { Icon: InfoIcon, tone: "text-fg-accent" },
+  bandcamp: { Icon: DownloadIcon, tone: "text-fg-accent" },
 };
 
 interface Props {

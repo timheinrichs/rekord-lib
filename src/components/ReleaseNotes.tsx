@@ -54,7 +54,7 @@ function InlineRun({ run }: { run: Inline }) {
           // say one thing and point at another, so the target stays reachable
           // rather than being hidden behind the words.
           title={run.href}
-          className="text-accent-400 underline decoration-dotted underline-offset-2 hover:text-accent-300"
+          className="text-fg-accent underline decoration-dotted underline-offset-2 hover:text-fg-accent"
         >
           {run.text}
         </button>
