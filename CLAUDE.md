@@ -302,8 +302,13 @@ deliberate step that only happens when the maintainer says so.
     comparison at all.
   - **`TODO.md`** — an entry that is done leaves the file; a feature that
     shipped without part of itself creates one, with an id and a condition.
-  - **`docs/FUTURE_CONSIDERATIONS.md`** — the item that just shipped gets its
-    **done** marker and a *What shipped* paragraph.
+  - **`docs/FUTURE_CONSIDERATIONS.md`** — every entry that has shipped is
+    **deleted**, not marked done. The file is what is still open; what an entry
+    became is its `CHANGELOG.md` section, and the part that shipped without the
+    rest of itself moves to `TODO.md` with its condition. Only the id stays
+    behind, in the *Shipped* table at the end, so an older commit or document
+    still resolves it and no id is ever reused — and a tier left with no open
+    entry goes with its entries, together with its row in the tier table.
   - **`docs/README.md`** — a new document gets its row; **`README.md`** and
     **`docs/CDJ_TEST_MATRIX.md`** if the feature set or a hardware claim moved.
   - **`THIRD_PARTY_LICENSES.md`** — a dependency added or a bundled binary

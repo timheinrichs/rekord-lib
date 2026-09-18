@@ -39,7 +39,7 @@ document, and a claim with no test named next to it has nowhere to hide.
 
 | Document | Covers |
 | --- | --- |
-| [FUTURE_CONSIDERATIONS.md](FUTURE_CONSIDERATIONS.md) | The roadmap: tiers A–H with stable ids, sizes, and what is already done |
+| [FUTURE_CONSIDERATIONS.md](FUTURE_CONSIDERATIONS.md) | The roadmap: what is still open, in tiers with stable ids and sizes. A shipped entry is deleted and leaves only its id |
 | [../TODO.md](../TODO.md) | The other half — what was consciously not done, why, and what would change that |
 
 ## Design
