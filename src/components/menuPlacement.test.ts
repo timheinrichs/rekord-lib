@@ -8,6 +8,10 @@
  * top of the window and could not be clicked at all; it also carried `z-30`,
  * which is the header's own layer rather than a layer over it.
  *
+ * That menu is gone — in 0.10.0 the picker became a dialog, partly because it
+ * had been wrong twice here. The rule stands for the four menus that remain,
+ * and the history stays because it is the reason the rule exists.
+ *
  * Both are invisible in a unit test and in every flow test: the panel is in the
  * DOM, its buttons are found by role, and `userEvent` clicks them happily. Only
  * a person looking at the window can see it, which is exactly the kind of rule
@@ -65,7 +69,10 @@ describe("every menu opens the same way", () => {
 
   it("finds the panels at all", () => {
     // Guards the scan: a silent zero here would make every test below pass.
-    expect(all.length).toBeGreaterThan(3);
+    // The floor is not a census — it dropped from four when the playlist
+    // picker stopped being a menu, and a deliberate removal should not read as
+    // a broken glob.
+    expect(all.length).toBeGreaterThan(2);
   });
 
   it("opens downward, because the actions live in the header", () => {

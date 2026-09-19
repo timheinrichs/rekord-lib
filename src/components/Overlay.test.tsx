@@ -1,5 +1,6 @@
 import { render, screen } from "@testing-library/react";
-import { describe, expect, it } from "vitest";
+import userEvent from "@testing-library/user-event";
+import { describe, expect, it, vi } from "vitest";
 import Overlay from "./Overlay";
 
 describe("Overlay", () => {
@@ -36,5 +37,78 @@ describe("Overlay", () => {
     );
     unmount();
     expect(screen.queryByText("Panel")).not.toBeInTheDocument();
+  });
+
+  it("closes on Escape, but only when asked to", async () => {
+    // Opt-in, because the two metadata editors hold unsaved typing and a
+    // keystroke aimed at a field must not take the form with it.
+    const user = userEvent.setup();
+    const onClose = vi.fn();
+    render(
+      <Overlay onClose={onClose}>
+        <p>Panel</p>
+      </Overlay>,
+    );
+    await user.keyboard("{Escape}");
+    expect(onClose).toHaveBeenCalledTimes(1);
+  });
+
+  it("is harmless with no onClose", async () => {
+    const user = userEvent.setup();
+    render(
+      <Overlay>
+        <p>Panel</p>
+      </Overlay>,
+    );
+    await user.keyboard("{Escape}");
+    expect(screen.getByText("Panel")).toBeInTheDocument();
+  });
+
+  it("gives Escape to the topmost overlay only", async () => {
+    // The case this is built for: the duplicates list opens over the metadata
+    // editor. Without a stack both listeners fire and one keystroke collapses
+    // two dialogs — which is the bug you would only find by stacking them.
+    const user = userEvent.setup();
+    const outer = vi.fn();
+    const inner = vi.fn();
+    const { rerender } = render(
+      <>
+        <Overlay onClose={outer}>
+          <p>Outer</p>
+        </Overlay>
+        <Overlay onClose={inner}>
+          <p>Inner</p>
+        </Overlay>
+      </>,
+    );
+
+    await user.keyboard("{Escape}");
+    expect(inner).toHaveBeenCalledTimes(1);
+    expect(outer).not.toHaveBeenCalled();
+
+    // The inner one is gone; the next Escape reaches the one below it.
+    rerender(
+      <>
+        <Overlay onClose={outer}>
+          <p>Outer</p>
+        </Overlay>
+      </>,
+    );
+    await user.keyboard("{Escape}");
+    expect(outer).toHaveBeenCalledTimes(1);
+    expect(inner).toHaveBeenCalledTimes(1);
+  });
+
+  it("stops listening once it is gone", async () => {
+    const user = userEvent.setup();
+    const onClose = vi.fn();
+    const { unmount } = render(
+      <Overlay onClose={onClose}>
+        <p>Panel</p>
+      </Overlay>,
+    );
+    unmount();
+    await user.keyboard("{Escape}");
+    expect(onClose).not.toHaveBeenCalled();
   });
 });

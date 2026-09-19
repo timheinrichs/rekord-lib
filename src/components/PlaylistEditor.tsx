@@ -66,7 +66,7 @@ export default function PlaylistEditor({
   };
 
   return (
-    <Overlay>
+    <Overlay onClose={onClose}>
       <div className="flex max-h-[90vh] w-full max-w-2xl flex-col overflow-hidden rounded-2xl border border-border bg-surface shadow-2xl">
         <header className="flex items-center justify-between gap-3 border-b border-border px-5 py-3">
           {/* The name is edited where it is shown, as it is on the group head:
@@ -81,6 +81,10 @@ export default function PlaylistEditor({
               // left to commit — the same "an empty field is a cancelled edit"
               // rule the rest of the app follows.
               if (e.key === "Escape") {
+                // Cancels the rename, not the dialog. `Overlay` listens for
+                // Escape on `document` now, so without this the whole editor
+                // would close on the keystroke that was meant to undo a typo.
+                e.stopPropagation();
                 cancelled.current = true;
                 setName(playlist.name);
                 e.currentTarget.blur();

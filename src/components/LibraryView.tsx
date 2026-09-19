@@ -82,7 +82,7 @@ import BulkMetadataEditor, { type BulkPatch } from "./BulkMetadataEditor";
 import CoverThumb, { forgetCoverThumbs } from "./CoverThumb";
 import PlaylistMenu from "./PlaylistMenu";
 import PlaylistEditor from "./PlaylistEditor";
-import AddToPlaylist from "./AddToPlaylist";
+import AddToPlaylistDialog from "./AddToPlaylistDialog";
 import { usePlayer, type PlayerTrack } from "../lib/player";
 import { usePlaylists } from "../lib/usePlaylists";
 import { buildPlaylistGroups, playlistRows, wouldAdd } from "../lib/playlists";
@@ -720,6 +720,9 @@ export default function LibraryView({
   // The playlist open in the editor, by id — the playlist itself is looked up
   // rather than copied, so a rename inside the dialog shows in its own header.
   const [editingPlaylist, setEditingPlaylist] = useState<number | null>(null);
+  // The picker, beside it: two overlays over the same table, one open at a
+  // time, both writing through the same `usePlaylists`.
+  const [pickingPlaylist, setPickingPlaylist] = useState(false);
   const editedPlaylist =
     playlists.all.find((p) => p.id === editingPlaylist) ?? null;
   // Every stored entry, in order, whether or not the table can draw it — with
@@ -1882,20 +1885,14 @@ export default function LibraryView({
           >
             {converting ? "Converting…" : `Convert selection (${selected.size})`}
           </button>
-          <AddToPlaylist
-            playlists={playlists.all}
-            gains={playlistGains}
-            count={selected.size}
+          <button
+            onClick={() => setPickingPlaylist(true)}
             disabled={converting || writing}
-            onAdd={(id) => void playlists.add(id, selectedPaths())}
-            onCreate={(name) => {
-              void (async () => {
-                const id = await playlists.create(name);
-                if (id != null) await playlists.add(id, selectedPaths());
-              })();
-            }}
-            suggestName={playlists.suggestName}
-          />
+            aria-haspopup="dialog"
+            className="h-9 inline-flex items-center justify-center rounded-md border border-border-strong px-3 text-sm enabled:hover:border-accent-500 disabled:border-border disabled:text-fg-disabled"
+          >
+            Add to playlist ({selected.size})
+          </button>
           <button
             onClick={() =>
               void confirmAndDelete(
@@ -3064,6 +3061,23 @@ export default function LibraryView({
             setBulkFolderIds(null);
           }}
           onApply={applyBulk}
+        />
+      )}
+
+      {pickingPlaylist && selected.size > 0 && (
+        <AddToPlaylistDialog
+          playlists={playlists.all}
+          gains={playlistGains}
+          count={selected.size}
+          onAdd={(id) => void playlists.add(id, selectedPaths())}
+          onCreate={(name) => {
+            void (async () => {
+              const id = await playlists.create(name);
+              if (id != null) await playlists.add(id, selectedPaths());
+            })();
+          }}
+          suggestName={playlists.suggestName}
+          onClose={() => setPickingPlaylist(false)}
         />
       )}
 

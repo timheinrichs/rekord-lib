@@ -12,7 +12,7 @@ import { cleanup, render, screen, waitFor, within } from "@testing-library/react
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import App from "../App";
-import { libraryView } from "../test/appDom";
+import { libraryView, overlay } from "../test/appDom";
 import { makeMetadata, makeTrack } from "../test/factories";
 import { installFakeBackend, type FakeBackend } from "../test/fakeBackend";
 
@@ -74,8 +74,10 @@ describe("playlists", () => {
     await selectAll(user, container);
 
     await user.click(screen.getByRole("button", { name: /Add to playlist/ }));
-    await user.click(screen.getByRole("button", { name: "New playlist…" }));
-    const field = screen.getByLabelText("New playlist name");
+
+    // With no playlists yet the dialog opens on its only action, so there is
+    // no "New playlist…" to press first — the picker has nothing to pick from.
+    const field = overlay().getByLabelText("New playlist name");
     await user.clear(field);
     await user.type(field, "Warmup{Enter}");
 
@@ -86,11 +88,17 @@ describe("playlists", () => {
     await waitFor(() => expect(fake.called("playlist_set")).toBe(true));
     const [set] = fake.argsFor("playlist_set");
     expect(set.paths).toEqual([A, B]);
+
+    // A dialog that committed has to leave; the menu closed itself by losing
+    // focus, and this one has to be told to.
+    await waitFor(() =>
+      expect(screen.queryByRole("dialog")).not.toBeInTheDocument(),
+    );
   });
 
   it("will not offer a playlist the selection is already in", async () => {
     // Adding tracks to the playlist they are already in is a click that does
-    // nothing, and the menu should say so rather than let it happen.
+    // nothing, and the dialog should say so rather than let it happen.
     const user = userEvent.setup();
     fake.state.playlists = [
       { id: 1, name: "Has both", created_ms: 1, updated_ms: 1 },
@@ -102,9 +110,9 @@ describe("playlists", () => {
     await selectAll(user, container);
     await user.click(screen.getByRole("button", { name: /Add to playlist/ }));
 
-    expect(screen.getByRole("button", { name: /Has both/ })).toBeDisabled();
+    expect(overlay().getByRole("button", { name: /Has both/ })).toBeDisabled();
     // The other one says what it would actually take.
-    const partial = screen.getByRole("button", { name: /Has one/ });
+    const partial = overlay().getByRole("button", { name: /Has one/ });
     expect(partial).toBeEnabled();
     expect(partial.textContent).toContain("+1 of 2");
   });
@@ -161,7 +169,7 @@ describe("playlists", () => {
 
     // Both entries, not just the ones a filter would have left: the dialog
     // shows the playlist, not the table.
-    expect(screen.getByLabelText("Playlist name")).toHaveValue("Warmup");
+    expect(overlay().getByLabelText("Playlist name")).toHaveValue("Warmup");
     expect(screen.getAllByRole("listitem")).toHaveLength(2);
 
     await user.click(screen.getByLabelText("Move “Beta” up"));
