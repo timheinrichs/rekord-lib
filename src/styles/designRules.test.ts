@@ -4,6 +4,7 @@ import {
   classes,
   classNameExpressions,
   componentSources as sources,
+  split,
 } from "../test/classNames";
 import { accent, graphite, status } from "./theme";
 // Readable only because `vite.config.ts` sets `test.css` — Vitest stubs CSS
@@ -299,6 +300,31 @@ describe("design system rules over the source", () => {
           const name = colorName(cls);
           if (name && !TOKENS.has(name)) offenders.push(`${path}: ${cls}`);
         }
+      }
+    }
+    expect(offenders).toEqual([]);
+  });
+
+  it("never writes a resting state in the hover tone", () => {
+    // The Well Rule's guard, and the general form of the defect it was written
+    // for. `surface-2` means *the pointer is here*; an element that also rests
+    // on it has two states that look the same, and the one you lose is the one
+    // you were trying to show. The fix is always the other direction — down to
+    // `bg`, the well — never a lighter shade, because there is nothing above
+    // `surface-2` to move to.
+    //
+    // A tint (`bg-surface-2/40`, the closed group head) is a different tone and
+    // is deliberately allowed; only the full value collides.
+    const offenders: string[] = [];
+    for (const [path, src] of sources) {
+      for (const expr of classNameExpressions(src)) {
+        if (!expr.includes("hover:bg-surface-2")) continue;
+        const { always, branches } = split(expr);
+        const bare = [always, branches, expr.includes("`") ? "" : expr]
+          .join(" ")
+          .split(/[\s`"'{}()?]+/)
+          .filter((t) => t === "bg-surface-2");
+        if (bare.length) offenders.push(`${path}: ${expr.trim()}`);
       }
     }
     expect(offenders).toEqual([]);

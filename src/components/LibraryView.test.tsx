@@ -481,3 +481,88 @@ describe("the selection target", () => {
     await waitFor(() => expect(box).toBeChecked());
   });
 });
+
+describe("an expanded group looks expanded", () => {
+  /**
+   * I1: the open/closed state used to be a 14 px chevron and nothing else, and
+   * it read as closed in a screenshot. The fix is The Well Rule — the head and
+   * the rows it contains drop to `bg` together — so what is worth pinning is
+   * not a colour but the three claims the rule makes: the two states differ,
+   * the open one is not the hover tone (which is the mistake the rule exists
+   * to prevent), and hover still works in both.
+   */
+  const album = (name: string, file: string) =>
+    makeTrack({
+      id: `/lib/${file}`,
+      path: `/lib/${file}`,
+      metadata: makeMetadata({ album: name, album_artist: "V/A", bpm: 128 }),
+    });
+
+  async function openedAlbum() {
+    mocks.loadLibraryTracks.mockResolvedValue([
+      album("Deep Cuts", "a.aiff"),
+      album("Deep Cuts", "b.aiff"),
+    ]);
+    mocks.listAudioFiles.mockResolvedValue(["/lib/a.aiff", "/lib/b.aiff"]);
+    const user = userEvent.setup();
+    renderLibrary();
+    await screen.findByRole("button", { name: "Album" });
+    await user.click(screen.getByRole("button", { name: "Album" }));
+    const head = await screen.findByRole("row", { expanded: false });
+    return { user, head };
+  }
+
+  it("says so in the accessibility tree, not only in the tone", async () => {
+    const { user, head } = await openedAlbum();
+    // `aria-expanded` is the half of this a screen reader gets. Before I1 a
+    // group head had no expanded state at all.
+    await user.click(head);
+    expect(screen.getAllByRole("row", { expanded: true })).toHaveLength(1);
+  });
+
+  it("puts the head and its rows in the well together", async () => {
+    const { user, head } = await openedAlbum();
+    expect(head.className).toContain("bg-surface-2/40");
+    expect(head.className).not.toContain("bg-bg");
+
+    await user.click(head);
+    const open = screen.getByRole("row", { expanded: true });
+    expect(open.className).toContain("bg-bg");
+    expect(open.className).not.toContain("bg-surface-2/40");
+
+    // The rows that appeared are in the same well — the head alone cannot
+    // carry the signal, which is the whole finding behind the rule.
+    const tracks = screen
+      .getAllByRole("row")
+      .filter((r) => r !== open && !r.querySelector("th"));
+    expect(tracks).toHaveLength(2);
+    for (const row of tracks) expect(row.className).toContain("bg-bg");
+  });
+
+  it("never rests in the hover tone, and still hovers", async () => {
+    // A bare `bg-surface-2` would make an open head and a hovered closed one
+    // the same row; `src/styles/designRules.test.ts` guards the general form,
+    // this checks the two states the rule was written about.
+    const bareHoverTone = /(^|\s)bg-surface-2(?![/\w-])/;
+    const { user, head } = await openedAlbum();
+
+    expect(head.className).not.toMatch(bareHoverTone);
+    expect(head.className).toContain("hover:bg-surface-2");
+
+    await user.click(head);
+    expect(head.className).not.toMatch(bareHoverTone);
+    expect(head.className).toContain("hover:bg-surface-2");
+  });
+
+  it("leaves a track that is in no group on the panel", async () => {
+    // The well means *contained*. A loose row is not, and would read as inside
+    // something if the tone were applied to the grouping rather than to the
+    // group.
+    mocks.loadLibraryTracks.mockResolvedValue([album("Deep Cuts", "a.aiff")]);
+    mocks.listAudioFiles.mockResolvedValue(["/lib/a.aiff"]);
+    renderLibrary();
+    const row = await screen.findByRole("row", { name: /a\.aiff/ });
+    expect(row.className).not.toContain("bg-bg");
+    expect(row.className).not.toContain("bg-surface-2/40");
+  });
+});

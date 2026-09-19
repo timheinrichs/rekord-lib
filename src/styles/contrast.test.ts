@@ -199,3 +199,63 @@ describe("contrast, in both themes", () => {
     });
   }
 });
+
+/**
+ * The three surface tones against each other — the measurement The Well Rule
+ * rests on.
+ *
+ * Everything above asks whether something *reads*. This asks the opposite, and
+ * records a set of numbers that are all far below any threshold: the steps
+ * between the tones are between 1.06 and 1.18 to one. That is the point. A
+ * tone step in this palette cannot carry a signal across a single 64 px row,
+ * which is why an open group read as closed, and why the answer was to move a
+ * whole block rather than to find a better shade. Kept here so the rule is a
+ * consequence of an arithmetic anyone can re-run, not a preference.
+ *
+ * Nothing here checks that text still reads in the well: `bg` is one of the
+ * three surfaces every text token is already measured against above, so moving
+ * rows onto it needed no new assertion. Worth saying, because "the rows are on
+ * a different background now" is otherwise exactly the change you would go
+ * looking for cover on.
+ */
+describe("the table's three tones", () => {
+  const step = (t: Record<string, string>, a: string, b: string) =>
+    ratio(t[a], t[b]);
+
+  it.each(Object.entries(THEMES))("%s has three distinct tones", (_n, t) => {
+    // Guards the well itself: collapse two of these into one value and the
+    // expanded group silently stops being visible at all.
+    expect(new Set([t.bg, t.surface, t["surface-2"]]).size).toBe(3);
+  });
+
+  it.each(Object.entries(THEMES))(
+    "%s: no pair of tones is further apart than 1.2:1",
+    (name, t) => {
+      // The upper bound is the interesting direction. If a future edit made a
+      // tone step genuinely legible on one row, The Well Rule would have lost
+      // its reason and should be re-argued rather than quietly kept.
+      for (const [a, b] of [
+        ["surface", "surface-2"],
+        ["surface", "bg"],
+        ["bg", "surface-2"],
+      ] as const) {
+        const r = step(t, a, b);
+        expect(r, `${name}: ${a} to ${b} is ${r.toFixed(3)}:1`).toBeLessThan(1.2);
+      }
+    },
+  );
+
+  it("records which way the hover step moves inside a well", () => {
+    // Asserted on dark, recorded on light, in the style of the fixed-fill
+    // measurement above: hovering a row that sits in the well is the largest
+    // step in the dark table and the smallest in the light one. The well is
+    // still worth having on light — it is carried by the block's edges, not by
+    // this number — but the honest value belongs next to the claim.
+    expect(step(THEMES.dark, "bg", "surface-2")).toBeGreaterThan(
+      step(THEMES.dark, "surface", "surface-2"),
+    );
+    expect(step(THEMES.light, "bg", "surface-2")).toBeLessThan(
+      step(THEMES.light, "surface", "surface-2"),
+    );
+  });
+});

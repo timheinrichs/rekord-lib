@@ -2472,6 +2472,14 @@ export default function LibraryView({
                    * order the user's to change, so nowhere else is it draggable.
                    */
                   inPlaylist?: { id: number; position: number; of: number },
+                  /**
+                   * Whether the row sits inside an expanded group, and so in
+                   * the well with its head. Defaults from the indent, because
+                   * every grouping indents the rows it contains — except the
+                   * album grouping, which aligns its tracks with their head
+                   * and therefore has to say so.
+                   */
+                  inGroup = depth > 0,
                 ) => {
                 const prog = progress[t.id];
                 const result = results[t.id];
@@ -2526,8 +2534,8 @@ export default function LibraryView({
                         : undefined
                     }
                     className={`group h-16 cursor-pointer border-b border-border hover:bg-surface-2 ${
-                      dropHere ? "border-t-2 border-t-accent-500" : ""
-                    }`}
+                      inGroup ? "bg-bg" : ""
+                    } ${dropHere ? "border-t-2 border-t-accent-500" : ""}`}
                   >
                     {cols.map((c) =>
                       trackCell(
@@ -2606,7 +2614,11 @@ export default function LibraryView({
                       // content box at all, and the icon disappeared.
                       return (
                         <td key={c.id} className="px-1 py-2.5">
-                          <span className="flex justify-center text-fg-subtle">
+                          <span
+                            className={`flex justify-center ${
+                              opts.expanded ? "text-fg" : "text-fg-subtle"
+                            }`}
+                          >
                             <ChevronIcon open={opts.expanded} />
                           </span>
                         </td>
@@ -2757,7 +2769,13 @@ export default function LibraryView({
                     <tr
                       key={opts.id}
                       onClick={opts.onToggle}
-                      className="group h-16 cursor-pointer border-b border-border bg-surface-2/40 hover:bg-surface-2"
+                      aria-expanded={opts.expanded}
+                      // Open, the head joins the well its rows sit in; closed,
+                      // it stays the raised lid. Never the hover tone — see
+                      // The Well Rule in DESIGN.md.
+                      className={`group h-16 cursor-pointer border-b border-border hover:bg-surface-2 ${
+                        opts.expanded ? "bg-bg" : "bg-surface-2/40"
+                      }`}
                     >
                       {cols.map((c) =>
                         groupCell(c, opts, s, allSel, someSel, groupStatus),
@@ -2981,7 +2999,9 @@ export default function LibraryView({
                     });
                     if (expanded) {
                       gTracks.forEach((t) => {
-                        rows.push(renderTrackRow(t, idx));
+                        // depth 0, but inside a group all the same: the album
+                        // grouping aligns its tracks with their head.
+                        rows.push(renderTrackRow(t, idx, 0, undefined, true));
                         idx++;
                       });
                     } else {
