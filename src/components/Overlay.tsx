@@ -5,9 +5,12 @@ import { useScrollLock } from "../lib/useScrollLock";
 /**
  * The overlays on screen, innermost last.
  *
- * Counted the way `useScrollLock` counts, and for the same case: the duplicates
- * list opens over the metadata editor, and one Escape has to close one dialog.
- * Without this, both listeners fire and the stack collapses at a keystroke.
+ * Only the innermost answers Escape. Defensive rather than load-bearing today:
+ * the app does stack dialogs — the duplicates list opens over the metadata
+ * editor — but the editor is one of the two that deliberately take no `onClose`,
+ * so only one of that pair is listening. `Overlay` cannot know that about its
+ * callers, and the failure if it guessed wrong is one keystroke collapsing two
+ * dialogs, which is worth six lines to make impossible.
  */
 const stack: symbol[] = [];
 

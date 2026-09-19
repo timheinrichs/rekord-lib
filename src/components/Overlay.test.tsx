@@ -65,9 +65,10 @@ describe("Overlay", () => {
   });
 
   it("gives Escape to the topmost overlay only", async () => {
-    // The case this is built for: the duplicates list opens over the metadata
-    // editor. Without a stack both listeners fire and one keystroke collapses
-    // two dialogs — which is the bug you would only find by stacking them.
+    // No pair in the app listens twice today, so this is the guard rather than
+    // a reproduction: without a stack both listeners fire and one keystroke
+    // collapses two dialogs, and the day a second listening overlay is opened
+    // over the first, nobody would think to check.
     const user = userEvent.setup();
     const outer = vi.fn();
     const inner = vi.fn();

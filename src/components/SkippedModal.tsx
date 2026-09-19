@@ -26,7 +26,7 @@ export default function SkippedModal({ files, onClose }: Props) {
   };
 
   return (
-    <Overlay>
+    <Overlay onClose={onClose}>
       <div className="flex max-h-[90vh] w-full max-w-3xl flex-col overflow-hidden rounded-2xl border border-border bg-surface shadow-2xl">
         <header className="flex items-center justify-between border-b border-border px-5 py-3">
           <h2 className="text-sm font-medium">

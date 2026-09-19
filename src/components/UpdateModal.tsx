@@ -53,7 +53,7 @@ export default function UpdateModal({ update, onClose }: Props) {
   };
 
   return (
-    <Overlay>
+    <Overlay onClose={onClose}>
       <div className="flex max-h-[85vh] w-full max-w-xl flex-col overflow-hidden rounded-2xl border border-border bg-surface shadow-2xl">
         <header className="flex items-start justify-between gap-4 border-b border-border px-5 py-3">
           <div className="min-w-0">

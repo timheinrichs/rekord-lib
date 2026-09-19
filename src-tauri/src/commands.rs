@@ -448,7 +448,13 @@ pub fn playlist_set(app: AppHandle, id: i64, paths: Vec<String>) -> AppResult<()
         let before = db::playlist_paths(&conn, id)?;
         let name = db::playlist_name(&conn, id)?.unwrap_or_default();
         db::set_playlist_paths(&mut conn, id, &paths)?;
-        playlist_summary(&before, &paths, &name)
+        // Read back rather than believing `paths`: a path whose track row is
+        // gone is skipped by the write on purpose (the UI can be a moment
+        // behind a delete), and a message counting what was *asked for* would
+        // claim three tracks went in where two did — with the reload that
+        // follows immediately drawing two.
+        let after = db::playlist_paths(&conn, id)?;
+        playlist_summary(&before, &after, &name)
     };
     if let Some(message) = summary {
         events::announce(
@@ -470,8 +476,9 @@ pub fn playlist_set(app: AppHandle, id: i64, paths: Vec<String>) -> AppResult<()
 /// happen to a row you are not looking at, which is the whole case for saying
 /// anything at all.
 ///
-/// The delta is read back out of the table rather than passed in: the command
-/// is handed a whole list and cannot be told what the caller meant by it.
+/// Both sides are read out of the table, before and after: the command is
+/// handed a whole list and cannot be told what the caller meant by it, and the
+/// write is allowed to drop a path whose track is gone.
 fn playlist_summary(before: &[String], after: &[String], name: &str) -> Option<String> {
     let old: HashSet<&String> = before.iter().collect();
     let new: HashSet<&String> = after.iter().collect();
@@ -2098,19 +2105,9 @@ pub async fn convert_tracks(
     Ok(results)
 }
 
-/// What a conversion run did, or `None` when none of it worked — see
-/// `deletion_summary` for why that case says nothing.
 fn convert_summary(results: &[ConvertResult]) -> Option<(EventLevel, String)> {
-    let total = results.len();
     let ok = results.iter().filter(|r| r.success).count();
-    match (total, ok) {
-        (0, _) | (_, 0) => None,
-        (t, o) if o == t => Some((
-            EventLevel::Info,
-            format!("Converted {}", events::tracks(o)),
-        )),
-        (t, o) => Some((EventLevel::Warn, format!("Converted {o} of {t} tracks"))),
-    }
+    run_summary(results.len(), ok, "Converted", "")
 }
 
 /// Completion event of the duplicate search.
@@ -2251,22 +2248,9 @@ pub async fn write_metadata(
     results
 }
 
-/// What a tag write did, or `None` when none of it landed — see
-/// `deletion_summary` for why that case says nothing.
 fn write_summary(results: &[WriteMetadataResult]) -> Option<(EventLevel, String)> {
-    let total = results.len();
     let ok = results.iter().filter(|r| r.error.is_none()).count();
-    match (total, ok) {
-        (0, _) | (_, 0) => None,
-        (t, o) if o == t => Some((
-            EventLevel::Info,
-            format!("Wrote tags to {}", events::tracks(o)),
-        )),
-        (t, o) => Some((
-            EventLevel::Warn,
-            format!("Wrote tags to {o} of {t} tracks"),
-        )),
-    }
+    run_summary(results.len(), ok, "Wrote tags to", "")
 }
 
 /// Writes one batch of items, without touching the undo history.
@@ -2402,14 +2386,15 @@ pub async fn undo_last(app: AppHandle) -> AppResult<Vec<WriteMetadataResult>> {
         db::drop_undo(&conn, entry.id)?;
     }
     // The one action whose effect lands on rows nobody clicked, which makes it
-    // the best case for saying so at all.
-    events::announce(
-        &app,
-        EventLevel::Info,
-        "metadata",
-        &format!("Took back the tag write to {}", events::tracks(results.len())),
-        None,
-    );
+    // the best case for saying so at all — and the same rule as the rest: what
+    // landed, not what was tried. A restoring write can fail file by file just
+    // like the write it takes back.
+    let ok = results.iter().filter(|r| r.error.is_none()).count();
+    if let Some((level, message)) =
+        run_summary(results.len(), ok, "Took back the tag write to", "")
+    {
+        events::announce(&app, level, "metadata", &message, None);
+    }
     Ok(results)
 }
 
@@ -2449,29 +2434,49 @@ pub async fn delete_album(app: AppHandle, dir: String, paths: Vec<String>) -> Ve
     results
 }
 
-/// One message for the run, not one per file.
+/// One message for the run, not one per file, in the only three shapes a run
+/// has.
 ///
 /// Says nothing when every file failed: the caller throws, and the view already
 /// puts "Deletion failed: …" in a banner that stays until the next action.
 /// Saying it again transiently would be the same sentence twice, in two places
-/// that could then disagree. The same rule holds for the conversion and the tag
-/// write below — success and partial success are announced, total failure
-/// belongs to whoever already owns it.
-fn deletion_summary(results: &[DeleteResult]) -> Option<(EventLevel, String)> {
-    let total = results.len();
-    let ok = results.iter().filter(|r| r.success).count();
-    match (total, ok) {
-        (0, _) => None,
-        (_, 0) => None,
-        (t, o) if o == t => Some((
-            EventLevel::Info,
-            format!("Moved {} to the trash", events::tracks(o)),
-        )),
-        (t, o) => Some((
-            EventLevel::Warn,
-            format!("Moved {o} of {t} tracks to the trash"),
-        )),
+/// that could then disagree.
+///
+/// Every announced action goes through here rather than writing its own
+/// sentence, because the interesting case is the one it is easiest to forget:
+/// a run where *some* of it worked has to say so, and the count has to be what
+/// landed rather than what was attempted. Undo had that wrong for exactly as
+/// long as it had a summary of its own.
+fn run_summary(
+    total: usize,
+    ok: usize,
+    verb: &str,
+    tail: &str,
+) -> Option<(EventLevel, String)> {
+    if total == 0 || ok == 0 {
+        return None;
     }
+    let end = if tail.is_empty() {
+        String::new()
+    } else {
+        format!(" {tail}")
+    };
+    if ok == total {
+        Some((
+            EventLevel::Info,
+            format!("{verb} {}{end}", events::tracks(ok)),
+        ))
+    } else {
+        Some((
+            EventLevel::Warn,
+            format!("{verb} {ok} of {total} tracks{end}"),
+        ))
+    }
+}
+
+fn deletion_summary(results: &[DeleteResult]) -> Option<(EventLevel, String)> {
+    let ok = results.iter().filter(|r| r.success).count();
+    run_summary(results.len(), ok, "Moved", "to the trash")
 }
 
 fn announce_deletion(app: &AppHandle, results: &[DeleteResult]) {
@@ -2740,6 +2745,25 @@ mod tests {
             playlist_summary(&[a.clone()], &[b.clone(), c.clone()], "Warmup"),
             Some("Added 2 tracks to Warmup and removed 1 track".to_string())
         );
+    }
+
+    #[test]
+    fn undo_reports_what_it_restored_and_not_what_it_tried() {
+        // The finding this test exists for: undo used to announce
+        // `results.len()` unconditionally, so a restoring write that failed on
+        // every file still said it had taken the write back — while the view
+        // put a red banner up saying the opposite. Two channels disagreeing is
+        // the one thing this feature is built not to do.
+        let verb = "Took back the tag write to";
+        assert_eq!(run_summary(3, 3, verb, ""), Some((
+            EventLevel::Info,
+            "Took back the tag write to 3 tracks".into()
+        )));
+        assert_eq!(run_summary(3, 1, verb, ""), Some((
+            EventLevel::Warn,
+            "Took back the tag write to 1 of 3 tracks".into()
+        )));
+        assert_eq!(run_summary(3, 0, verb, ""), None);
     }
 
     #[test]

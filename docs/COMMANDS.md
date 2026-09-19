@@ -276,11 +276,12 @@ answer, and that is what raises the transient message in `Toasts`. The emit
 sits inside `events::store` on the arm where the row was written, so nothing
 can be shown that is not also in the log.
 
-Five commands record an `Info` of their own now, which is what those messages
+Seven commands record an `Info` of their own now, which is what those messages
 are: `export_rekordbox_xml`, `playlist_set` (only when membership changed — a
-reorder says nothing), `delete_files`/`delete_album`, `convert_tracks`,
+reorder says nothing), `delete_files`, `delete_album`, `convert_tracks`,
 `write_metadata` and `undo_last`. A run that failed entirely records nothing,
-because the caller already reports it.
+because the caller already reports it, and a partial one says how much of it
+landed rather than how much was tried.
 
 ## Keeping this honest
 

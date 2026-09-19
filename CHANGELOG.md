@@ -21,8 +21,9 @@ contain incompatible changes.
   than a dropdown. It says what each playlist would gain (`+2`, `+1 of 4`,
   `already in` on one that cannot be clicked), makes a new playlist a first-
   class action instead of the last row of a list, and opens straight on that
-  action when there are no playlists yet. Dialogs close on Escape now, except
-  the two that hold unsaved typing.
+  action when there are no playlists yet. Dialogs close on Escape now — all of
+  them except the two metadata editors, which hold unsaved typing and should
+  not lose a form to a keystroke aimed at a field.
 
 ### Changed
 - **An expanded group looks expanded.** An open album, folder, label or
