@@ -309,15 +309,21 @@ disabled button. `src/styles/disabledStates.test.ts` enforces all three over the
 source.
 
 **The Tinted-Ring Rule.** A status surface is a 15 % tint of the status colour
-with a 30 % ring of the same hue and the solid hue as text
-(`bg-warning-500/15 text-warning-500 ring-1 ring-warning-500/30`) — a ring
-rather than a border, because a pill sits inside a row and a border would move
-the text. This is the only form: the opaque `--bg-warning`/`--fg-warning` pairs
-that `tokens.css` once carried were never used and were removed in 0.9.1.
-Consequence worth knowing: there is no `text-fg-warning` utility, and a colour
-utility no token defines generates *nothing* rather than failing — which is how
-two uncertain-tempo markers rendered in the inherited colour for several
-releases. `src/styles/designRules.test.ts` now fails on one.
+with a 30 % ring of the same hue and the **theme-dependent** hue as text
+(`bg-warning-500/15 text-fg-warning ring-1 ring-warning-500/30`) — a ring rather
+than a border, because a pill sits inside a row and a border would move the
+text. The text token is `fg-warning`, not the bare ramp: the tint composites
+over a theme surface, so the Two-Theme Rule applies inside the pill exactly as
+it does outside it. This is the only form.
+
+Two corrections this rule carried until 0.10.0, worth keeping visible because
+both were written down and both were wrong. It gave `text-warning-500` as the
+example, contradicting the Two-Theme Rule twelve paragraphs above it; and it
+added that "there is no `text-fg-warning` utility", which `tokens.css` and
+eleven call sites had already disproved. A colour utility no token defines
+generates *nothing* rather than failing — that part was right, and it is how two
+uncertain-tempo markers rendered in the inherited colour for several releases.
+`src/styles/designRules.test.ts` fails on one.
 
 ## Typography
 
@@ -413,17 +419,25 @@ at all it is `shrink-0` and something else yields.
 `absolute right-0 top-full mt-2 z-40`. The actions live in a 64 px sticky header
 at `z-30`, so `bottom-full` puts the panel off the top of the window, and `z-30`
 would leave the winner to document order. The layer stack is: header 30, docked
-filter bar 20, menus 40, modal overlay 50.
+filter bar 20, menus 40, modal overlay 50, transient message 60.
 `src/components/menuPlacement.test.ts` reads the source and `e2e/menus.spec.ts`
 measures where the panel actually lands.
+
+Sixty is the only floor above the modal, and it exists because a message that
+arrives while a dialog is open still has to be read — a conversion finishing
+behind the event log is exactly when silence is worst. It is also the only layer
+that never intercepts a pointer (`pointer-events-none`) and the only floating
+thing that is *anchored* rather than `inset-0`, which is what keeps it from
+being mistaken for an overlay by anything reading the DOM.
 
 ## Elevation & Depth
 
 **Flat, with tone instead of shadow.** Depth comes from the three surface
-tones — `bg` behind everything, `surface` for panels and cards, `surface-2` for
-what is raised or active (menu bodies, inputs, hovered rows, skeletons) — plus a
-single hairline `border-border`. A surface never carries both a double frame and
-a shadow.
+tones — `bg` behind everything and, inside a panel, as the well an expanded
+group sits in (see The Well Rule); `surface` for panels and cards; `surface-2`
+for what is raised or active (menu bodies, inputs, hovered rows, skeletons) —
+plus a single hairline `border-border`. A surface never carries both a double
+frame and a shadow.
 
 Shadows are reserved for things that genuinely float above the page, and there
 are only three in the vocabulary. Motion is the same kind of hint: 150 ms fades
@@ -478,6 +492,47 @@ and a short delay after release, and it was offered and not taken.
 to the next surface tone. Add a shadow only when the element is actually
 floating over content — a menu, a dialog, a header that has left its resting
 position.
+
+**The Well Rule.** An expanded group — an album, a folder, a label, a
+playlist — drops its head row *and every row it contains* to `bg`, the field
+tone, one step **below** the panel they sit in. Nothing gets lighter, because
+the light end of the ladder is already spent: `surface-2` is the hover tone, and
+a resting state written in it is indistinguishable from the row the pointer
+happens to be on.
+
+The rule exists because the obvious fix does not work, and the numbers say why.
+Measured between the three tones:
+
+| pair | dark | light |
+| --- | --- | --- |
+| `surface` ↔ `surface-2` (the hover step) | 1.10 : 1 | 1.18 : 1 |
+| `surface` ↔ `bg` (the well step) | 1.06 : 1 | 1.08 : 1 |
+| `bg` ↔ `surface-2` (hover *inside* a well) | 1.17 : 1 | 1.09 : 1 |
+
+Across a single 64 px row none of that is visible, which is why an open group
+read as closed in a screenshot and why "make the head a step lighter" would not
+have fixed it — in either direction, and no fourth tone would have changed the
+arithmetic. What makes a tone step legible is **area**: a head plus the rows
+under it is a block with a sharp edge at each end, and an edge that long is
+readable at a contrast a single row is not. So the state moves the contents, not
+the head. Note also that the step is a *role*, never a direction: in light mode
+`surface-2` (#ECECEF) is darker than `surface` (#FFFFFF), so "a shade lighter"
+is a dark-mode assumption that inverts.
+
+Depth of nesting is **not** in the tone and cannot be: folders nest without a
+limit and the ladder has three rungs. Tone says whether a row is inside a group;
+the title indent (16 px, plus 20 px per level) says how deep.
+
+The one thing that must not move is hover. Every row hovers to `surface-2`,
+including the head of an open group — on dark that makes it the largest hover
+step in the table, and on light the smallest, which is recorded rather than
+hidden. It stays uniform because the row-actions overlay is a `surface-2` patch
+that fades the columns out behind the buttons, and it only disappears into a row
+that is exactly that tone.
+
+`src/styles/contrast.test.ts` measures the tones against each other and
+`src/styles/designRules.test.ts` fails on a resting state written in the hover
+tone.
 
 ## Shapes
 
@@ -627,6 +682,11 @@ the colour alone. An overflowing title scrolls as a marquee **only while its row
 is hovered** (`.group:hover .marquee-track`, two copies, `-50%` shift for a
 seamless loop), and stops off under reduced motion.
 
+A **group head** is the same row at the same height: `bg-surface-2/40` closed,
+in the well (`bg-bg`) when open, and its chevron goes from `text-fg-subtle` to
+`text-fg` with it. It carries `aria-expanded`, because a state that is only a
+tone and a glyph is no state at all to a screen reader.
+
 ### Status Pill
 
 `rounded-full px-2 py-0.5 text-xs ring-1` with the tinted-ring triple
@@ -686,10 +746,14 @@ position), and only while the list is still empty.
   leave such a fill's label to inheritance — see the Two-Theme Rule.
 - **Don't** write a focus style on a component, or suppress the shared one with
   `outline-none` — see the One Ring Rule.
-- **Don't** write a colour utility no token defines (`text-fg-warning`,
-  `bg-bg-danger`). Tailwind generates nothing for it and the element silently
-  keeps the inherited colour — the status hues are `text-warning-500`,
-  `bg-success-500/15` and so on.
+- **Don't** write a colour utility no token defines (`bg-bg-danger`,
+  `text-surface-3`). Tailwind generates nothing for it and the element silently
+  keeps the inherited colour. The status hues are `text-fg-warning` on a theme
+  surface and `bg-success-500/15` for a tint — see the Tinted-Ring Rule, which
+  gave the wrong example here until 0.10.0.
+- **Don't** write a resting state in the hover tone. `surface-2` means the
+  pointer is here; a state the user is holding goes the other way — see The Well
+  Rule.
 - **Don't** put `backdrop-blur` behind a surface at 80 % opacity or more, and
   never on something a list scrolls under — see the No-Blur-Over-Motion Rule.
 - **Don't** stack a shadow on a bordered surface to create depth — move it to
