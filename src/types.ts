@@ -276,6 +276,18 @@ export interface Playlist {
   track_count: number;
 }
 
+/**
+ * What `events://new` carries: the row that was just written, plus whether it
+ * is an action's own answer rather than one of the many the log collects per
+ * file. Mirrors `EventNotice` in `src-tauri/src/models.rs`.
+ */
+export interface EventNotice {
+  id: number;
+  level: EventLevel;
+  message: string;
+  announce: boolean;
+}
+
 export interface ScanTracks {
   generation: number;
   tracks: TrackAnalysis[];

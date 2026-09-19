@@ -44,6 +44,7 @@ import type {
   ConvertResult,
   DeleteResult,
   DuplicateGroup,
+  EventLevel,
   EventLog,
   MetadataSuggestions,
   RelocateResult,
@@ -205,6 +206,8 @@ export function installFakeBackend(
   seed: Partial<FakeState> = {},
 ): FakeBackend {
   const state: FakeState = { ...defaults(), ...seed };
+  // Ids for the rows `record` writes, above whatever a test seeded.
+  let eventId = state.events.reduce((max, e) => Math.max(max, e.id), 0);
   const calls: FakeCall[] = [];
   const rejections = new Map<string, string>();
   const itemErrors = new Map<string, string>();
@@ -220,7 +223,18 @@ export function installFakeBackend(
       const paths = (args.paths as string[]) ?? [];
       const produced: TrackAnalysis[] = [];
       for (const path of paths) {
-        if (state.skipped[path]) continue;
+        if (state.skipped[path]) {
+          // As the real `record_skip` does: a row in the log, a dot on the
+          // badge, and `announce: false` — a scan over two hundred files writes
+          // one of these each, and a message per file is a wall.
+          record(
+            "warn",
+            "scan",
+            `Skipped ${path}: ${state.skipped[path]}`,
+            false,
+          );
+          continue;
+        }
         const existing = byPath(path);
         const track = existing ?? trackFor(path);
         if (!existing) state.tracks.push(track);
@@ -232,6 +246,15 @@ export function installFakeBackend(
     start_scan: () => {
       if (state.scan.running) return false;
       state.scan = { ...state.scan, running: true, generation: state.scan.generation + 1 };
+      // The rows the real scan leaves behind for a file it could not read. The
+      // batches themselves are driven by a test emitting `scan://*`, but these
+      // are not a batch — they are what `record_skip` writes as it goes, and
+      // they are the case a transient message must *not* be raised for.
+      for (const path of state.files) {
+        if (state.skipped[path]) {
+          record("warn", "scan", `Skipped ${path}: ${state.skipped[path]}`, false);
+        }
+      }
       return true;
     },
     scan_status: () => state.scan,
@@ -289,14 +312,42 @@ export function installFakeBackend(
       delete state.playlistContents[args.id as number];
       return null;
     },
-    export_rekordbox_xml: () => state.tracks.length,
+    export_rekordbox_xml: () => {
+      record(
+        "info",
+        "export",
+        `Exported ${tracks(state.tracks.length)} for Rekordbox`,
+        true,
+      );
+      return state.tracks.length;
+    },
     playlist_set: (args) => {
       // Like the real one: a path the library no longer holds is dropped rather
       // than failing the whole write.
       const known = new Set(state.tracks.map((t) => t.path));
-      state.playlistContents[args.id as number] = (args.paths as string[]).filter(
-        (p) => known.has(p),
+      const id = args.id as number;
+      const before = new Set(state.playlistContents[id] ?? []);
+      state.playlistContents[id] = (args.paths as string[]).filter((p) =>
+        known.has(p),
       );
+      const after = new Set(state.playlistContents[id]);
+      const added = [...after].filter((p) => !before.has(p)).length;
+      const removed = [...before].filter((p) => !after.has(p)).length;
+      const name = state.playlists.find((p) => p.id === id)?.name ?? "";
+      // A reorder changes neither set, and says nothing: it is a drag whose
+      // result is under the pointer that made it.
+      if (added && !removed) {
+        record("info", "playlist", `Added ${tracks(added)} to ${name}`, true);
+      } else if (removed && !added) {
+        record("info", "playlist", `Removed ${tracks(removed)} from ${name}`, true);
+      } else if (added && removed) {
+        record(
+          "info",
+          "playlist",
+          `Added ${tracks(added)} to ${name} and removed ${tracks(removed)}`,
+          true,
+        );
+      }
       return null;
     },
     // The Discogs credentials live in the Keychain, so the fake keeps them in
@@ -404,7 +455,7 @@ export function installFakeBackend(
           })),
         });
       }
-      return items.map((item) => {
+      const results = items.map((item) => {
         const error = itemErrors.get(item.path);
         if (error) return { path: item.path, track: null, error };
         const track = byPath(item.path);
@@ -412,11 +463,24 @@ export function installFakeBackend(
         if (track) state.tracks = state.tracks.map((t) => (t.path === track.path ? written : t));
         return { path: item.path, track: written, error: null };
       });
+      summarise(
+        results.length,
+        results.filter((r) => !r.error).length,
+        "Wrote tags to",
+        "metadata",
+      );
+      return results;
     },
     undo_peek: () => state.undo[state.undo.length - 1] ?? null,
     undo_last: () => {
       const entry = state.undo.pop();
       if (!entry) return [];
+      record(
+        "info",
+        "metadata",
+        `Took back the tag write to ${tracks(entry.items.length)}`,
+        true,
+      );
       return entry.items.map((item) => {
         const track = byPath(item.path);
         const restored = { ...(track ?? trackFor(item.path)), metadata: item.metadata };
@@ -429,7 +493,7 @@ export function installFakeBackend(
     convert_tracks: (args): ConvertResult[] => {
       const jobs = (args.jobs as ConvertJob[]) ?? [];
       const replacing = (args.options as ConvertOptions | undefined)?.replace_source;
-      return jobs.map((job) => {
+      const results = jobs.map((job) => {
         const error = itemErrors.get(job.path);
         const output = error ? null : `${job.path}.converted`;
         // A replacing conversion is a move, not a delete and an add: the real
@@ -463,6 +527,13 @@ export function installFakeBackend(
           error: error ?? null,
         };
       });
+      summarise(
+        results.length,
+        results.filter((r) => r.success).length,
+        "Converted",
+        "convert",
+      );
+      return results;
     },
 
     // --- deletion ---
@@ -502,8 +573,54 @@ export function installFakeBackend(
     cancel_bandcamp_download: () => null,
   };
 
+  /**
+   * Records like the real backend does: into the log *and* onto the wire, in
+   * that order, with one string for both.
+   *
+   * This is what lets a flow test see a transient message at all — no fake
+   * command emitted `events://new` before, so the whole of I7 would have been
+   * invisible below the real app. It is deliberately shaped like
+   * `events::store`: a fake that pushed a row without emitting, or emitted
+   * without pushing, would be the exact disagreement the real one is built to
+   * make impossible.
+   *
+   * The wording mirrors the summarisers in `src-tauri/src/commands.rs`, which
+   * own it and are tested there. If the two drift, a flow test starts asserting
+   * a sentence the app no longer produces — which is the failure you want.
+   */
+  function record(
+    level: EventLevel,
+    source: string,
+    message: string,
+    announce: boolean,
+  ) {
+    const id = ++eventId;
+    state.events = [
+      { id, created_ms: Date.now(), level, source, message, detail: null },
+      ...state.events,
+    ];
+    void emit("events://new", { id, level, message, announce });
+  }
+
+  /** "1 track" / "12 tracks", as `events::tracks` writes it. */
+  const tracks = (n: number) => (n === 1 ? "1 track" : `${n} tracks`);
+
+  /** The three shapes every run summary has; all-failed says nothing. */
+  function summarise(
+    total: number,
+    ok: number,
+    verb: string,
+    source: string,
+    tail = "",
+  ) {
+    if (total === 0 || ok === 0) return;
+    const end = tail ? ` ${tail}` : "";
+    if (ok === total) record("info", source, `${verb} ${tracks(ok)}${end}`, true);
+    else record("warn", source, `${verb} ${ok} of ${total} tracks${end}`, true);
+  }
+
   function trash(paths: string[]): DeleteResult[] {
-    return paths.map((path) => {
+    const results = paths.map((path) => {
       const error = itemErrors.get(path);
       if (!error) {
         state.tracks = state.tracks.filter((t) => t.path !== path);
@@ -511,6 +628,14 @@ export function installFakeBackend(
       }
       return { path, success: !error, error: error ?? null };
     });
+    summarise(
+      results.length,
+      results.filter((r) => r.success).length,
+      "Moved",
+      "library",
+      "to the trash",
+    );
+    return results;
   }
 
   /** Commands that go through the database, and so fail when it is unavailable. */

@@ -1,7 +1,7 @@
 import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 
-import type { AppEvent, EventLevel, EventLog } from "../types";
+import type { AppEvent, EventLevel, EventLog, EventNotice } from "../types";
 
 /**
  * The event log lives in SQLite in the backend: it is written from Rust, it
@@ -25,9 +25,19 @@ export function clearEvents(): Promise<number> {
   return invoke<number>("events_clear");
 }
 
-/** Fires whenever the backend recorded something, so the badge can follow. */
-export function onEventLogged(cb: () => void): Promise<UnlistenFn> {
-  return listen("events://new", () => cb());
+/**
+ * Fires whenever the backend recorded something, so the badge can follow — and
+ * hands over what it recorded, so a message shown on its way past can be the
+ * same entry rather than a second account of it.
+ *
+ * The payload is why this is one channel rather than two. The emit sits inside
+ * `events::store`, on the arm where the row was written, so nothing can be
+ * announced that is not also in the log.
+ */
+export function onEventLogged(
+  cb: (notice: EventNotice) => void,
+): Promise<UnlistenFn> {
+  return listen<EventNotice>("events://new", (e) => cb(e.payload));
 }
 
 /**

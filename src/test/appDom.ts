@@ -64,6 +64,10 @@ export function isShown(container: HTMLElement, which: "library" | "bandcamp") {
  *
  * Scoping to it is not tidiness: the library table has a "Title" column header,
  * so an unscoped query for the editor's Title field finds two.
+ *
+ * `Toasts` deliberately stays out of this selector — anchored, `z-[60]`, never
+ * `inset-0` — because a transient message wearing the overlay's classes would
+ * be picked up here as "the dialog on top" in every flow test at once.
  */
 export function overlay() {
   const all = document.querySelectorAll<HTMLElement>("div.fixed.inset-0.z-50");

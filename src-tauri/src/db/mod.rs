@@ -924,6 +924,24 @@ pub fn all_playlist_paths(conn: &Connection) -> DbResult<HashMap<i64, Vec<String
     Ok(out)
 }
 
+/// One playlist's contents, in order.
+///
+/// `all_playlist_paths` answers the table's question; this answers the one a
+/// write has to ask about itself — what was in here before I replaced it.
+pub fn playlist_paths(conn: &Connection, id: i64) -> DbResult<Vec<String>> {
+    let mut stmt = conn
+        .prepare("SELECT path FROM playlist_items WHERE playlist_id = ?1 ORDER BY position")?;
+    let rows = stmt.query_map(params![id], |row| row.get::<_, String>(0))?;
+    rows.collect::<Result<Vec<_>, _>>().map_err(Into::into)
+}
+
+/// One playlist's name, or `None` when it is gone.
+pub fn playlist_name(conn: &Connection, id: i64) -> DbResult<Option<String>> {
+    let mut stmt = conn.prepare("SELECT name FROM playlists WHERE id = ?1")?;
+    let mut rows = stmt.query_map(params![id], |row| row.get::<_, String>(0))?;
+    rows.next().transpose().map_err(Into::into)
+}
+
 /// Replaces a playlist's contents with exactly this list, in this order.
 ///
 /// The whole list rather than a diff, deliberately. Order is the thing being

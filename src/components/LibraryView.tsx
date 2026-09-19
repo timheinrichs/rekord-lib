@@ -1065,10 +1065,14 @@ export default function LibraryView({
     setExporting(true);
     setError(null);
     try {
-      // No confirmation of our own: the backend records the export in the event
-      // log, which is where this app already says what it has done to the
-      // library. A second notice next to the button would be the same sentence
-      // twice, in the place people are least likely to look for it later.
+      // Still no confirmation of our own, and now for a better reason than
+      // before: the backend records the export in the event log, and that
+      // record is what appears on screen — it raises the message on its way
+      // past (see `Toasts`). A second notice next to the button would be the
+      // same sentence twice, said by a channel that could disagree with the
+      // log about what was written. Nothing here changed for I7, which is the
+      // point: the one action that was already reporting correctly needed no
+      // diff at all.
       await exportRekordbox(libraryDir);
     } catch (e) {
       setError(`Could not write the export: ${e}`);

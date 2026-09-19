@@ -1,3 +1,4 @@
+use std::collections::HashSet;
 use std::sync::atomic::{AtomicBool, Ordering};
 
 use base64::Engine;
@@ -16,7 +17,7 @@ use crate::metadata::read::read_metadata;
 use crate::metadata::{artwork, suggest, write};
 use crate::models::{
     BandcampAccount, BandcampDownloadResult, BandcampItem, ConvertJob, ConvertOptions,
-    ConvertResult, CoverInput, DeleteResult, DupCandidate, DuplicateGroup, EventLog,
+    ConvertResult, CoverInput, DeleteResult, DupCandidate, DuplicateGroup, EventLevel, EventLog,
     MetadataSuggestions,
     RelocateResult, SkippedFile, TrackAnalysis, UndoEntry, WriteMetadataItem,
 };
@@ -438,10 +439,54 @@ pub fn playlist_delete(app: AppHandle, id: i64) -> AppResult<()> {
 /// pure ordering logic has already decided what it should be.
 #[tauri::command]
 pub fn playlist_set(app: AppHandle, id: i64, paths: Vec<String>) -> AppResult<()> {
-    let database = db::require(&app)?;
-    let mut conn = database.conn()?;
-    db::set_playlist_paths(&mut conn, id, &paths)?;
+    // Scoped, because `events::announce` asks for the database again and `Db`
+    // is a plain, non-reentrant mutex. See
+    // `nothing_logs_while_it_still_holds_the_database`.
+    let summary = {
+        let database = db::require(&app)?;
+        let mut conn = database.conn()?;
+        let before = db::playlist_paths(&conn, id)?;
+        let name = db::playlist_name(&conn, id)?.unwrap_or_default();
+        db::set_playlist_paths(&mut conn, id, &paths)?;
+        playlist_summary(&before, &paths, &name)
+    };
+    if let Some(message) = summary {
+        events::announce(
+            &app,
+            crate::models::EventLevel::Info,
+            "playlist",
+            &message,
+            None,
+        );
+    }
     Ok(())
+}
+
+/// What a playlist write changed, or `None` when it only changed the order.
+///
+/// A reorder is a drag whose result is on screen under the pointer that made
+/// it — it says so itself, and a message per drop would be noise on the one
+/// playlist action that already has feedback. Membership is the change that can
+/// happen to a row you are not looking at, which is the whole case for saying
+/// anything at all.
+///
+/// The delta is read back out of the table rather than passed in: the command
+/// is handed a whole list and cannot be told what the caller meant by it.
+fn playlist_summary(before: &[String], after: &[String], name: &str) -> Option<String> {
+    let old: HashSet<&String> = before.iter().collect();
+    let new: HashSet<&String> = after.iter().collect();
+    let added = new.difference(&old).count();
+    let removed = old.difference(&new).count();
+    match (added, removed) {
+        (0, 0) => None,
+        (a, 0) => Some(format!("Added {} to {name}", events::tracks(a))),
+        (0, r) => Some(format!("Removed {} from {name}", events::tracks(r))),
+        (a, r) => Some(format!(
+            "Added {} to {name} and removed {}",
+            events::tracks(a),
+            events::tracks(r)
+        )),
+    }
 }
 
 /// Writes the library and its playlists as a Rekordbox XML collection.
@@ -509,11 +554,11 @@ pub async fn export_rekordbox_xml(app: AppHandle, dir: String, dest: String) -> 
 
     // After the guard is gone, so recording it cannot deadlock against the read
     // that produced it.
-    events::record(
+    events::announce(
         &app,
         crate::models::EventLevel::Info,
         "export",
-        &format!("Exported {written} tracks for Rekordbox"),
+        &format!("Exported {} for Rekordbox", events::tracks(written)),
         Some(&dest),
     );
     Ok(written)
@@ -2047,7 +2092,25 @@ pub async fn convert_tracks(
         results.push(result);
     }
 
+    if let Some((level, message)) = convert_summary(&results) {
+        events::announce(&app, level, "convert", &message, None);
+    }
     Ok(results)
+}
+
+/// What a conversion run did, or `None` when none of it worked — see
+/// `deletion_summary` for why that case says nothing.
+fn convert_summary(results: &[ConvertResult]) -> Option<(EventLevel, String)> {
+    let total = results.len();
+    let ok = results.iter().filter(|r| r.success).count();
+    match (total, ok) {
+        (0, _) | (_, 0) => None,
+        (t, o) if o == t => Some((
+            EventLevel::Info,
+            format!("Converted {}", events::tracks(o)),
+        )),
+        (t, o) => Some((EventLevel::Warn, format!("Converted {o} of {t} tracks"))),
+    }
 }
 
 /// Completion event of the duplicate search.
@@ -2181,7 +2244,29 @@ pub async fn write_metadata(
             }
         }
     }
-    write_items(&app, items).await
+    let results = write_items(&app, items).await;
+    if let Some((level, message)) = write_summary(&results) {
+        events::announce(&app, level, "metadata", &message, None);
+    }
+    results
+}
+
+/// What a tag write did, or `None` when none of it landed — see
+/// `deletion_summary` for why that case says nothing.
+fn write_summary(results: &[WriteMetadataResult]) -> Option<(EventLevel, String)> {
+    let total = results.len();
+    let ok = results.iter().filter(|r| r.error.is_none()).count();
+    match (total, ok) {
+        (0, _) | (_, 0) => None,
+        (t, o) if o == t => Some((
+            EventLevel::Info,
+            format!("Wrote tags to {}", events::tracks(o)),
+        )),
+        (t, o) => Some((
+            EventLevel::Warn,
+            format!("Wrote tags to {o} of {t} tracks"),
+        )),
+    }
 }
 
 /// Writes one batch of items, without touching the undo history.
@@ -2310,9 +2395,21 @@ pub async fn undo_last(app: AppHandle) -> AppResult<Vec<WriteMetadataResult>> {
         return Ok(Vec::new());
     };
     let results = write_items(&app, entry.items).await;
-    let database = db::require(&app)?;
-    let conn = database.conn()?;
-    db::drop_undo(&conn, entry.id)?;
+    {
+        // Scoped so the announce below cannot ask a mutex this still holds.
+        let database = db::require(&app)?;
+        let conn = database.conn()?;
+        db::drop_undo(&conn, entry.id)?;
+    }
+    // The one action whose effect lands on rows nobody clicked, which makes it
+    // the best case for saying so at all.
+    events::announce(
+        &app,
+        EventLevel::Info,
+        "metadata",
+        &format!("Took back the tag write to {}", events::tracks(results.len())),
+        None,
+    );
     Ok(results)
 }
 
@@ -2322,6 +2419,7 @@ pub async fn delete_files(app: AppHandle, paths: Vec<String>) -> Vec<DeleteResul
     let ctx = trash_ctx();
     let results: Vec<DeleteResult> = paths.into_iter().map(|p| trash_one(&ctx, p)).collect();
     forget_deleted(&app, &results);
+    announce_deletion(&app, &results);
     results
 }
 
@@ -2347,7 +2445,45 @@ pub async fn delete_album(app: AppHandle, dir: String, paths: Vec<String>) -> Ve
         paths.into_iter().map(|p| trash_one(&ctx, p)).collect()
     };
     forget_deleted(&app, &results);
+    announce_deletion(&app, &results);
     results
+}
+
+/// One message for the run, not one per file.
+///
+/// Says nothing when every file failed: the caller throws, and the view already
+/// puts "Deletion failed: …" in a banner that stays until the next action.
+/// Saying it again transiently would be the same sentence twice, in two places
+/// that could then disagree. The same rule holds for the conversion and the tag
+/// write below — success and partial success are announced, total failure
+/// belongs to whoever already owns it.
+fn deletion_summary(results: &[DeleteResult]) -> Option<(EventLevel, String)> {
+    let total = results.len();
+    let ok = results.iter().filter(|r| r.success).count();
+    match (total, ok) {
+        (0, _) => None,
+        (_, 0) => None,
+        (t, o) if o == t => Some((
+            EventLevel::Info,
+            format!("Moved {} to the trash", events::tracks(o)),
+        )),
+        (t, o) => Some((
+            EventLevel::Warn,
+            format!("Moved {o} of {t} tracks to the trash"),
+        )),
+    }
+}
+
+fn announce_deletion(app: &AppHandle, results: &[DeleteResult]) {
+    let Some((level, message)) = deletion_summary(results) else {
+        return;
+    };
+    let failed: Vec<&str> = results
+        .iter()
+        .filter_map(|r| r.error.as_deref())
+        .collect();
+    let detail = (!failed.is_empty()).then(|| failed.join("; "));
+    events::announce(app, level, "library", &message, detail.as_deref());
 }
 
 /// Removes the rows of files that were actually trashed, so the library does
@@ -2500,6 +2636,118 @@ pub fn cancel_bandcamp_download(state: State<'_, BandcampDownloadState>, key: St
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn deleted(path: &str, success: bool) -> DeleteResult {
+        DeleteResult {
+            path: path.to_string(),
+            success,
+            error: (!success).then(|| "busy".to_string()),
+        }
+    }
+
+    fn converted(id: &str, success: bool) -> ConvertResult {
+        ConvertResult {
+            id: id.to_string(),
+            source_path: format!("/lib/{id}.wav"),
+            output_path: success.then(|| format!("/lib/{id}.aiff")),
+            success,
+            error: (!success).then(|| "ffmpeg said no".to_string()),
+        }
+    }
+
+    fn written(path: &str, ok: bool) -> WriteMetadataResult {
+        WriteMetadataResult {
+            path: path.to_string(),
+            track: None,
+            error: (!ok).then(|| "read-only".to_string()),
+        }
+    }
+
+    /// The four shapes every summariser has to answer for. Kept as one list so
+    /// a new one cannot quietly skip the case that matters most — all-failed,
+    /// which must stay silent because the view already banners it.
+    #[test]
+    fn a_run_is_summarised_in_one_sentence() {
+        assert_eq!(deletion_summary(&[]), None);
+        assert_eq!(
+            deletion_summary(&[deleted("a", true)]),
+            Some((EventLevel::Info, "Moved 1 track to the trash".into()))
+        );
+        assert_eq!(
+            deletion_summary(&[deleted("a", true), deleted("b", true)]),
+            Some((EventLevel::Info, "Moved 2 tracks to the trash".into()))
+        );
+        assert_eq!(
+            deletion_summary(&[deleted("a", true), deleted("b", false)]),
+            Some((EventLevel::Warn, "Moved 1 of 2 tracks to the trash".into()))
+        );
+        // Every file failed: the caller throws and the banner says so. A second
+        // account of it could only ever disagree with the first.
+        assert_eq!(deletion_summary(&[deleted("a", false)]), None);
+    }
+
+    #[test]
+    fn a_conversion_run_is_summarised_the_same_way() {
+        assert_eq!(convert_summary(&[]), None);
+        assert_eq!(
+            convert_summary(&[converted("a", true)]),
+            Some((EventLevel::Info, "Converted 1 track".into()))
+        );
+        assert_eq!(
+            convert_summary(&[converted("a", true), converted("b", false)]),
+            Some((EventLevel::Warn, "Converted 1 of 2 tracks".into()))
+        );
+        assert_eq!(convert_summary(&[converted("a", false)]), None);
+    }
+
+    #[test]
+    fn a_tag_write_is_summarised_the_same_way() {
+        assert_eq!(write_summary(&[]), None);
+        assert_eq!(
+            write_summary(&[written("a", true), written("b", true)]),
+            Some((EventLevel::Info, "Wrote tags to 2 tracks".into()))
+        );
+        assert_eq!(
+            write_summary(&[written("a", true), written("b", false)]),
+            Some((EventLevel::Warn, "Wrote tags to 1 of 2 tracks".into()))
+        );
+        assert_eq!(write_summary(&[written("a", false)]), None);
+    }
+
+    #[test]
+    fn a_playlist_write_reports_membership_and_not_order() {
+        let a = "a.aiff".to_string();
+        let b = "b.aiff".to_string();
+        let c = "c.aiff".to_string();
+
+        // A drag says so itself, under the pointer that made it.
+        assert_eq!(
+            playlist_summary(&[a.clone(), b.clone()], &[b.clone(), a.clone()], "Warmup"),
+            None
+        );
+        assert_eq!(playlist_summary(&[], &[], "Warmup"), None);
+        assert_eq!(
+            playlist_summary(&[], &[a.clone(), b.clone()], "Warmup"),
+            Some("Added 2 tracks to Warmup".to_string())
+        );
+        assert_eq!(
+            playlist_summary(&[a.clone(), b.clone()], &[a.clone()], "Warmup"),
+            Some("Removed 1 track from Warmup".to_string())
+        );
+        // Both at once is not a case the UI produces today, but `playlist_set`
+        // replaces the whole list and so can always be handed one.
+        assert_eq!(
+            playlist_summary(&[a.clone()], &[b.clone(), c.clone()], "Warmup"),
+            Some("Added 2 tracks to Warmup and removed 1 track".to_string())
+        );
+    }
+
+    #[test]
+    fn a_count_is_written_as_a_sentence() {
+        assert_eq!(events::tracks(0), "0 tracks");
+        assert_eq!(events::tracks(1), "1 track");
+        assert_eq!(events::tracks(12), "12 tracks");
+    }
     use crate::models::TrackMetadata;
     use std::fs;
 

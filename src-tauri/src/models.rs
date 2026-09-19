@@ -461,6 +461,26 @@ pub struct AppEvent {
     pub detail: Option<String>,
 }
 
+/// What `events://new` carries.
+///
+/// Not an `AppEvent`: the panel reads the log back for that, and this is the
+/// smaller question of what just happened. `announce` is the only field the
+/// table does not hold, and deliberately so — it is about this moment, not
+/// about the record. A log reopened tomorrow has no use for "this was shown
+/// once", and keeping the flag out of SQLite is what makes it impossible for a
+/// restart to replay five hundred of them.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct EventNotice {
+    pub id: i64,
+    pub level: EventLevel,
+    pub message: String,
+    /// Whether this is an action's own confirmation, and so worth showing on
+    /// its way past. False for everything the log collects per file: a scan
+    /// over two hundred tracks writes two hundred of those, and a message each
+    /// is a wall rather than feedback.
+    pub announce: bool,
+}
+
 /// The event log plus how far the user has read, in one read: the badge needs
 /// both, and fetching them separately could only ever disagree.
 #[derive(Debug, Clone, Serialize)]

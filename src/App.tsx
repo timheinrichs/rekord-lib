@@ -7,6 +7,7 @@ import HeaderNav from "./components/HeaderNav";
 import EventLogModal from "./components/EventLogModal";
 import UpdateModal from "./components/UpdateModal";
 import PlayerBar from "./components/PlayerBar";
+import Toasts from "./components/Toasts";
 import { ArrowUpIcon } from "./components/icons";
 import { useScrolled } from "./lib/useScrolled";
 import { PlayerProvider } from "./lib/player";
@@ -22,6 +23,12 @@ import {
   markEventsSeen,
   onEventLogged,
 } from "./lib/events";
+import {
+  dismissToast,
+  pushToast,
+  toastFor,
+  type Toast,
+} from "./lib/toasts";
 import { useBandcamp } from "./lib/useBandcamp";
 import {
   DEFAULT_SETTINGS,
@@ -101,6 +108,10 @@ export default function App() {
   const [events, setEvents] = useState<AppEvent[]>([]);
   const [eventsSeen, setEventsSeen] = useState(0);
   const [logOpen, setLogOpen] = useState(false);
+  // The messages on their way past. Here for the same three reasons the log is:
+  // they outlive both views, the subscriber is the same one, and anything
+  // floating has to be a sibling of the view wrappers rather than inside one.
+  const [toasts, setToasts] = useState<Toast[]>([]);
   // Whether the start-up update prompt has been answered. Per session, not
   // persisted: the next launch is the next chance to notice, which is the whole
   // reason the prompt exists.
@@ -219,9 +230,15 @@ export default function App() {
   useEffect(refreshEvents, [refreshEvents]);
 
   // The backend says when it recorded something, so the badge follows without
-  // polling.
+  // polling — and hands over the row, so an action's own answer can be shown
+  // on its way past. Boot cannot raise one: `refreshEvents` reads the log, and
+  // reading does not emit.
   useEffect(() => {
-    const un = onEventLogged(refreshEvents);
+    const un = onEventLogged((notice) => {
+      refreshEvents();
+      const toast = toastFor(notice);
+      if (toast) setToasts((prev) => pushToast(prev, toast));
+    });
     return () => {
       void un.then((f) => f());
     };
@@ -394,6 +411,10 @@ export default function App() {
       )}
     </div>
       <BackToTop />
+      <Toasts
+        toasts={toasts}
+        onExpire={(id) => setToasts((prev) => dismissToast(prev, id))}
+      />
       <PlayerBar />
     </PlayerProvider>
   );
