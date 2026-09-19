@@ -85,7 +85,12 @@ keeps its shape.
 - "Add to playlist" says what each entry would do — `+3`, `+1 of 4`, or
   `already in` for one that holds the whole selection, which is then not
   clickable. Said rather than hidden: it is also the answer to "are these
-  already in there?".
+  already in there?". It is a **dialog** since 0.10.0, not a dropdown: the
+  trigger sits among the selection's actions in the header, so it moved as rows
+  were picked, and a menu anchored to a control that moves had already opened
+  off the top of the window once. With the room a dialog has, making a new
+  playlist is an action of its own rather than the last row of the list — and
+  with no playlists yet it is the *only* action, so the dialog opens on it.
 - A path with no visible track is skipped rather than drawn empty: it may be
   filtered out, or the file may be gone and the row already pruned.
 
@@ -196,7 +201,8 @@ comes from a native panel the user drove.
 | `src/lib/playlists.ts` | every ordering rule, pure |
 | `src/lib/usePlaylists.ts` | the state, and the optimistic-then-reconciled write |
 | `src/components/LibraryView.tsx` | the grouping, the drag, the row actions — move up, move down, remove; **no delete**, because in a playlist row "−" and a trash can one step apart differ by an icon and mean losing a place in a set versus losing the file |
-| `src/components/PlaylistMenu.tsx`, `AddToPlaylist.tsx` | rename/delete, the way into the editor, and getting tracks in |
+| `src/components/PlaylistMenu.tsx` | rename/delete and the way into the editor |
+| `src/components/AddToPlaylistDialog.tsx` | getting tracks in, and what each playlist would gain |
 | `src/components/PlaylistEditor.tsx` · with `playlists.ts` · `playlistRows` | the whole playlist as a list — including the entries the grouping skips |
 
 ## Verification links
@@ -213,6 +219,10 @@ comes from a native panel the user drove.
 | A track in two playlists is two rows | `playlists.e2e.test.tsx` · "draws a track that is in two playlists as two rows" |
 | A playlist row removes, and cannot delete the file | `playlists.e2e.test.tsx` · "takes a track out of the playlist, but not off the disk" |
 | The dialog opens from the menu and writes the order it shows | `playlists.e2e.test.tsx` · "edits a playlist in the dialog, and writes the order it shows" |
+| The picker says `+N`, `+N of M` and `already in`, and refuses the last | `AddToPlaylistDialog.test.tsx` · "says what each playlist would gain…"; `playlists.e2e.test.tsx` · "will not offer a playlist the selection is already in" |
+| It commits once and leaves, and Escape cancels the field before the dialog | `AddToPlaylistDialog.test.tsx` · "commits once and leaves", "gives Escape to the field before the dialog" |
+| It lands in the middle of a real window, wherever its trigger is | `e2e/menus.spec.ts` · "centres the playlist picker, and covers the window behind it" |
+| Putting tracks in says so, once, in the backend's words | `toasts.e2e.test.tsx` · "says what was added, in the backend's own words"; `commands.rs` · `a_playlist_write_reports_membership_and_not_order` |
 | It lists every stored entry, ends disabled, and keeps an entry from another library folder visible | `PlaylistEditor.test.tsx`; `playlists.test.ts` · `playlistRows` cases |
 | The name field shows the stored name, not a rename that did not happen | `PlaylistEditor.test.tsx` · "shows the stored name, not a rename that did not happen" |
 | A refused write puts the row back | `playlists.e2e.test.tsx` · "puts a row back where the database has it when a write fails" |

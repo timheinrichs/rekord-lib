@@ -120,6 +120,54 @@ The player bar's larger waveform is where it would actually be legible.
 **What would change that** — a zoomed waveform, or a decision that the row
 should show the first beat alone rather than a grid.
 
+### I1a · A group head is clickable, but not operable from the keyboard
+
+**What** — the head row carries `aria-expanded` now, so a screen reader is told
+whether a group is open, and the well says it visually. What it still is not is
+*focusable*: the row is a `<tr>` with an `onClick`, so it cannot be tabbed to,
+and Enter and Space do nothing.
+
+**Why not** — the obvious fix is a real `<button>` around the chevron, and the
+chevron's column is `w-8` (`lib/columns.ts`, `tight: true`, with a comment about
+the icon having already disappeared into a zero-width content box once). Every
+button in this app is `h-9 w-9` when it is icon-only, and `buttonShape.test.ts`
+enforces it — so the fix either widens a column that was deliberately narrowed,
+or argues for an exception. That is a different question from the one I1 was
+asked, which was whether the state is legible at all.
+
+**What would change that** — a keyboard pass over the table as a whole. The
+folder tree arguably wants `treegrid` semantics rather than a button per row,
+and deciding that one row at a time is how a table ends up with three
+conventions in it.
+
+### I1b · Three expansion sets, and one of them does two jobs
+
+**What** — `LibraryView` holds `expandedAlbums`, `expandedFolders` and
+`expandedLabels`, three `Set<string>` with three identical togglers. The last
+is also the playlists' set, keyed `playlist-${id}`, which its own comment admits.
+
+**Why not** — behaviour-neutral, and it would have made the I1 diff unreadable
+as "what changed on screen", which is the only way that item could be reviewed.
+
+**What would change that** — the next change that touches expansion state at
+all. It is a rename and a merge, not a redesign, and the tests that would cover
+it (`grouping.e2e.test.tsx`) now exist.
+
+### I7a · Every recorded event still reloads the whole log
+
+**What** — `events://new` carries the row that was written, and `App.tsx` still
+answers it with a full `loadEvents()`. A scan over two hundred unreadable files
+is two hundred round trips for data the payload already had.
+
+**Why not** — it was fixable in the same change and deliberately was not.
+Touching `refreshEvents` while introducing the transient messages would have
+made a regression in the badge indistinguishable from a regression in the
+message, and the badge is the older of the two.
+
+**What would change that** — a library big enough for the reloads to show, or
+simply the next change in this area. The subscriber can prepend the notice and
+cap at `MAX_EVENTS` instead, now that it is handed the row.
+
 ### The legacy `library` key in `rekord-lib.json`
 
 **What** — the pre-SQLite library, imported once by `db::migrate` and then left

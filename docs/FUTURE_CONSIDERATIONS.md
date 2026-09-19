@@ -233,26 +233,6 @@ is playing. Everything here is small next to the tiers above and none of it is
 speculative — each entry is something a person using the app asked for after
 looking at it.
 
-### I1 · An expanded group has to look expanded
-
-**What** — an album, folder or playlist row that is open should differ in
-surface, not only in the direction of its chevron. A step lighter than the
-collapsed default.
-
-**Why** — the open/closed state is the thing a user scans a long list for, and
-right now it is carried by a 14 px glyph. Reported from a screenshot: the
-container reads as closed at a glance even when it is open.
-
-The design system constrains the answer, which is the useful part of this entry.
-Depth comes from surface levels rather than shadows, and there are three
-(`bg`, `surface`, `surface-2`) — so "lighter" means the next level up and a
-`border-border-strong` hairline, not a new colour. If three levels turn out not
-to be enough to say *contains the row below it*, that is a design-system
-question and belongs in `DESIGN.md` — specifically its Tone-Before-Shadow
-rule — before it belongs in a component.
-
-*Size: S*
-
 ### I2 · Settings for playback
 
 **What** — a settings section for the player: how the waveform is shown (larger,
@@ -273,31 +253,6 @@ waveform, which the cache rules require to be deliberate.
 
 *Size: M · touches B6's stored waveform*
 
-### I5 · "Add to playlist" is a dialog, not a menu
-
-**What** — the picker becomes an overlay: the existing playlists as a readable
-list, and making a new one as a first-class action inside it rather than the
-last row of a dropdown.
-
-**Why** — asked for directly, and the menu has now been wrong twice in a way a
-dialog cannot be. It opened upward into the sticky header and was unreachable
-(fixed in 0.8.1, pinned by `menuPlacement.test.ts`), and it is anchored to a
-button whose position moves with the selection — see **I6**, which is the same
-problem seen from the other side. A dialog is centred, has room for a list that
-is longer than a dropdown wants to be, and does not depend on what is above or
-below its trigger.
-
-**It should probably be I3's dialog, which already exists.**
-`src/components/PlaylistEditor.tsx` is an overlay over the same table that
-reorders, renames and removes; this one wants an overlay that picks and creates.
-Two dialogs over the same table, opened from two places, is one dialog with a
-selection in it — so the question to settle first is whether this is a mode of
-the editor rather than a second component. Either way it edits through the same
-commands and the same pure helpers in `src/lib/playlists.ts`, never a second
-place where playlist state lives.
-
-*Size: S · overlaps `PlaylistEditor.tsx` (I3) · `AddToPlaylist.tsx`*
-
 ### I6 · The selection's actions do not belong in the header
 
 **What** — "Edit metadata", "Convert selection", "Add to playlist" and "Delete"
@@ -313,7 +268,10 @@ find again, and it is the one you were about to click.
 
 It is also what made 0.8.1's unreachable menu possible: a dropdown anchored to a
 button inside a 64 px sticky header has nowhere to open, and no amount of
-placement rules fixes the fact that the anchor itself moves.
+placement rules fixes the fact that the anchor itself moves. I5 removed the
+worst case by making that one a dialog, which needs no anchor at all — but it
+removed the symptom, not the cause. Three of the four buttons still move, and
+the one that is left with a menu is the column chooser.
 
 **What the answer has to satisfy**, rather than what it is — that is the
 decision this entry defers:
@@ -329,34 +287,8 @@ A bar that appears at the bottom of the table over the selection is the obvious
 candidate and the one to argue against first, since the app has no bottom bar
 today and a new persistent region is a bigger change than it looks.
 
-*Size: M · blocks nothing, but I5 should land after it*
-
-### I7 · An action that changed something says so
-
-**What** — a transient message when a main action completes: added to a
-playlist, deleted, converted, exported. Coloured the way the app already colours
-state — accent for an ordinary result, `warning`, `danger`.
-
-**Why** — asked for directly. Today a delete or an add succeeds silently: the
-table changes, and if what changed is scrolled out of view or the change is a
-row *leaving*, there is nothing at all. The event log records it, but the log is
-a place you go, and the dot on it is the whole notification.
-
-**The mechanism already exists, and that is the point.** `events::record`
-already writes every one of these with a level (`Info`, `Warn`, `Error`) and a
-source, and C3 shipped the store and the unread dot. A toast is that same entry
-shown transiently on its way past — **not** a second reporting channel with its
-own call sites, which is how the two end up disagreeing about what happened. So
-the work is a subscriber to the event stream plus a place to draw it, and the
-rule is that nothing raises a toast without also being in the log.
-
-Two things to get right. The colours are the status tokens and stay semantic —
-`success` for done, `warning`, `danger` — never a decorative fourth. And a
-bulk action produces one message, not one per file: the scan emits per-file
-events by design, and a toast per skipped track in a run of two hundred is a
-wall, not feedback.
-
-*Size: S · depends on C3, which shipped*
+*Size: M · blocks nothing; the picker it used to block became a dialog in
+0.10.0 and no longer waits on it*
 
 ### I8 · Playlists are their own view, not a grouping
 
@@ -387,9 +319,9 @@ own export. Sitting in the switch, it inherits behaviour that does not fit it:
   table with the grouping locked to `playlist` — and then the sort headers still
   have to become inert or disappear, rather than being quietly ignored.
 - **Group heads, or a list beside one open playlist?** The second reads more
-  like what people expect from a playlist view, and it would absorb both I3's
-  dialog and much of I5's picker — but it is a second layout, not a locked
-  grouping.
+  like what people expect from a playlist view, and it would absorb both the
+  playlist editor and much of the picker dialog — but it is a second layout,
+  not a locked grouping.
 - **Where does "Export for Rekordbox" belong?** It writes the whole library
   *plus* every playlist and today sits in the library header. Either that is
   already the wrong home for it, or it stays there and the playlists view has no
@@ -540,4 +472,4 @@ issue still resolves one and so that none of them is ever reused.
 | E — Security and distribution | **E2** harden Bandcamp download handling · **E3** narrow the `assetProtocol` scope · **E4** dependency auditing in CI · **E5** move the Discogs secret into the Keychain |
 | F — Documentation and process | **F1** functional docs per feature area · **F2** [COMPARISON.md](COMPARISON.md) · **F3** [CONTRIBUTING.md](../CONTRIBUTING.md) · **F5** severity marking in the changelog · **F6** [COMMANDS.md](COMMANDS.md) · **F7** [TODO.md](../TODO.md) |
 | G — Reach and test depth | **G1** end-to-end tests, in two layers, see [TESTING.md](TESTING.md) |
-| I — Interface and playback | **I3** edit a playlist in a dialog · **I4** the player says which album |
+| I — Interface and playback | **I1** an expanded group looks expanded · **I3** edit a playlist in a dialog · **I4** the player says which album · **I5** "Add to playlist" is a dialog · **I7** an action that changed something says so |

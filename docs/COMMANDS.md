@@ -261,15 +261,26 @@ in `src/types.ts`.
 | `convert://progress` | `ConvertProgress { id, percent, stage }` | `audio/convert.rs` and `commands.rs` |
 | `bandcamp://progress` | `{ key, downloaded, total, stage }` | `bandcamp/download.rs` |
 | `library://changed` | `()` | `commands.rs` watcher callback |
-| `events://new` | `()` | `events.rs` `record` |
+| `events://new` | `EventNotice { id, level, message, announce }` | `events.rs` `store` |
 
 Two things about `generation`: it is stamped on every scan and dedupe event so a
 listener *could* drop results from a superseded run, and no listener does. Stale
 results are harmless instead by construction — `applyPatch` ignores a path it
 does not know and `mergeScanned` never drops a track the batch did not mention.
 
-`events://new` fires from every `events::warn`/`events::error` call, which means
-indirectly from most commands. It carries no payload; the listener reloads.
+`events://new` fires from every `events::record`, `warn`, `announce` and
+`error` call, which means indirectly from most commands. The listener reloads
+the log from the payload's arrival rather than from its contents — but the
+payload is not decoration: `announce` says whether the row is an action's own
+answer, and that is what raises the transient message in `Toasts`. The emit
+sits inside `events::store` on the arm where the row was written, so nothing
+can be shown that is not also in the log.
+
+Five commands record an `Info` of their own now, which is what those messages
+are: `export_rekordbox_xml`, `playlist_set` (only when membership changed — a
+reorder says nothing), `delete_files`/`delete_album`, `convert_tracks`,
+`write_metadata` and `undo_last`. A run that failed entirely records nothing,
+because the caller already reports it.
 
 ## Keeping this honest
 

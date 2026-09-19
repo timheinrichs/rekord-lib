@@ -7,6 +7,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/)
 (`MAJOR.MINOR.PATCH`). As long as the version is at `0.x`, MINOR bumps may
 contain incompatible changes.
 
+## [Unreleased]
+
+### Added
+- **An action that changed something says so.** Putting tracks in a playlist,
+  deleting, converting, writing tags, exporting and undoing now say what they
+  did, top right, for four seconds. Each message is an event log row on its way
+  past — the same sentence, written once in the backend — so what you are shown
+  and what is kept can never disagree. What the log collects per file stays in
+  the log: a scan over two hundred unreadable files still fills it and lights
+  the badge, and draws nothing.
+- **A playlist picker with room in it.** "Add to playlist" is a dialog rather
+  than a dropdown. It says what each playlist would gain (`+2`, `+1 of 4`,
+  `already in` on one that cannot be clicked), makes a new playlist a first-
+  class action instead of the last row of a list, and opens straight on that
+  action when there are no playlists yet. Dialogs close on Escape now, except
+  the two that hold unsaved typing.
+
+### Changed
+- **An expanded group looks expanded.** An open album, folder, label or
+  playlist drops into a well — the head row and everything it contains together
+  — instead of being marked by a rotated 14 px chevron alone. The step had to
+  move the whole block rather than the head: every tone in this palette is
+  within 1.2:1 of its neighbours, which over a single row is nothing. Group
+  heads also carry `aria-expanded`, which they never had.
+
 ## [0.9.3] - 2026-09-18
 
 ### Fixed

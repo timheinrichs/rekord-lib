@@ -127,7 +127,9 @@ Stated here rather than papered over in a test:
   happily — the panel was in the DOM, and that is all jsdom knows. Placement is
   therefore pinned twice, neither of them here: `menuPlacement.test.ts` reads
   the source for the spellings that cannot be right, and `e2e/menus.spec.ts`
-  measures the real rectangle in the real window.
+  measures the real rectangle in the real window. That menu is a dialog now,
+  and the spec measures both shapes: a menu has to hang below its trigger, a
+  dialog has to be in the middle of the window whatever its trigger is doing.
 
 ### Tests that read the source instead of running it
 
@@ -268,7 +270,7 @@ still worth reproducing on a quiet machine before it is believed.
 | … · `restore` | leaves no-ops behind, because a listener may subscribe or unsubscribe after a test ends |
 | `src/test/appDom.ts` · `libraryView`, `bandcampView`, `overlay` | narrowing a query to the view on screen, or the dialog on top |
 | `src/test/factories.ts` · `makeTrack`, `makeMetadata`, `makeCompat` | the seed data, shared with the unit tests |
-| `src/e2e/*.e2e.test.tsx` | one file per flow: first run, scan, convert, duplicates, metadata, undo, Bandcamp, theme |
+| `src/e2e/*.e2e.test.tsx` | one file per flow: first run, scan, convert, duplicates, metadata, undo, playlists, grouping, toasts, Bandcamp, theme |
 | `src-tauri/src/lib.rs` · the `compile_error!` | the release guard |
 | `src-tauri/Cargo.toml` · `[features] wdio` | the optional dependency |
 | `scripts/e2e-app.mjs` · `prepare`, `build`, `writeManifest` | fixture, wiped data dir, debug bundle, and the paths the config reads |
@@ -300,7 +302,8 @@ still worth reproducing on a quiet machine before it is believed.
 | The tempo is detected and written into the real file | `e2e/scan.spec.ts` · "writes the detected tempo into the file, not only into the database" |
 | A conversion is renamed over its source, at the target rate and depth | `e2e/convert.spec.ts` · "rewrites the file in place, at the target rate and depth" |
 | The window may read the library folder over `asset:`, and nothing else | `e2e/playback.spec.ts` · "plays a track from the library folder", "will not read an audio file outside it" |
-| An opened menu is inside the window, below the header | `e2e/menus.spec.ts` · "puts the playlist panel inside the window, below the header" |
+| An opened menu is inside the window, below the header | `e2e/menus.spec.ts` · "hangs the column menu below its trigger, inside the window" |
+| A dialog is centred, and its backdrop really covers the viewport | `e2e/menus.spec.ts` · "centres the playlist picker, and covers the window behind it" |
 | …and no component spells a placement that could not be | `menuPlacement.test.ts` · the three cases |
 | Every button is one height and one corner | `buttonShape.test.ts` · the 36 px Rule |
 | Disabled is said in colour, never with `opacity` | `disabledStates.test.ts` · the Opacity Rule |
@@ -314,6 +317,9 @@ still worth reproducing on a quiet machine before it is believed.
 | The release country reaches the file | `metadata/write.rs` · `the_country_is_actually_written` |
 | Every rendered colour pair clears WCAG AA, in both themes | `contrast.test.ts` · the 25 cases |
 | The theme setting reaches `<html>`, and `system` resolves | `theme.e2e.test.tsx` · the three cases |
+| An open group and everything it contains are in the well, in all four groupings | `grouping.e2e.test.tsx` · "opening a group puts it and its rows in the well" |
+| An action says what it did, once, in the backend's words | `toasts.e2e.test.tsx` · "says what was added, in the backend's own words", "leaves the same sentence in the log" |
+| What the log collects per file is never shown, and boot shows nothing | `toasts.e2e.test.tsx` · "stays quiet for what a scan collects per file", "raises nothing at boot, however full the log already is" |
 | Nothing reaches the database without `db::require` | `commands.rs` · `nothing_reaches_the_database_without_require` |
 | A release cannot contain the automation server | `.github/workflows/e2e.yml` · "The release guard still guards" |
 
