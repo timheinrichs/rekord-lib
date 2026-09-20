@@ -94,8 +94,14 @@ const FIELD = /<(?:input|select|textarea)\b.*?(?<!=)>/gs;
  * A tick box is not a text field. A checkbox and a radio are 14 px squares that
  * carry no text, and an 8 px corner on a 14 px box is a circle — they keep
  * Tailwind's own small `rounded`, which is the shape they have today.
+ *
+ * A range needs no exemption: it writes no radius at all, and the rule below
+ * already leaves an unstyled field alone. Exempting it would have let the next
+ * one arrive on the card radius unnoticed.
  */
 const TICK = /type=\{?"(?:checkbox|radio)"/;
+/** A slider, among the fields `FIELD` found. */
+const RANGE = /type=\{?"range"/;
 const CLASSNAME = /className=(?:"([^"]*)"|\{`(.*?)`\})/s;
 
 describe("design system rules over the source", () => {
@@ -166,6 +172,32 @@ describe("design system rules over the source", () => {
       }
     }
     expect(offenders).toEqual([]);
+  });
+
+  it("draws a range in our accent, not the system's", () => {
+    // The One Accent Rule, in the one place the platform will break it for
+    // free: an unstyled `<input type="range">` renders its filled track and
+    // thumb in the *macOS* accent colour, which is whatever the user picked in
+    // System Settings — blue, pink, graphite. That is a second brand colour on
+    // screen, chosen by nobody here. `accent-accent-500` is the waveform violet
+    // the rest of the app signals with.
+    const offenders: string[] = [];
+    let found = 0;
+    for (const [path, src] of sources) {
+      for (const match of src.matchAll(FIELD)) {
+        if (!RANGE.test(match[0])) continue;
+        found++;
+        const cls = CLASSNAME.exec(match[0]);
+        const raw = cls ? (cls[1] ?? cls[2] ?? "") : "";
+        if (classes(raw).includes("accent-accent-500")) continue;
+        const line = src.slice(0, match.index).split("\n").length;
+        offenders.push(`${path}:${line}`);
+      }
+    }
+    expect(offenders).toEqual([]);
+    // Guards the guard: a regex that matches nothing passes this vacuously,
+    // and then so does the radius exemption it pays for.
+    expect(found).toBeGreaterThan(0);
   });
 
   it("leaves the focus ring to the base layer", () => {

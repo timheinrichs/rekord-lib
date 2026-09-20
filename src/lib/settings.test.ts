@@ -17,6 +17,7 @@ import {
   DEFAULT_SETTINGS,
   bandcampFormatKey,
   bpmRangeLabel,
+  clampVolume,
   loadSettings,
   saveSettings,
 } from "./settings";
@@ -63,6 +64,13 @@ describe("loadSettings", () => {
     const s = await loadSettings();
     expect(s).not.toHaveProperty("discogs_key");
     expect(s).not.toHaveProperty("discogs_secret");
+  });
+
+  it("clamps a stored volume on the way in", async () => {
+    // The one value this file validates, because it goes straight onto an
+    // element that throws on anything outside 0..1.
+    getMock.mockResolvedValueOnce({ volume: 42 });
+    expect((await loadSettings()).volume).toBe(1);
   });
 
   it("merges stored values over the defaults", async () => {
@@ -114,6 +122,28 @@ describe("BPM_RANGE_PRESETS", () => {
       expect(p.max).toBeGreaterThan(p.min);
       expect(p.label).toContain(String(p.min));
     }
+  });
+});
+
+describe("clampVolume", () => {
+  it("leaves a level inside the range alone", () => {
+    expect(clampVolume(0)).toBe(0);
+    expect(clampVolume(0.37)).toBe(0.37);
+    expect(clampVolume(1)).toBe(1);
+  });
+
+  it("folds a level outside it back in", () => {
+    // `HTMLMediaElement.volume` throws outside 0..1, so a hand-edited store
+    // would break playback rather than sound wrong.
+    expect(clampVolume(50)).toBe(1);
+    expect(clampVolume(-1)).toBe(0);
+  });
+
+  it("treats a number that is not one as the default", () => {
+    // No level is not the same as silence.
+    expect(clampVolume(NaN)).toBe(DEFAULT_SETTINGS.volume);
+    expect(clampVolume(Infinity)).toBe(DEFAULT_SETTINGS.volume);
+    expect(clampVolume(undefined as unknown as number)).toBe(DEFAULT_SETTINGS.volume);
   });
 });
 

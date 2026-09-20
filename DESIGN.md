@@ -582,7 +582,7 @@ One corner language, four radii, and no exceptions invented per screen:
 search field and the buttons beside it in a toolbar share one corner. Surfaces
 come in two tiers, and the tier follows the size: a floating panel, a menu or a
 card *inside* another panel is `rounded-lg` (12 px), while a page-level section
-is `rounded-xl` (16 px) — the seven settings sections, the empty states, the
+is `rounded-xl` (16 px) — the settings sections, the empty states, the
 duplicate-group cards and the track-list shell. Pills, dots, progress bars and
 transport buttons are `rounded-full`. A
 checkbox or radio is a 14 px square and keeps Tailwind's small `rounded`, since

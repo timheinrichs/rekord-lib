@@ -7,6 +7,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/)
 (`MAJOR.MINOR.PATCH`). As long as the version is at `0.x`, MINOR bumps may
 contain incompatible changes.
 
+## [Unreleased]
+
+### Added
+- **The app has a volume of its own.** A Playback section in the settings sets
+  the level the player starts at and keeps; until now the only way to change it
+  was the system mixer, which changes it for everything else on the machine too.
+  The slider says out loud what it says on screen, and it is drawn in the app's
+  violet rather than in whichever accent colour macOS happens to be set to.
+
+### Changed
+- **The settings file is written once per change, not once per step.** Every
+  save rewrites the whole of `rekord-lib.json`, the Bandcamp collection
+  included. That was fine while every control was a select, a checkbox or a
+  button; a slider is the first continuous one, and a single drag of it produced
+  a hundred rewrites of that file, fired without being ordered against each
+  other. A click still reaches disk immediately — only a burst waits, and then
+  it is written once.
+
 ## [0.10.0] - 2026-09-20
 
 ### Added

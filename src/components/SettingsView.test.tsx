@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { render, screen, waitFor, within } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { DEFAULT_SETTINGS } from "../lib/settings";
 import type { UpdateInfo } from "../lib/updater";
@@ -103,6 +103,41 @@ describe("SettingsView · Appearance", () => {
     await userEvent.click(screen.getByRole("radio", { name: "Light" }));
     expect(onChange).toHaveBeenCalledWith({ theme: "light" });
     expect(document.documentElement.dataset.theme).toBe(before);
+  });
+});
+
+describe("SettingsView · Playback", () => {
+  function renderWith(volume: number, onChange = () => {}) {
+    return render(
+      <SettingsView
+        settings={{ ...DEFAULT_SETTINGS, volume }}
+        onSettingsChange={onChange}
+        account={null}
+        onAccountChange={() => {}}
+        update={null}
+        onUpdateChange={() => {}}
+      />,
+    );
+  }
+
+  it("shows the stored level as a percentage", () => {
+    renderWith(0.42);
+    expect(screen.getByRole("slider", { name: "Volume" })).toHaveValue("0.42");
+    expect(screen.getByText("42%")).toBeInTheDocument();
+  });
+
+  it("stores a change rather than keeping it", async () => {
+    // Same contract as the theme: the section reports, `App.tsx` persists and
+    // hands the value to the player. A level kept here would be lost on the
+    // next mount and would never reach the audio element.
+    const onChange = vi.fn();
+    renderWith(1, onChange);
+    // `fireEvent`, not `userEvent`: jsdom draws no track to drag and gives a
+    // range no keyboard behaviour, so a real gesture has nothing to act on.
+    fireEvent.change(screen.getByRole("slider", { name: "Volume" }), {
+      target: { value: "0.5" },
+    });
+    expect(onChange).toHaveBeenCalledWith({ volume: 0.5 });
   });
 });
 

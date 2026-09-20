@@ -91,11 +91,17 @@ describe("the theme setting", () => {
       // And what is persisted is the preference, not the resolved palette —
       // otherwise a machine that switches later would be stuck on the value it
       // happened to have when the click landed.
-      const writes = fake.argsFor("plugin:store|set");
-      const settings = writes
-        .filter((w) => w.key === "settings")
-        .map((w) => w.value as { theme?: string });
-      expect(settings[settings.length - 1]?.theme).toBe("system");
+      //
+      // Waited for rather than read: the palette lands on `<html>` from state,
+      // while the write is coalesced (`SAVE_COALESCE_MS`), so the two no longer
+      // happen in the same tick.
+      await waitFor(() => {
+        const settings = fake
+          .argsFor("plugin:store|set")
+          .filter((w) => w.key === "settings")
+          .map((w) => w.value as { theme?: string });
+        expect(settings[settings.length - 1]?.theme).toBe("system");
+      });
     } finally {
       Object.defineProperty(window, "matchMedia", {
         configurable: true,

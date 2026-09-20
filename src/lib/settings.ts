@@ -101,6 +101,30 @@ export interface Settings {
    * takes the app with it. See `theme.ts`.
    */
   theme: ThemePreference;
+  /**
+   * Playback volume, 0..1, applied to the `<audio>` element.
+   *
+   * Persisted rather than kept for the session: the only way to change the
+   * volume before this existed was the system mixer, and a level that resets
+   * on every launch is the same complaint one step smaller.
+   */
+  volume: number;
+}
+
+/**
+ * Folds a volume into 0..1.
+ *
+ * The first per-key validation in this file, and deliberately so. `loadSettings`
+ * drops a key it does not know but has never looked at a *value*, which is fine
+ * for a format name that only ever reaches a `<select>`. A volume goes straight
+ * onto `HTMLMediaElement.volume`, where anything outside 0..1 throws — so a
+ * hand-edited store, or a value written by a version that meant something else
+ * by this key, would break playback rather than look odd. `NaN` folds to the
+ * default, because no number is not the same as zero.
+ */
+export function clampVolume(v: number): number {
+  if (!Number.isFinite(v)) return DEFAULT_SETTINGS.volume;
+  return Math.min(1, Math.max(0, v));
 }
 
 export const DEFAULT_SETTINGS: Settings = {
@@ -121,6 +145,7 @@ export const DEFAULT_SETTINGS: Settings = {
   // light-mode Mac would otherwise come back from an update looking like a
   // different application. `system` is one click away.
   theme: "dark",
+  volume: 1,
 };
 
 // Same store file as the Rust backend (separate keys).
@@ -148,7 +173,8 @@ export async function loadSettings(): Promise<Settings> {
       Object.prototype.hasOwnProperty.call(DEFAULT_SETTINGS, k),
     ),
   ) as Partial<Settings>;
-  return { ...DEFAULT_SETTINGS, ...known };
+  const settings = { ...DEFAULT_SETTINGS, ...known };
+  return { ...settings, volume: clampVolume(settings.volume) };
 }
 
 /** Persists the settings. */

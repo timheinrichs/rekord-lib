@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import AppHeader from "./components/AppHeader";
 import LibraryView from "./components/LibraryView";
 import BandcampView from "./components/BandcampView";
@@ -69,6 +69,30 @@ interface BootState {
 const MIN_SPLASH_MS = 300;
 
 /**
+ * The shortest gap between two settings writes.
+ *
+ * Every save rewrites the whole of `rekord-lib.json`, which also holds the
+ * Bandcamp collection — by far the largest thing in it. That was one rewrite
+ * per click for as long as every control in the settings was a select, a
+ * checkbox or a button. The volume slider is the first *continuous* one, and a
+ * single drag of it fired a hundred rewrites at the store, none of them awaited
+ * against each other — so which level actually landed on disk was a race
+ * between a hundred writes of the same file.
+ *
+ * Leading edge, not just trailing: the first change of a burst is written
+ * immediately, and only the ones behind it wait. A click therefore reaches disk
+ * exactly as fast as it always did, which matters because a webview being torn
+ * down by a window close does not unmount anything and cannot flush. Only the
+ * tail of a drag is ever in flight, and that value is one step away from the
+ * one already written.
+ *
+ * Coalescing the *write* rather than only committing the slider on release,
+ * because the state has to stay live either way: the level reaches the player
+ * through React on every step. Same idea as the player's `LOAD_COALESCE_MS`.
+ */
+const SAVE_COALESCE_MS = 200;
+
+/**
  * Back to the top of the list.
  *
  * App-wide chrome, and a sibling of the view wrappers on purpose: `position:
@@ -98,6 +122,18 @@ export default function App() {
   const [view, setView] = useState<MainView>("library");
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [settings, setSettings] = useState<Settings>(DEFAULT_SETTINGS);
+  /**
+   * The settings as they stand, so a patch can be merged outside a state
+   * updater.
+   *
+   * The merge used to happen inside `setSettings`, and that put the write it
+   * queues and the timer that flushes it in an order nothing guarantees: React
+   * may defer, interrupt or replay an updater, and a flush that runs before the
+   * render has happened finds nothing pending, clears its timer and writes
+   * nothing at all. An updater is also required to be pure. So the merge is
+   * here, synchronously, and `setSettings` is handed a value.
+   */
+  const settingsRef = useRef<Settings>(DEFAULT_SETTINGS);
   const [account, setAccount] = useState<BandcampAccount | null>(null);
   const [update, setUpdate] = useState<UpdateInfo | null>(null);
   const [ready, setReady] = useState(false);
@@ -137,6 +173,7 @@ export default function App() {
         loadSettings(),
         bandcampStatus().catch(() => null),
       ]);
+      settingsRef.current = loaded;
       setSettings(loaded);
       setAccount(status);
       setReady(true);
@@ -266,18 +303,72 @@ export default function App() {
     }
   }, [events, eventsSeen]);
 
-  const updateSettings = useCallback((patch: Partial<Settings>) => {
-    setSettings((prev) => {
-      const next = { ...prev, ...patch };
-      // The scope grant reads the folder back out of the store rather than
-      // taking it from here, so it has to wait for the write — before it, the
-      // backend would still be looking at the previous folder.
-      void saveSettings(next).then(() => {
-        if (patch.library_dir) return allowLibraryPlayback();
+  /** The latest settings, and whether the burst they came from moved the folder. */
+  const pendingSave = useRef<{ settings: Settings; grant: boolean } | null>(null);
+  const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const lastWriteAt = useRef(0);
+  const writes = useRef<Promise<unknown>>(Promise.resolve());
+
+  const flushSettings = useCallback(() => {
+    if (saveTimer.current !== null) {
+      clearTimeout(saveTimer.current);
+      saveTimer.current = null;
+    }
+    const next = pendingSave.current;
+    pendingSave.current = null;
+    if (!next) return;
+    lastWriteAt.current = Date.now();
+    // Chained, not fired: two overlapping `save()` calls rewrite the same file,
+    // and the one that finishes last wins whether or not it is the newer one.
+    //
+    // The scope grant reads the folder back out of the store rather than taking
+    // it from here, so it has to wait for the write — before it, the backend
+    // would still be looking at the previous folder. A write that failed
+    // therefore must not be followed by the grant: the folder the backend would
+    // read is still the old one.
+    writes.current = writes.current
+      .then(() => saveSettings(next.settings))
+      .then(() => (next.grant ? allowLibraryPlayback() : undefined))
+      .catch((e: unknown) => {
+        // Caught rather than left to reject, because a rejected promise left in
+        // this chain would take every later write down with it. Reported to the
+        // console rather than as a toast: a toast here is a copy of an event log
+        // row and the log is written by the backend, so a failure on this side
+        // of the boundary has no channel of its own — the same reason
+        // `PlayerBar` warns about a waveform it could not get.
+        console.warn("Could not save the settings", e);
       });
-      return next;
-    });
   }, []);
+
+  const updateSettings = useCallback(
+    (patch: Partial<Settings>) => {
+      const next = { ...settingsRef.current, ...patch };
+      settingsRef.current = next;
+      setSettings(next);
+      pendingSave.current = {
+        settings: next,
+        grant: !!patch.library_dir || !!pendingSave.current?.grant,
+      };
+      // Leading edge as well as trailing: a click writes at once, the way it
+      // always did, and only a *burst* waits. That keeps the quit-right-after-a
+      // -click case exactly as safe as it was, and leaves at risk only the tail
+      // of a drag — where the value that did reach disk is one drag-step away
+      // from the one that did not.
+      if (saveTimer.current !== null) return;
+      const since = Date.now() - lastWriteAt.current;
+      if (since >= SAVE_COALESCE_MS) {
+        flushSettings();
+        return;
+      }
+      saveTimer.current = setTimeout(flushSettings, SAVE_COALESCE_MS - since);
+    },
+    [flushSettings],
+  );
+
+  // Best effort for the tail of a burst. It covers a React unmount, which a
+  // Tauri window close is not — that tears the webview down without unmounting
+  // anything — so it is not the reason the leading-edge write above exists.
+  useEffect(() => flushSettings, [flushSettings]);
 
   // Which local tracks came from Bandcamp + which purchases are already local.
   const sync = useMemo(
@@ -312,7 +403,7 @@ export default function App() {
   );
 
   return (
-    <PlayerProvider>
+    <PlayerProvider volume={settings.volume}>
     <div className="min-h-screen bg-bg font-mono text-fg">
       {!splashGone && (
         <AppSplash

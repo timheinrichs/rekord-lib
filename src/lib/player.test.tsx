@@ -121,3 +121,27 @@ describe("skipping through a queue", () => {
     expect(play).toHaveBeenCalledTimes(2);
   });
 });
+
+describe("volume", () => {
+  afterEach(() => vi.restoreAllMocks());
+
+  it("applies the level it is given, before anything is loaded", () => {
+    // The element carries the property across a `src` change, so it does not
+    // have to wait for a track — and it must not, or the first track of a
+    // session would play at full level for as long as it takes to load.
+    render(<PlayerProvider volume={0.3}>{null}</PlayerProvider>);
+    expect(document.querySelector("audio")?.volume).toBe(0.3);
+  });
+
+  it("folds a level outside the range in rather than throwing", () => {
+    // `HTMLMediaElement.volume` throws on anything outside 0..1, and the value
+    // comes from a JSON file on disk.
+    render(<PlayerProvider volume={9}>{null}</PlayerProvider>);
+    expect(document.querySelector("audio")?.volume).toBe(1);
+  });
+
+  it("plays at full level when nobody says otherwise", () => {
+    render(<PlayerProvider>{null}</PlayerProvider>);
+    expect(document.querySelector("audio")?.volume).toBe(1);
+  });
+});

@@ -10,6 +10,8 @@ import {
 } from "react";
 import { convertFileSrc } from "@tauri-apps/api/core";
 
+import { clampVolume, DEFAULT_SETTINGS } from "./settings";
+
 /** A single entry in the play queue. */
 export interface PlayerTrack {
   id: string;
@@ -95,8 +97,18 @@ export function usePlayerProgress(): PlayerProgress {
  * App-wide audio player. Streams local files through Tauri's asset protocol and
  * drives a single hidden <audio> element. The bottom player bar renders from
  * this context via usePlayer().
+ *
+ * `volume` comes from the settings rather than from state here, so the stored
+ * default and whatever the user drags are one value and cannot disagree. It is
+ * defaulted, so a test can mount the provider on its own.
  */
-export function PlayerProvider({ children }: { children: ReactNode }) {
+export function PlayerProvider({
+  children,
+  volume = DEFAULT_SETTINGS.volume,
+}: {
+  children: ReactNode;
+  volume?: number;
+}) {
   const audioRef = useRef<HTMLAudioElement | null>(null);
   /** A track change is waiting out the coalescing window. */
   const loading = useRef(false);
@@ -196,6 +208,17 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     if (playing) a.play().catch(() => setPlaying(false));
     else a.pause();
   }, [playing, currentPath]);
+
+  // Reflect the volume onto the element.
+  //
+  // Deliberately its own effect, and deliberately the only thing in it: it
+  // touches neither `src` nor `play()`, so it cannot reach the audio-session
+  // activation described above. It also runs before any track is loaded, which
+  // is harmless — the property survives a `src` change.
+  useEffect(() => {
+    const a = audioRef.current;
+    if (a) a.volume = clampVolume(volume);
+  }, [volume]);
 
   // Reserve space at the bottom so the fixed bar never covers content.
   const active = !!current;
