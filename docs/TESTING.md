@@ -328,6 +328,11 @@ still worth reproducing on a quiet machine before it is believed.
 | What the log collects per file is never shown, and boot shows nothing | `toasts.e2e.test.tsx` · "stays quiet for what a scan collects per file", "raises nothing at boot, however full the log already is" |
 | Nothing reaches the database without `db::require` | `commands.rs` · `nothing_reaches_the_database_without_require` |
 | A release cannot contain the automation server | `.github/workflows/e2e.yml` · "The release guard still guards" |
+| The app's only frame loop stops when it should | `usePlayhead.test.tsx` · "stops on unmount"; `GridLane.test.tsx` · "runs no frame loop at all when the machine has asked for less motion" |
+| A drag on the zoomed waveform leaves nothing behind | `GridLane.test.tsx` · "takes its drag listeners with it when it goes" |
+| A grid somebody set reaches the backend by the names it expects | `trackSurface.e2e.test.tsx` · "writes an anchor the backend will take, and reads it back" |
+| A rescan cannot take a hand-set grid | `db/mod.rs` · `a_rescan_does_not_touch_a_hand_set_grid` |
+
 
 Run them with `npm test`, `cd src-tauri && cargo test`, and `npm run e2e`. CI
 gates the first two on every push; the third is on demand.

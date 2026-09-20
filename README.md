@@ -48,6 +48,11 @@ track of, without uploading anything anywhere.
   reordered by carrying a row to its place, played from the row — and
   **"Export for Rekordbox"**: a `rekordbox.xml` with the whole library, the
   playlists, and each track's tempo, key and beat grid, imported in one step.
+- **Playback and the beat grid** — a player bar with the whole track, and a
+  track surface that zooms in: a waveform that scrolls under a fixed playhead,
+  bar numbers, and the beat grid drawn on it. The anchor and which beat of the
+  bar it is can be moved by hand, survive a rescan, and go into the Rekordbox
+  export. See [docs/PLAYBACK.md](docs/PLAYBACK.md).
 - **Covers** — embedded artwork as thumbnails, falling back to a `cover.jpg`
   next to the audio, which conversion then embeds.
 - **Duplicate detection** across formats and filenames, by length, acoustic

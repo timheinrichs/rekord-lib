@@ -235,7 +235,8 @@ collection is what Rekordbox imports tracks *from*.
 
 Per track: the tags, `AverageBpm`, `Tonality`, `TotalTime`, `SampleRate`,
 `Kind`, `DateAdded`, a percent-encoded `file://localhost` `Location`, and one
-`<TEMPO>` marker where a beat grid exists.
+`<TEMPO>` marker where a beat grid exists — the hand-placed one where there is
+one, the detected one otherwise.
 
 **A pending metadata edit is what gets written.** One made in the editor and not
 yet applied to the file overrides the tags on its row, so the xml says what the
@@ -253,12 +254,21 @@ inventing empty ones would put marks in somebody's player that nobody set.
 `AverageBpm="0.00"`, which is what Rekordbox writes for "not analysed" rather
 than a number we made up.
 
-**One marker, and it claims beat 1 without knowing it.** Our detector produces
-one tempo per track, so a grid is a period and a phase (**B3**); `Metro="4/4"`
-and `Battito="1"` are what the format wants, and the bar position is not
-something we detect. The phase is stored on the *track's* clock — the detector
-counts from the start of its 120 s excerpt, which usually begins 30 s in, so the
-raw number would put every beat half a minute early.
+**One marker, and its bar position is asserted unless somebody set it.** Our
+detector produces one tempo per track, so a grid is a period and a phase
+(**B3**); `Metro="4/4"` is what the format wants and is all the app knows. The
+phase is stored on the *track's* clock — the detector counts from the start of
+its 120 s excerpt, which usually begins 30 s in, so the raw number would put
+every beat half a minute early.
+
+`Battito` used to be the literal `1` on every track, because the bar position is
+exactly what the detector does not produce. A grid placed by hand carries one
+now, and the export writes it; a detected grid still says 1 without knowing it.
+The overlay works the way the metadata one above does — `grid_edits` is read
+beside the tracks and resolved in `track_xml`, so `tracks.beat_offset_secs`
+keeps meaning what the detector found. See [PLAYBACK.md](PLAYBACK.md), and note
+that no export with a bar position other than 1 has been through a real
+Rekordbox yet ([CDJ_TEST_MATRIX.md](CDJ_TEST_MATRIX.md)).
 
 **The format is not guessed, and the `Location` encoding is not either.** Every
 attribute name, the `TEMPO` shape and the `NODE` shape were read off a real

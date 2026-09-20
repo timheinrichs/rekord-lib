@@ -29,12 +29,14 @@ Stated first, because it is the fastest way to find out this is the wrong tool.
   third of the time, and a wrong `TKEY` is read by every other program and
   outlives the guess that produced it. A database value is replaced the moment a
   better detector exists. Numbers in [DSP_BENCHMARK.md](DSP_BENCHMARK.md).
-- **We do not claim a beat grid you can perform on.** The beat phase is
-  detected, stored, and written into the Rekordbox export as a single `TEMPO`
-  marker — it is *not* drawn under the waveform, which this document claimed for
-  two releases and which was never true. The first downbeat is not detected at
-  all (**B3**), so every marker says "beat 1" without knowing it, and a
-  variable-tempo track gets one number like everywhere else.
+- **We do not detect the downbeat.** The grid is drawn now, on a zoomed
+  waveform that follows the playhead, and the anchor and the bar position can be
+  moved by hand and survive a rescan. What the app still does not do is *find*
+  the first beat of the bar: a detected grid asserts beat 1 without knowing it,
+  and only a grid somebody set says otherwise. A variable-tempo track still gets
+  one number, because the detector produces one tempo per track. And no export
+  written with a bar position other than 1 has been through a real Rekordbox or
+  a player yet — [CDJ_TEST_MATRIX.md](CDJ_TEST_MATRIX.md) says so.
 - **We do not run on Windows or Linux**, and there is no plan to (**G2**). macOS
   on Apple Silicon, one target, because the bundled ffmpeg sidecars exist for
   exactly that one.

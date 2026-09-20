@@ -95,13 +95,18 @@ category.
   conversion (default AIFF), metadata editor incl. bulk edit and undo, cover
   artwork with `cover.jpg` fallback, duplicate groups with cached fingerprints,
   playlists as an explicit order, Rekordbox XML export with tempo/key/one tempo
-  marker, Bandcamp login/sync/download, self-update.
+  marker, Bandcamp login/sync/download, self-update, a playback volume, and a
+  track surface with a zoomed waveform that follows the playhead, the beat grid
+  drawn on it, and an anchor and bar position you can move.
 - **Deliberate non-capabilities today**, and any claim otherwise is a defect:
   no USB/player database writing (**H1**), no musical key written into files
   (detected and kept in the database only — the detector agrees with Rekordbox
-  about a third of the time), no performable beat grid (phase only, first
-  downbeat not detected — **B3**), no Windows or Linux build (**G2**), no upload
-  of the library.
+  about a third of the time), **no detected downbeat** — the grid is drawn and
+  its anchor and bar position can be set by hand, but a *detected* grid still
+  asserts beat 1 without knowing it (**B3**), and no export with any other bar
+  position has been through a real Rekordbox or a player; no halving or doubling
+  of a tempo from the track surface (**B8a**); no Windows or Linux build
+  (**G2**), no upload of the library.
 - **Platform:** a standalone macOS desktop app (Tauri 2 + React 19 + Rust) for
   **Apple Silicon only** — the bundled `ffmpeg`/`ffprobe` sidecars exist for that
   one target, and it stays the only one until the app is finished on it. The
@@ -117,7 +122,7 @@ category.
   work, with the condition that would reopen it, in `TODO.md`.
 - **Terminology to keep:** *compat* (the compatibility verdict), *managed
   library*, *duplicate group*, *conversion*, *metadata incomplete*,
-  *beat grid marker*, *sidecar*.
+  *beat grid marker*, *anchor* (the beat a grid is measured from), *sidecar*.
 
 ## Brand Commitments
 

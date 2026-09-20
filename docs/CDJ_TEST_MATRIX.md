@@ -68,6 +68,7 @@ The scenario names below are stable identifiers — use them verbatim in the
 | `tag-fields` | Title, artist, album, album artist, genre and label appear in browse as written. |
 | `bpm-tag` | A BPM detected by the app and written to the tag is the one the player shows. |
 | `long-filename-unicode` | Non-ASCII titles and filenames browse and load. Worth its own row: this is exactly the class of bug that only hardware finds. |
+| `grid-battito` | A grid whose anchor was declared to be a beat other than the first of its bar (`Battito="2"`–`"4"`). **Not tested.** The app asserted `Battito="1"` on every track until the grid became editable, so this is a value it has never written before — and the quantize, the beat jump and every cue snapped to that grid inherit it. Needs a Rekordbox import and then a player. The always-valid fallback if it is wrong is to keep the 1 and move `Inizio` to the declared downbeat instead. |
 
 ## Matrix
 

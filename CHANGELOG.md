@@ -31,6 +31,24 @@ contain incompatible changes.
   playhead moves inside a window that stands still and jumps on when it is left.
   Every number and every line is still there, which is what that rule asks for
   and what a canvas cannot be told by CSS.
+- **The beat grid can be moved.** On the track surface: a visible *Seek / Move
+  grid* switch, the lane draggable under it, "set the anchor to the playhead"
+  for the way most corrections actually happen, ±5 ms nudges, and a 1–4 control
+  saying which beat of the bar the anchor is. That last one is the value the
+  Rekordbox export writes as `Battito`, which the app has asserted as 1 on every
+  track since it started writing grids — the bar position is exactly what the
+  detector does not produce, and now it can be told. *Reset to detected* is
+  always there, because what you set is stored apart from what was found rather
+  than on top of it: a rescan rewrites the whole track row and cannot reach it,
+  a relocation and a conversion carry it along, and deleting the track takes it
+  with them.
+
+  Two things this deliberately does not do yet. It cannot halve or double a
+  tempo — that is a metadata edit and the machinery for one is not reachable
+  from this screen; it is written down in `TODO.md` with the condition that
+  would change it. And no export written with a bar position other than 1 has
+  been through a real Rekordbox or a player, which is a row in the hardware
+  matrix rather than a claim here.
 - **The app has a volume of its own.** A Playback section in the settings sets
   the level the player starts at and keeps; until now the only way to change it
   was the system mixer, which changes it for everything else on the machine too.

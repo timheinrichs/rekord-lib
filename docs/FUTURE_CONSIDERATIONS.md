@@ -31,7 +31,6 @@ item again.
 | Tier | Theme |
 | --- | --- |
 | [A](#a--interoperability) | Interoperability — getting the library out of the app |
-| [B](#b--analysis-quality) | Analysis quality |
 | [D](#d--performance) | Performance |
 | [E](#e--security-and-distribution) | Security and distribution |
 | [F](#f--documentation-and-process) | Documentation and process |
@@ -105,8 +104,12 @@ this format we have *not* read off a file Rekordbox wrote: confirm them against
 a real export that has both kinds of mark in it before writing any.
 
 Somewhere to set them, which the track row is not: 112 px for a whole track puts
-neighbouring marks inside the same pixel. The zoomed, playhead-following
-waveform in I2 is the prerequisite, and B8 waits on the same one.
+neighbouring marks inside the same pixel. **That prerequisite has shipped.** The
+track surface draws a zoomed waveform that follows the playhead, with the beat
+grid on it and an anchor that can be dragged (I2, B8) — and it already reserves
+the column a cue list goes in. What a mark needs from it is a coordinate
+mapping, one overlay slot and the grid's own change callback; see
+[PLAYBACK.md](PLAYBACK.md).
 
 And be clear about where a mark actually arrives. Through A2 it reaches
 Rekordbox, which is the realistic path; onto a CDJ without Rekordbox in between
@@ -116,40 +119,8 @@ hardware question rather than a format one — the lettered slots a player offer
 differ by generation, and the CDJ-2000nexus in the matrix is not a CDJ-3000 —
 so that belongs in F4 as a measured row, not in the export as an assumption.
 
-*Size: L · completes A2 · needs I2's larger waveform to be settable · full
+*Size: L · completes A2 · the surface it needs shipped with I2 and B8 · full
 player support depends on H1*
-
----
-
-## B — Analysis quality
-
-### B8 · Move the beat grid
-
-**What** — make the stored grid editable: drag its anchor onto the beat that is
-actually there, say which beat is the downbeat, and correct a tempo that is
-right about the period and wrong about the multiple, by hand.
-
-**Why** — B3 shipped the grid as a *detected* value and nothing else.
-`tracks.beat_offset_secs` plus the tempo is a full grid, and A2 writes it out as
-`<TEMPO Inizio="…" Bpm="…" Metro="4/4" Battito="1"/>` — where `Battito="1"`
-asserts that the anchor is the first beat of the bar, which is precisely the
-part B3 did not detect. When the anchor lands on beat three, everything
-downstream inherits it: the player's quantize, a beat jump, and every A4 mark
-snapped to that grid. Today the app has no way to say so and no way to fix it.
-
-A movable grid is also what makes A4 worth snapping: a cue on the beat is only
-on the beat if the beats are where the music is.
-
-**What it costs** — not a schema step; the column exists and the export path
-exists. What is new is a way to *see* the grid and something to drag, and the
-row waveform cannot carry either (see *"The beat grid is stored and exported,
-but not drawn"* in [TODO.md](../TODO.md)). So this shares I2's larger waveform
-with A4, and it needs an edit to survive a rescan — a hand-placed anchor is
-user data and must not be overwritten by the next analysis, the way a pending
-metadata edit is not overwritten by a rescanned tag.
-
-*Size: M · storage and export exist · needs I2's larger waveform · a hand-set
-grid must survive re-analysis*
 
 ---
 
@@ -286,26 +257,6 @@ What the app looks like while it is being used, and what it does while a track
 is playing. Everything here is small next to the tiers above and none of it is
 speculative — each entry is something a person using the app asked for after
 looking at it.
-
-### I2 · Settings for playback
-
-**What** — a settings section for the player: how the waveform is shown (larger,
-and scrolling with the playhead rather than static), and a volume control.
-
-**Why** — B6 shipped a waveform *preview*, sized and shaped for a player bar.
-Reading a track while it plays is a different job, and volume does not exist at
-all today: the only way to change it is the system mixer.
-
-Two different costs hide in one item, and they should probably split. Volume is
-a property on the `<audio>` element plus a settings key — small. A waveform that
-follows the playhead is a per-frame redraw against the audio clock, where the
-row waveform is a static overview drawn once from a stored table; that is a new
-drawing path, not a bigger version of the existing one. The stored waveform's
-resolution also has to be enough for a larger view, and that is
-`waveform::ALGO_VERSION` territory — changing it invalidates every stored
-waveform, which the cache rules require to be deliberate.
-
-*Size: M · touches B6's stored waveform*
 
 ### I6 · The selection's actions do not belong in the header
 
@@ -468,17 +419,17 @@ so the question does not come back.
 
 The entries themselves are gone — what they became is in
 [`CHANGELOG.md`](../CHANGELOG.md), and the parts that shipped without the rest
-of themselves are in [TODO.md](../TODO.md) as `C1a`, `C1b`, `C2a` and the
-undrawn beat grid. Only the ids stay, so that an older commit, document or
+of themselves are in [TODO.md](../TODO.md) as `C1a`, `C1b`, `C2a`, `B8a` and the
+grid the library row still does not draw. Only the ids stay, so that an older commit, document or
 issue still resolves one and so that none of them is ever reused.
 
 | Tier | Shipped |
 | --- | --- |
 | A — Interoperability | **A1** playlists in the app · **A2** Rekordbox XML export |
-| B — Analysis quality | **B1** key detection · **B2** fractional BPM and an exposed confidence value · **B3** beat grid, without the downbeat · **B4** analysing more than one window — *measured and rejected*, see TODO.md · **B5** configurable BPM range · **B6** waveform preview in the player bar · **B7** benchmark against `stratum-dsp`, see [DSP_BENCHMARK.md](DSP_BENCHMARK.md) |
+| B — Analysis quality | **B1** key detection · **B2** fractional BPM and an exposed confidence value · **B3** beat grid, without the downbeat · **B4** analysing more than one window — *measured and rejected*, see TODO.md · **B5** configurable BPM range · **B6** waveform preview in the player bar · **B7** benchmark against `stratum-dsp`, see [DSP_BENCHMARK.md](DSP_BENCHMARK.md) · **B8** move the beat grid — the tempo's own octave correction went to TODO.md as `B8a` |
 | C — Robustness and data safety | **C1** backup and undo before destructive writes · **C2** relocate a moved library folder · **C3** persistent event log · **C4** visible failed-files list · **C5** pause and resume long scans · **C6** sidecar self-test at startup · **C7** invalidate the cover thumbnail cache after a write · **C8** undo restores the original cover bytes · **C9** "no tempo" is an answer worth storing |
 | D — Performance | **D1** core- and memory-aware worker budget · **D3** progressive per-field row updates during the scan |
 | E — Security and distribution | **E2** harden Bandcamp download handling · **E3** narrow the `assetProtocol` scope · **E4** dependency auditing in CI · **E5** move the Discogs secret into the Keychain |
 | F — Documentation and process | **F1** functional docs per feature area · **F2** [COMPARISON.md](COMPARISON.md) · **F3** [CONTRIBUTING.md](../CONTRIBUTING.md) · **F5** severity marking in the changelog · **F6** [COMMANDS.md](COMMANDS.md) · **F7** [TODO.md](../TODO.md) |
 | G — Reach and test depth | **G1** end-to-end tests, in two layers, see [TESTING.md](TESTING.md) |
-| I — Interface and playback | **I1** an expanded group looks expanded · **I3** edit a playlist in a dialog · **I4** the player says which album · **I5** "Add to playlist" is a dialog · **I7** an action that changed something says so · **I8** playlists are their own view |
+| I — Interface and playback | **I1** an expanded group looks expanded · **I2** playback settings: a volume, and a zoomed waveform that follows the playhead · **I3** edit a playlist in a dialog · **I4** the player says which album · **I5** "Add to playlist" is a dialog · **I7** an action that changed something says so · **I8** playlists are their own view |

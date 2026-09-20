@@ -63,9 +63,14 @@ to stay honest, and `CLAUDE.md` requires every new cache to state its own.
 | --- | --- |
 | A `tracks` row | the file's mtime and size still match (`db::needs_reanalysis`) **and** the app version has not changed since the row was written |
 | A `fingerprints` row | mtime, size and `fingerprint::ALGO_VERSION` match |
-| A `waveforms` row | mtime, size and `waveform::ALGO_VERSION` match |
+| A `waveforms` row | mtime, size and `waveform::ALGO_VERSION` match. This is the **overview** — 2400 bins for a whole track — and it is the only waveform the scan stores. The detail one a zoomed view draws is computed when a track is opened and cached nowhere but in memory; see [PLAYBACK.md](PLAYBACK.md) |
 | `tracks.bpm_absent_at` — "listened, no tempo" | the stamped app version is the running one; a re-probe overwrites the row anyway |
 | `tracks.grid_absent_at` — "listened, no beat grid" | the same, for the phase |
+| The detail waveforms in `src/lib/detailWaveforms.ts` | until a scan finishes or a conversion rewrites the file behind one. Two entries, in memory, and the file it was decoded from may have been rewritten under it — which is why a finished run sweeps the lot, the way it sweeps the row waveforms |
+
+A `grid_edits` row is **not** in this table on purpose: it is not a cache.
+Nothing invalidates a beat somebody placed by hand, because the beats are in the
+music and a tag write does not move them. Only the user clears it.
 
 **"No tempo" is an answer, and it is stored as one.** `bpm IS NULL` cannot say
 whether a file has been analysed, so the backlog that runs at every start
