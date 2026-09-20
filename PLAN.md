@@ -1,8 +1,10 @@
-# Plan — 0.10.0: the app shows its state and answers back
+# Plan — 0.10.0: the app says where it is and what it did
 
-Three items from tier I of [docs/FUTURE_CONSIDERATIONS.md](docs/FUTURE_CONSIDERATIONS.md),
-all reported by someone using the app. They are one theme: **the app should show
-what state it is in and confirm what it just did.**
+Four items from tier I of [docs/FUTURE_CONSIDERATIONS.md](docs/FUTURE_CONSIDERATIONS.md),
+all reported by someone using the app. Three of them are one theme — **the app
+should show what state it is in and confirm what it just did** — and the fourth
+(I8) is what that theme runs into when a playlist is pretending to be a way of
+folding the library.
 
 ## Version
 
@@ -117,3 +119,58 @@ new Don't — do not write a resting state in the hover tone. Plus a correction:
 the Tinted-Ring Rule's example uses a bare `text-warning-500` and claims the
 `fg-warning` utility does not exist, which eleven shipped call sites and
 `tokens.css` contradict.
+
+## I8 · Playlists are their own view
+
+Added to this release rather than the next one, deliberately: I3 gave a playlist
+a dialog to be edited in, I5 gave it a dialog to be filled from, and leaving it
+a *grouping* for one more version would mean shipping two halves of an argument
+without its conclusion.
+
+The navigation becomes **Library · Playlists · Bandcamp**, and the switch goes
+back to four ways of folding one list — which is what it was always for. The
+entry for `["playlist", "Playlists"]` has carried a comment admitting the
+mismatch since it was written: *"unlike the three before it this one does not
+fold the library into a different shape — it shows an order the user made."*
+
+**What it inherits by sitting in the switch**, and loses by leaving:
+
+- the search and the filter, which hide rows of a list whose whole content is
+  its order — the reason `positions` has to be taken from the stored playlist
+  rather than from what is on screen;
+- sort headers that **are not inert and never were**. There is no guard
+  anywhere: `SortableHeader` is always live, so a click over a playlist writes
+  `aria-sort` — telling a screen reader the table was sorted when it was not —
+  re-fades the list and throws away the measured row heights. The defect leaves
+  with its host, and no guard replaces it, because the header is local to
+  `LibraryView` and cannot be reached from anywhere else;
+- an **Unsorted** bucket that exists only because a grouping must account for
+  every row. A view has no such duty, so it goes.
+
+**Two decisions taken before the design**, both of which keep this from being a
+second table: no Unsorted, and no selection — the view is about order, and bulk
+work stays in the library where the filter and the columns are.
+
+**What evaporates.** `buildPlaylistGroups`, `UNSORTED_ID` and `PlaylistGroup`
+have one runtime caller between them, and every clause of their contract exists
+to survive a filter: positions off the stored list, a stored length, a path with
+no visible track skipped rather than drawn empty. A view has no filter, so the
+position is the index — which `playlistRows` already returns. The complexity
+does not move to the new file; it stops being needed. `PlaylistEditor` is
+absorbed by the view it was a preview of, and `PlaylistMenu` goes with the group
+head it hung from.
+
+**What does not move.** "Add to playlist" stays in the library. The roadmap
+guessed the view would absorb it; that mistakes which half is which. The dialog
+has a destination half — a list of playlists — and a subject half, which is a
+selection made in the library table. Only the second is expensive, and it cannot
+leave the table it is made in. The Rekordbox export stays too, and for a reason
+the backend already states: it writes the whole library, and the collection is
+what Rekordbox imports tracks *from*.
+
+**One thing the view gains that the table never had**: a drop target at the end
+of a playlist. In the table you can only drop *in front of* a row, so appending
+by drag was impossible and only the ↓ button could do it.
+
+**One thing it gives up**: dragging a row today moves the whole selection if
+that row is selected. Without a selection, a drag moves one row.
