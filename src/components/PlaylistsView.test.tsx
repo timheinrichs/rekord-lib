@@ -249,6 +249,34 @@ describe("PlaylistsView", () => {
     expect(rows()[1].className).not.toContain("accent-500");
   });
 
+  it("marks no text while a row is being carried", async () => {
+    // A pointer drawn across table cells selects their text, which painted
+    // every row the drag passed over in the selection colour — the drag looked
+    // like it was picking up everything it crossed.
+    setup();
+    withGeometry();
+    const body = screen.getByRole("rowgroup", { name: "Tracks in this playlist" });
+    expect(body.className).not.toContain("select-none");
+
+    fireEvent.pointerDown(rows()[1], { button: 0, clientY: 100 });
+    expect(body.className).toContain("select-none");
+
+    // And it is selectable again afterwards, so a title can still be copied.
+    fireEvent.pointerUp(rows()[1], { clientY: 100 });
+    expect(body.className).not.toContain("select-none");
+  });
+
+  it("goes translucent while it is being carried", async () => {
+    setup();
+    withGeometry();
+    expect(rows()[1].className).not.toContain("opacity-");
+
+    fireEvent.pointerDown(rows()[1], { button: 0, clientY: 100 });
+    expect(rows()[1].className).toContain("opacity-40");
+    // Only the one being carried.
+    expect(rows()[0].className).not.toContain("opacity-");
+  });
+
   it("does not arm a drag from the row's own buttons", async () => {
     // Pressing ↑ must not start a gesture that then swallows the click.
     const { user, move, step } = setup();

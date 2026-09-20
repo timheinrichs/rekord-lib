@@ -499,7 +499,16 @@ function OpenPlaylist({
                 ))}
               </tr>
             </thead>
-            <tbody ref={body} aria-label="Tracks in this playlist">
+            {/* Nothing is selectable while a row is being carried: a pointer
+                drawn across table cells selects their text, which painted the
+                rows the drag passed over in the selection colour. Only while
+                dragging, so a title can still be copied the rest of the
+                time. */}
+            <tbody
+              ref={body}
+              aria-label="Tracks in this playlist"
+              className={drag ? "cursor-grabbing select-none" : ""}
+            >
               {rows.map((row, i) => {
                 const last = i === rows.length - 1;
                 // The line sits in the gap the drop would use: above this row,
@@ -514,6 +523,9 @@ function OpenPlaylist({
                       // must not arm a drag that then swallows the click.
                       if (e.button !== 0) return;
                       if ((e.target as HTMLElement).closest("button")) return;
+                      // Stops the text selection this gesture would otherwise
+                      // begin before the first move is seen.
+                      e.preventDefault();
                       e.currentTarget.setPointerCapture(e.pointerId);
                       setDrag({ path: row.path, from: e.clientY });
                     }}
@@ -525,8 +537,14 @@ function OpenPlaylist({
                     }}
                     onPointerUp={() => endDrag(true)}
                     onPointerCancel={() => endDrag(false)}
+                    // The row being carried goes translucent, and only that.
+                    // A shadow would say "lifted" better, but the table is
+                    // `border-collapse: collapse` — checked in the built CSS —
+                    // and a box-shadow on a row of one is not reliably painted.
+                    // A class that may render nothing is worse than a quieter
+                    // effect that always does.
                     className={`group h-16 cursor-grab border-b border-border hover:bg-surface-2 ${
-                      drag?.path === row.path ? "opacity-50" : ""
+                      drag?.path === row.path ? "opacity-40" : ""
                     } ${last && !below ? "border-b-0" : ""} ${
                       above ? "border-t-2 border-t-accent-500" : ""
                     } ${below ? "border-b-2 border-b-accent-500" : ""}`}
