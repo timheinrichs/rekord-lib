@@ -25,12 +25,13 @@ describe("badgeLevel", () => {
     expect(badgeLevel(events, 2)).toBeNull();
   });
 
-  it("reports an unread ordinary message too", () => {
-    // The dot answers "did anything happen while I was not looking", and a
-    // finished export is an answer. It used to ignore `info` entirely, which
-    // left the one action that writes a file outside the library with no way
-    // of saying so.
-    expect(badgeLevel([event(3, "info"), event(2, "info")], 0)).toBe("info");
+  it("does not light up for a message that was already shown", () => {
+    // `info` is an action's own answer, and since 0.10.0 those are shown when
+    // they happen. Counting them here lit the dot permanently about messages
+    // the user had already read, and a hint that is always on distinguishes
+    // nothing. The rule this replaces is in `badgeLevel`'s docstring, with
+    // what the change costs.
+    expect(badgeLevel([event(3, "info"), event(2, "info")], 0)).toBeNull();
   });
 
   it("lets the loudest unread level win", () => {
@@ -45,12 +46,18 @@ describe("badgeLevel", () => {
   });
 
   it("only counts what is newer than the marker", () => {
-    const events = [event(3, "info"), event(2, "error"), event(1, "warn")];
-    // The error and the warning are both already read; the info entry is not,
-    // and now says so in its own colour rather than not at all.
-    expect(badgeLevel(events, 2)).toBe("info");
+    const events = [event(3, "warn"), event(2, "error"), event(1, "warn")];
+    // The error and the older warning are both read; the newest warning is not.
+    expect(badgeLevel(events, 2)).toBe("warn");
     expect(badgeLevel(events, 3)).toBeNull();
     expect(badgeLevel(events, 1)).toBe("error");
+  });
+
+  it("still counts an unread problem that arrived after a confirmation", () => {
+    // The case the change must not break: a scan warning is the reason the dot
+    // exists, and a stream of confirmations after it must not bury it.
+    const events = [event(4, "info"), event(3, "warn"), event(2, "info")];
+    expect(badgeLevel(events, 1)).toBe("warn");
   });
 
   it("treats an empty log as nothing to report", () => {

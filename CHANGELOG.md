@@ -26,6 +26,11 @@ contain incompatible changes.
   not lose a form to a keystroke aimed at a field.
 
 ### Changed
+- **The dot on the gear is about problems again.** It used to light up for any
+  unread entry, because a finished export had no other way of saying so. It has
+  one now, so an ordinary confirmation no longer raises it — a hint that is
+  always on distinguishes nothing. Warnings and errors still do, in their own
+  colour, and everything is still in the log.
 - **An expanded group looks expanded.** An open album, folder, label or
   playlist drops into a well — the head row and everything it contains together
   — instead of being marked by a rotated 14 px chevron alone. The step had to

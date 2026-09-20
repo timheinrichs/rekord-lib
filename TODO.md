@@ -168,6 +168,22 @@ message, and the badge is the older of the two.
 simply the next change in this area. The subscriber can prepend the notice and
 cap at `MAX_EVENTS` instead, now that it is handed the row.
 
+### I7b · Confirmations share a 500-row cap with the diagnostics
+
+**What** — `db::MAX_EVENTS` is 500 and `push_event` prunes to it. Seven commands
+now write an `Info` per run, so a long session of ordinary edits evicts the
+warn and error rows the log was built for — "the ones the app survived
+quietly", as `events.rs` puts it.
+
+**Why not** — 500 rows is a lot of actions before it bites, and the two obvious
+fixes both cost more than the symptom does today: a second retention rule means
+two prunes and a column to branch on, and raising the cap makes the log slower
+to read for the same reason it makes it longer.
+
+**What would change that** — a report of a warning that should have been in the
+log and was not. The cheap version is pruning `info` first and keeping the
+problems to the cap, which is a `WHERE level = 'info'` in the same transaction.
+
 ### The legacy `library` key in `rekord-lib.json`
 
 **What** — the pre-SQLite library, imported once by `db::migrate` and then left

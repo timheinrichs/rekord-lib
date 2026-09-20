@@ -41,18 +41,29 @@ export function onEventLogged(
 }
 
 /**
- * The level the badge should show, or `null` when everything has been read.
+ * The level the badge should show, or `null` when nothing unread needs
+ * attention.
  *
- * Every unread entry counts, including `info`. It used to ignore those, on the
- * grounds that a log full of "scan finished" should not put a dot on the header
- * forever — but the dot is not a warning, it is the answer to "did anything
- * happen while I was not looking", and something that finished *is* an answer.
- * An export that wrote a file to the Desktop had no way of saying so at all
- * under the old rule.
+ * This rule has now been written twice, and the second version is only right
+ * because of what changed under it. It first ignored `info`, so a log full of
+ * "scan finished" would not put a dot on the header forever. Then it counted
+ * every unread row, with the argument that the dot is not a warning but the
+ * answer to "did anything happen while I was not looking" — and, decisively,
+ * that an export which wrote a file to the Desktop *had no other way of saying
+ * so at all*.
  *
- * The colour carries the difference instead: an error outranks a warning
- * outranks an ordinary message, because the badge has room for one answer and
- * the loudest one is the one worth having.
+ * It has one now. Since 0.10.0 an action's own answer is shown when it
+ * happens (`Toasts`), and seven commands record an `Info` where one used to, so
+ * counting them here lights the dot permanently about messages the user has
+ * already read. A hint that is always on distinguishes nothing, so `info` is
+ * back out: the dot means something wants attention, and the colour still
+ * carries which — an error outranks a warning, because the badge has room for
+ * one answer and the loudest is the one worth having.
+ *
+ * What that costs, said out loud: an action that finished while nobody was
+ * looking leaves no dot. It is in the log, and nothing points at it. That is
+ * the trade the transient message bought, and if the messages ever stop being
+ * shown this rule has to be reconsidered with them.
  */
 export function badgeLevel(
   events: AppEvent[],
@@ -61,7 +72,6 @@ export function badgeLevel(
   const unread = events.filter((e) => e.id > seenId);
   if (unread.some((e) => e.level === "error")) return "error";
   if (unread.some((e) => e.level === "warn")) return "warn";
-  if (unread.length) return "info";
   return null;
 }
 
