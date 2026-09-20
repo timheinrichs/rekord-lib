@@ -502,8 +502,15 @@ function OpenPlaylist({
   const body = useRef<HTMLTableSectionElement>(null);
 
   /**
-   * Where every row was before the last reorder, so it can slide to where it is
-   * now instead of jumping there.
+   * Where every row sat in the layout before the last reorder, so it can slide
+   * to where it is now instead of jumping there.
+   *
+   * `offsetTop`, not `getBoundingClientRect().top`: a rect **includes
+   * transforms**, and the slide is a transform. Measuring with a rect while an
+   * earlier slide is still running reads the row's displaced position as if it
+   * were its layout position, so the next delta is wrong and the error
+   * compounds — rows walk out of their slots and leave holes. `offsetTop` is
+   * layout only and cannot see the animation at all.
    */
   const wasAt = useRef(new Map<string, number>());
 
@@ -515,6 +522,10 @@ function OpenPlaylist({
    * A layout effect, because the push-back has to happen before the browser
    * paints the new order; in a normal effect the jump is visible first and the
    * animation plays after it.
+   *
+   * A row can be moved again mid-slide, so the push-back adds whatever offset
+   * it is currently carrying: the animation then continues from where the row
+   * visually is rather than snapping to where the layout thinks it was.
    *
    * The carried row is left out: it is translucent and its copy is the thing
    * under the pointer, so sliding it as well would be two answers to where it
@@ -530,13 +541,23 @@ function OpenPlaylist({
     rowsEl.forEach((el, i) => {
       const path = shown[i]?.path;
       if (!path) return;
-      const top = el.getBoundingClientRect().top;
+      const top = el.offsetTop;
       now.set(path, top);
       const before = wasAt.current.get(path);
-      if (still || before === undefined || before === top) return;
-      if (path === drag?.path) return;
+
+      if (still || path === drag?.path) {
+        el.style.transition = "";
+        el.style.transform = "";
+        return;
+      }
+      if (before === undefined || before === top) return;
+
+      // Guarded: with nothing set the computed value is the string "none",
+      // which the matrix constructor rejects outright.
+      const t = getComputedStyle(el).transform;
+      const shift = t && t !== "none" ? new DOMMatrixReadOnly(t).m42 : 0;
       el.style.transition = "none";
-      el.style.transform = `translateY(${before - top}px)`;
+      el.style.transform = `translateY(${before - top + shift}px)`;
       requestAnimationFrame(() => {
         el.style.transition = `transform ${REORDER_MS}ms ease-out`;
         el.style.transform = "";
