@@ -1,4 +1,12 @@
-import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import {
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ReactNode,
+} from "react";
+import { createPortal } from "react-dom";
 import AppHeader from "./AppHeader";
 import { GripIcon, TrashIcon } from "./icons";
 import CoverThumb from "./CoverThumb";
@@ -266,8 +274,22 @@ function OpenPlaylist({
   /** How far a press has to travel before it is a drag and not a click. */
   const DRAG_THRESHOLD = 4;
 
-  /** The row being carried, and where the press began — for the threshold. */
-  const [drag, setDrag] = useState<{ path: string; from: number } | null>(null);
+  /** How long a row takes to slide to its new place. The app's fade is 150 ms. */
+  const REORDER_MS = 150;
+
+  /**
+   * The row being carried: where the press began (for the threshold), where
+   * inside the row it was grabbed and how wide it is (so the copy sits under
+   * the pointer exactly where the row was), and where the pointer is now.
+   */
+  const [drag, setDrag] = useState<{
+    path: string;
+    from: number;
+    grabY: number;
+    left: number;
+    width: number;
+    y: number;
+  } | null>(null);
   /**
    * The order on screen while a row is being carried, or `null` when it is the
    * stored one.
@@ -475,7 +497,54 @@ function OpenPlaylist({
     });
   }, [preview, rows]);
 
+  const carried = drag ? shown.find((r) => r.path === drag.path) : null;
+
   const body = useRef<HTMLTableSectionElement>(null);
+
+  /**
+   * Where every row was before the last reorder, so it can slide to where it is
+   * now instead of jumping there.
+   */
+  const wasAt = useRef(new Map<string, number>());
+
+  /**
+   * Slide the rows that moved — FLIP: the new layout is already committed, so
+   * each row is pushed back to where it was with no transition and then
+   * released, which the compositor animates.
+   *
+   * A layout effect, because the push-back has to happen before the browser
+   * paints the new order; in a normal effect the jump is visible first and the
+   * animation plays after it.
+   *
+   * The carried row is left out: it is translucent and its copy is the thing
+   * under the pointer, so sliding it as well would be two answers to where it
+   * is. And nothing animates under `prefers-reduced-motion` — a transform
+   * transition is not a CSS animation, so the stylesheet's blanket rule does
+   * not cover it and this has to ask.
+   */
+  useLayoutEffect(() => {
+    const rowsEl = [...(body.current?.children ?? [])] as HTMLElement[];
+    const now = new Map<string, number>();
+    const still = matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+    rowsEl.forEach((el, i) => {
+      const path = shown[i]?.path;
+      if (!path) return;
+      const top = el.getBoundingClientRect().top;
+      now.set(path, top);
+      const before = wasAt.current.get(path);
+      if (still || before === undefined || before === top) return;
+      if (path === drag?.path) return;
+      el.style.transition = "none";
+      el.style.transform = `translateY(${before - top}px)`;
+      requestAnimationFrame(() => {
+        el.style.transition = `transform ${REORDER_MS}ms ease-out`;
+        el.style.transform = "";
+      });
+    });
+
+    wasAt.current = now;
+  }, [shown, drag?.path]);
   const boxes = () =>
     [...(body.current?.children ?? [])].map((el) =>
       el.getBoundingClientRect(),
@@ -486,14 +555,25 @@ function OpenPlaylist({
     row: PlaylistRow,
   ) => {
     if (e.button !== 0) return;
+    const tr = e.currentTarget.closest("tr");
+    if (!tr) return;
+    const box = tr.getBoundingClientRect();
     // Stops the text selection the gesture would otherwise begin.
     e.preventDefault();
     e.currentTarget.setPointerCapture(e.pointerId);
-    setDrag({ path: row.path, from: e.clientY });
+    setDrag({
+      path: row.path,
+      from: e.clientY,
+      grabY: e.clientY - box.top,
+      left: box.left,
+      width: box.width,
+      y: e.clientY,
+    });
   };
 
   const moveDrag = (y: number) => {
     if (!drag) return;
+    setDrag({ ...drag, y });
     // A press that has not travelled is a click, not a drag.
     if (Math.abs(y - drag.from) < DRAG_THRESHOLD) return;
     const shown = preview ?? paths;
@@ -620,6 +700,53 @@ function OpenPlaylist({
         </div>
       )}
 
+
+      {/*
+        The row, in hand.
+
+        Two things happen at once and both are wanted: the list below has
+        already reordered, so the place the row will drop into is open and
+        numbered; and this is the row itself, following the pointer. Without the
+        copy the gesture has no weight — the row just teleports — and without
+        the reorder beneath it there is nothing to aim at.
+
+        A copy rather than the row, and portalled out of the table, for three
+        reasons that point the same way: a `<tr>` in a `border-collapse:
+        collapse` table does not reliably paint a shadow, so the thing that has
+        to look lifted cannot be the row; anything `fixed` inside the view would
+        anchor to the document rather than the screen, because the view wrappers
+        in `App.tsx` carry a transform; and a plain element can say "raised"
+        with the tone the design system keeps for exactly that, which a row
+        cannot without colliding with its own hover.
+
+        `pointer-events-none`, or it would take the moves it exists to follow.
+      */}
+      {carried &&
+        drag &&
+        preview &&
+        createPortal(
+          <div
+            aria-hidden
+            style={{
+              left: drag.left,
+              top: drag.y - drag.grabY,
+              width: drag.width,
+            }}
+            className="pointer-events-none fixed z-[60] flex h-16 items-center gap-3 rounded-lg border border-border-strong bg-surface-2 px-4 shadow-lg shadow-black/40"
+          >
+            <span className="w-6 shrink-0 text-right text-xs tabular-nums text-fg-subtle">
+              {carried.position}
+            </span>
+            <div className="min-w-0 flex-1">
+              <p className="truncate text-sm text-fg">{carried.title}</p>
+              <p className="truncate text-xs text-fg-subtle">
+                {carried.artist || "—"}
+              </p>
+            </div>
+            <GripIcon />
+          </div>,
+          document.body,
+        )}
     </>
   );
 }

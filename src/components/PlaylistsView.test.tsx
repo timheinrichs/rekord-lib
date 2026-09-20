@@ -259,6 +259,22 @@ describe("PlaylistsView", () => {
     expect(move).not.toHaveBeenCalled();
   });
 
+  it("carries a copy of the row under the pointer", () => {
+    // Two things at once, both wanted: the list reorders below, and the row
+    // itself follows the pointer. Without the copy the row just teleports.
+    setup();
+    withGeometry();
+    fireEvent.pointerDown(handle(rows()[1]), { button: 0, clientY: 100 });
+    // Not before the press has travelled: a click must not flash a card.
+    expect(screen.getAllByText("Beta")).toHaveLength(1);
+
+    fireEvent.pointerMove(rows()[1], { clientY: 10 });
+    expect(screen.getAllByText("Beta")).toHaveLength(2);
+
+    fireEvent.pointerUp(rows()[1], { clientY: 10 });
+    expect(screen.getAllByText("Beta")).toHaveLength(1);
+  });
+
   it("does not arm a drag from the row's other buttons", async () => {
     // Only the handle picks a row up; pressing − must not start a gesture that
     // then swallows the click.
