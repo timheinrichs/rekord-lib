@@ -26,13 +26,13 @@ interface Props {
  * below its trigger, and it has room for a list longer than a dropdown wants
  * to be.
  *
- * It is its own component rather than a mode of `PlaylistEditor`, which is the
- * question the roadmap left open. They share a shell — `Overlay` — and a chrome
- * string, and nothing else: the editor is about the contents of *one* playlist,
- * this is about picking *among* playlists for a selection, and the editor's
- * name field exists to stay editable while this one appears, commits once and
- * is gone. A shared mode would be a discriminated union with six fields absent
- * in each arm.
+ * **It stays in the library**, which is the question the roadmap left open when
+ * playlists got a view of their own. It looked like the view would absorb this
+ * dialog, and that mistakes which half is which: the dialog has a destination
+ * half — a list of playlists — and a subject half, which is a selection made in
+ * *this* table. Only the second is expensive, and it cannot leave the table it
+ * is made in. A picker in the playlists view would be a list of destinations
+ * with nothing to send.
  *
  * Like the editor, it holds no playlist state. Every change goes back through
  * `usePlaylists`, so there is one place playlist state lives.

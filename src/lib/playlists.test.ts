@@ -1,8 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
   addToPlaylist,
-  buildPlaylistGroups,
-  UNSORTED_ID,
   movePlaylistItem,
   movePlaylistItems,
   playlistRows,
@@ -11,7 +9,6 @@ import {
   uniquePlaylistName,
   wouldAdd,
 } from "./playlists";
-import { makeTrack } from "../test/factories";
 import type { Playlist } from "../types";
 
 const A = "/lib/a.aiff";
@@ -169,91 +166,6 @@ describe("wouldAdd", () => {
 
   it("counts a repeated path once", () => {
     expect(wouldAdd([], [A, A])).toBe(1);
-  });
-});
-
-describe("buildPlaylistGroups", () => {
-  const tracks = [A, B, C].map((path) => makeTrack({ path, id: path }));
-
-  it("puts the tracks in the playlist's order, not the table's", () => {
-    // The order is the content. Every other grouping sorts its rows; this one
-    // must not, which is also why the position is worth a column.
-    const groups = buildPlaylistGroups(
-      [playlist("Warmup", 1)],
-      { 1: [C, A] },
-      tracks,
-    );
-    expect(groups[0].tracks.map((t) => t.path)).toEqual([C, A]);
-  });
-
-  it("collects what is in no playlist, and says so even when empty", () => {
-    // It is where a track lands when it is taken out of a playlist. A bucket
-    // that appears only sometimes is one nobody learns to look in.
-    const groups = buildPlaylistGroups([playlist("Set", 1)], { 1: [A] }, tracks);
-    const unsorted = groups[groups.length - 1];
-    expect(unsorted.id).toBe(UNSORTED_ID);
-    expect(unsorted.tracks.map((t) => t.path)).toEqual([B, C]);
-
-    const all = buildPlaylistGroups([playlist("Set", 1)], { 1: [A, B, C] }, tracks);
-    expect(all[all.length - 1].tracks).toEqual([]);
-  });
-
-  it("numbers a row by the playlist, not by what the filter left over", () => {
-    // The row shows the position and the ↑/↓ buttons switch themselves off at
-    // the ends — but they move the track inside the *stored* list. Numbering
-    // from the visible rows made a filtered track "1 of 1": no way up, no way
-    // down, while sitting third in a list of three.
-    const onlyB = [makeTrack({ path: B, id: B })];
-    const groups = buildPlaylistGroups(
-      [playlist("Set", 1)],
-      { 1: [A, B, C] },
-      onlyB,
-    );
-    expect(groups[0].tracks.map((t) => t.path)).toEqual([B]);
-    expect(groups[0].positions[B]).toBe(2);
-    expect(groups[0].of).toBe(3);
-  });
-
-  it("counts a path the library no longer holds, and does not draw it", () => {
-    // A deleted file leaves its membership behind until the sweep prunes it.
-    // Skipping the row is right; renumbering around it is not, because the
-    // stored list is what a move is applied to.
-    const groups = buildPlaylistGroups(
-      [playlist("Set", 1)],
-      { 1: ["/gone.aiff", A] },
-      tracks,
-    );
-    expect(groups[0].tracks.map((t) => t.path)).toEqual([A]);
-    expect(groups[0].positions[A]).toBe(2);
-  });
-
-  it("skips a path with no track on screen", () => {
-    // Filtered out, or the file is gone and the row already pruned. Either way
-    // there is nothing to draw, and the count follows what is visible.
-    const groups = buildPlaylistGroups(
-      [playlist("Set", 1)],
-      { 1: [A, "/lib/vanished.aiff", B] },
-      tracks,
-    );
-    expect(groups[0].tracks.map((t) => t.path)).toEqual([A, B]);
-  });
-
-  it("keeps a track that is in two playlists in both", () => {
-    const groups = buildPlaylistGroups(
-      [playlist("One", 1), playlist("Two", 2)],
-      { 1: [A], 2: [A, B] },
-      tracks,
-    );
-    expect(groups[0].tracks.map((t) => t.path)).toEqual([A]);
-    expect(groups[1].tracks.map((t) => t.path)).toEqual([A, B]);
-    // And out of the unsorted bucket, which asks "in *any* playlist".
-    expect(groups[2].tracks.map((t) => t.path)).toEqual([C]);
-  });
-
-  it("is just the unsorted bucket when there are no playlists", () => {
-    const groups = buildPlaylistGroups([], {}, tracks);
-    expect(groups).toHaveLength(1);
-    expect(groups[0].tracks).toHaveLength(3);
   });
 });
 
