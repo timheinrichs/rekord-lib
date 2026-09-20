@@ -68,7 +68,7 @@ describe("first run", () => {
     await user.click(
       libraryView(container).getByRole("button", { name: "Open settings" }),
     );
-    await user.click(await screen.findByRole("button", { name: "Choose folder…" }));
+    await user.click(await screen.findByRole("button", { name: "Choose folder" }));
 
     await waitFor(() => expect(fake.called("start_scan")).toBe(true));
 

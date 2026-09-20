@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import Overlay from "./Overlay";
+import { PlusIcon } from "./icons";
 import type { Playlist } from "../types";
 
 interface Props {
@@ -174,9 +175,10 @@ export default function AddToPlaylistDialog({
                   setName(suggestName("New playlist"));
                   setCreating(true);
                 }}
-                className="h-9 inline-flex items-center justify-center rounded-md border border-border-strong px-3 text-sm hover:border-accent-500 hover:text-fg-accent"
+                className="h-9 inline-flex items-center justify-center gap-2 rounded-md border border-border-strong px-3 text-sm hover:border-accent-500 hover:text-fg-accent"
               >
-                New playlist…
+                <PlusIcon />
+                New playlist
               </button>
               <button
                 onClick={onClose}

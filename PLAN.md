@@ -60,10 +60,12 @@ the subject, the row semantics, the state model and the lifecycle — a mode wou
 make the props a union with six fields absent in each arm.
 
 The dialog keeps the wording that earns its place: `+2`, `+1 of 4`, `already in`
-on a disabled row. "New playlist…" becomes a standing action in the footer
-rather than the last row of a list. The labels `New playlist…` and
+on a disabled row. "New playlist" becomes a standing action in the footer
+rather than the last row of a list. The labels `New playlist` and
 `New playlist name` stay byte-identical, so a real regression test survives the
-rewrite.
+rewrite. (Written as `New playlist…` here and shipped without the ellipsis: the
+No-Ellipsis Rule was added later in the same release, and the test the sentence
+is about was re-pointed rather than lost.)
 
 `Overlay` gains an optional `onClose` and Escape, with a stack so only the
 topmost answers — `DuplicatesModal` already opens over `MetadataEditor`. The two

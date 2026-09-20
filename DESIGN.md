@@ -393,6 +393,18 @@ CAPS — including for data that arrives lowercase, which is not made to shout b
 an `uppercase` class. Enforced over the source by
 `src/styles/designRules.test.ts`.
 
+**The No-Ellipsis Rule.** A label never ends in `…` to announce that
+pressing it opens something. That is a desktop-menu convention from a world
+where a menu item might act immediately, and it buys nothing here: every
+control that needs more from the user opens a field or a dialog, so the
+character marks nothing and only makes the label longer — which on a 270 px
+sidebar button is the difference between a name and a name that wraps. The
+exception is the one thing a trailing ellipsis actually says: *this is
+running*. `Converting…`, `Scanning…`, `Installing… 42 %` are states, not
+titles, and they are temporary. The test reads it off the first word: a label
+that ends in `…` has to begin with a verb in `-ing`. Enforced over the source by
+`src/styles/designRules.test.ts`.
+
 **The Two Weights Rule.** 400 regular and 500 medium, nothing else. A heading
 separates itself by weight and colour, not by a third level — which is why 600
 is not available to reach for. Enforced over the source by
@@ -771,6 +783,8 @@ position), and only while the list is still empty.
 - **Don't** set body text in mono's place *or* set a value, label or table cell
   in Inter.
 - **Don't** use Title Case, ALL CAPS, or weight 600/700.
+- **Don't** end a label in `…` to say it opens something — only to say it is
+  running, and then it starts with an `-ing` verb — see the No-Ellipsis Rule.
 - **Don't** put a theme-dependent text token on an opaque ramp fill, and don't
   leave such a fill's label to inheritance — see the Two-Theme Rule.
 - **Don't** write a focus style on a component, or suppress the shared one with

@@ -380,7 +380,7 @@ export default function MetadataEditor({
               <CoverRadio
                 checked={coverKind === "file"}
                 onChange={chooseFile}
-                label="From file…"
+                label="From file"
               />
               <CoverRadio
                 checked={coverKind === "none"}

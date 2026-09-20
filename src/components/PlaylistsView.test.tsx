@@ -341,10 +341,32 @@ describe("PlaylistsView", () => {
     expect(screen.getByText(/This playlist is empty/)).toBeInTheDocument();
   });
 
+  it("keeps the create control under the list, not over it", async () => {
+    // The sidebar is the list; a control above its head pushed every playlist
+    // down a row, so it waits at the foot instead. And its label is bare: the
+    // No-Ellipsis Rule, which a 270 px column is the reason for.
+    const { user } = setup();
+    const list = screen.getByRole("list", { name: "Playlists" });
+    const create = screen.getByRole("button", { name: "New playlist" });
+    expect(
+      list.compareDocumentPosition(create) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+
+    // And it is still the same control it was above the list.
+    await user.click(create);
+    expect(screen.getByLabelText("New playlist name")).toHaveValue(
+      "New playlist",
+    );
+  });
+
   it("opens on its only action when there are no playlists", async () => {
     const { user, create } = setup({ all: [], contents: {} });
     expect(screen.getByText("No playlists yet")).toBeInTheDocument();
 
+    // "Only" is literal: the empty panel explains, and the sidebar's button is
+    // the one control. Two buttons reading "New playlist" on one screen is
+    // what a second copy would be.
     await user.click(screen.getByRole("button", { name: "New playlist" }));
     const field = screen.getByLabelText("New playlist name");
     await user.clear(field);

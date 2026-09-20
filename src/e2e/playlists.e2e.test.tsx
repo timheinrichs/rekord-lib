@@ -95,7 +95,7 @@ describe("playlists", () => {
     await user.click(screen.getByRole("button", { name: /Add to playlist/ }));
 
     // With no playlists yet the dialog opens on its only action, so there is
-    // no "New playlist…" to press first — the picker has nothing to pick from.
+    // no "New playlist" to press first — the picker has nothing to pick from.
     const field = overlay().getByLabelText("New playlist name");
     await user.clear(field);
     await user.type(field, "Warmup{Enter}");

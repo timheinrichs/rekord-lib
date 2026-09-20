@@ -67,7 +67,7 @@ describe("AddToPlaylistDialog", () => {
 
   it("makes a new playlist from the footer, not from the end of the list", async () => {
     const { user, onCreate, onClose } = setup();
-    await user.click(screen.getByRole("button", { name: "New playlist…" }));
+    await user.click(screen.getByRole("button", { name: "New playlist" }));
     const field = screen.getByLabelText("New playlist name");
     expect(field).toHaveValue("New playlist");
 
@@ -79,7 +79,7 @@ describe("AddToPlaylistDialog", () => {
 
   it("will not create a playlist with no name", async () => {
     const { user, onCreate } = setup();
-    await user.click(screen.getByRole("button", { name: "New playlist…" }));
+    await user.click(screen.getByRole("button", { name: "New playlist" }));
     const field = screen.getByLabelText("New playlist name");
     await user.clear(field);
     await user.type(field, "   ");
@@ -94,11 +94,11 @@ describe("AddToPlaylistDialog", () => {
     // keystroke meant to undo a half-typed name closes the whole dialog —
     // which is the regression `Overlay`'s new Escape makes possible.
     const { user, onClose } = setup();
-    await user.click(screen.getByRole("button", { name: "New playlist…" }));
+    await user.click(screen.getByRole("button", { name: "New playlist" }));
     await user.type(screen.getByLabelText("New playlist name"), "Warm{Escape}");
 
     expect(onClose).not.toHaveBeenCalled();
-    expect(screen.getByRole("button", { name: "New playlist…" })).toBeVisible();
+    expect(screen.getByRole("button", { name: "New playlist" })).toBeVisible();
 
     await user.keyboard("{Escape}");
     expect(onClose).toHaveBeenCalledOnce();
@@ -109,7 +109,7 @@ describe("AddToPlaylistDialog", () => {
     // that would otherwise stand between the user and the only thing to do.
     setup({ playlists: [], gains: {} });
     expect(
-      screen.queryByRole("button", { name: "New playlist…" }),
+      screen.queryByRole("button", { name: "New playlist" }),
     ).not.toBeInTheDocument();
     expect(screen.getByText(/No playlists yet/)).toBeInTheDocument();
     expect(screen.getByLabelText("New playlist name")).toHaveFocus();

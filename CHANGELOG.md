@@ -54,6 +54,21 @@ contain incompatible changes.
   reorders under the pointer, so what is dropped is what is already on screen —
   and it can be carried past the last row, which the table had no way to offer; in exchange a drag moves one row rather than a selection. "Unsorted" is gone — it existed because a grouping has to account
   for every row, and the library already shows everything.
+- **No label ends in an ellipsis any more.** "New playlist…", "Choose
+  folder…", "Locate folder…", "From file…" and the search field's
+  placeholder lost the three dots. They were a desktop-menu convention meaning
+  *this opens something*, which is true of every control in the app that needs
+  more from you, so it marked nothing and only made the label longer — the
+  reason it was noticed is that on a 270 px sidebar button that is the
+  difference between a name and a name that wraps. A trailing ellipsis now says
+  exactly one thing, and keeps saying it: "Converting…", "Scanning…",
+  "Installing… 42 %" are running. Written down as the No-Ellipsis Rule in
+  `DESIGN.md` and checked over the source.
+- **"New playlist" sits under the list of playlists, with a plus.** It was
+  above it, so every playlist started one row further down than it had to, at
+  the place the eye starts reading. The panel beside it, when there are no
+  playlists yet, explains instead of carrying a second button with the same
+  name.
 - **The trash can is back on every library row.** It was hidden on playlist
   rows, because "−" and a trash can one step apart differ by an icon and mean
   losing a place in a set or losing the file. Those two now live on different

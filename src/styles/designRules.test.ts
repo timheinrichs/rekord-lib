@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  allSources,
   classes,
   classNameExpressions,
   componentSources as sources,
@@ -325,6 +326,50 @@ describe("design system rules over the source", () => {
           .split(/[\s`"'{}()?]+/)
           .filter((t) => t === "bg-surface-2");
         if (bare.length) offenders.push(`${path}: ${expr.trim()}`);
+      }
+    }
+    expect(offenders).toEqual([]);
+  });
+
+  it("ends a label in an ellipsis only while it is running", () => {
+    // The No-Ellipsis Rule. `…` on a control says one thing — *this is
+    // happening right now* — and the desktop-menu sense of "opens a dialog" is
+    // borrowed from a world where the neighbouring item might not. Here they
+    // all do, so it marks nothing and only lengthens the label.
+    //
+    // Read off the first word, because the label's *end* cannot tell the two
+    // apart: "Searching for suggestions…" is progress and "Choose folder…" is
+    // not, and both end in a noun. A progress label starts with the verb.
+    //
+    // Scanned by line rather than by parsing literals, so that JSX text
+    // (`New playlist…` written as a child) is held to the rule as well as a
+    // string — and over every source, not only components, because `boot.ts`
+    // is where four of the app's labels live.
+    const offenders: string[] = [];
+    for (const [path, src] of allSources) {
+      for (const line of src.split("\n")) {
+        const code = line.trim();
+        if (/^(\/\/|\/\*|\*)/.test(code)) continue;
+        for (let i = line.indexOf("…"); i >= 0; i = line.indexOf("…", i + 1)) {
+          // Only where the label *ends*. A `…` in the middle of one is prose,
+          // and holding prose to a rule about titles is how a design test
+          // starts failing for something it was never about.
+          if (!/^\s*(?:["'`<]|$)/.test(line.slice(i + 1))) continue;
+          // Back to whatever opened the label: a quote, a backtick, or the
+          // `>` that closes the tag a JSX child follows.
+          const start = Math.max(
+            ...['"', "'", "`", ">"].map((c) => line.lastIndexOf(c, i - 1)),
+          );
+          const label = line.slice(start + 1, i).trim();
+          // A label that *begins* with an interpolation has its first word at
+          // runtime — `${scan.stage}…` — and is left to its source. One that
+          // merely contains one further along is not exempt.
+          if (label.startsWith("${")) continue;
+          const first = label.split(/\s+/)[0] ?? "";
+          if (/^[A-Za-z]/.test(first) && !/ing$/i.test(first)) {
+            offenders.push(`${path}: ${code}`);
+          }
+        }
       }
     }
     expect(offenders).toEqual([]);

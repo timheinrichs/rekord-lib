@@ -310,7 +310,7 @@ export default function SettingsView({
           className="h-9 inline-flex items-center justify-center mt-4 w-full truncate rounded-md border border-border-strong bg-surface-2 px-3 text-left text-sm hover:border-accent-500"
           title={settings.library_dir ?? "Choose folder"}
         >
-          {settings.library_dir ?? "Choose folder…"}
+          {settings.library_dir ?? "Choose folder"}
         </button>
         {relocated && (
           <p className="mt-2 text-sm text-fg-muted">{relocated}</p>

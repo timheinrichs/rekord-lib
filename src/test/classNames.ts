@@ -21,6 +21,24 @@ export const componentSources = Object.entries(modules).filter(
 );
 
 /**
+ * Every source file, `.ts` as well as `.tsx`, tests excluded.
+ *
+ * The `className` rules only ever have a `.tsx` to look at. A rule about the
+ * *words* does not: `lib/boot.ts` writes four labels the user reads, and a
+ * scanner that globs components alone would have let the next one in through
+ * the file that already holds them.
+ */
+const allModules = import.meta.glob("../**/*.{ts,tsx}", {
+  query: "?raw",
+  import: "default",
+  eager: true,
+}) as Record<string, string>;
+
+export const allSources = Object.entries(allModules).filter(
+  ([path]) => !path.includes(".test."),
+);
+
+/**
  * The source text of every `className` value.
  *
  * Brace forms are read by counting braces to the matching close rather than by

@@ -679,7 +679,7 @@ export default function LibraryView({
     };
   }, [libraryDir, incrementalSync]);
 
-  // "Locate folder…": re-point the library at where it went, keeping every
+  // "Locate folder": re-point the library at where it went, keeping every
   // track's identity, then let the app store the new folder.
   const relocateTo = useCallback(async () => {
     const dir = await pickOutputDir();
@@ -1933,7 +1933,7 @@ export default function LibraryView({
             className="h-9 inline-flex items-center justify-center ml-auto shrink-0 rounded-md border border-border-strong px-3 hover:border-accent-500"
             title="Point the library at the folder's new location, keeping every track's edits and analysis"
           >
-            Locate folder…
+            Locate folder
           </button>
         </div>
       )}
@@ -2038,7 +2038,7 @@ export default function LibraryView({
               type="search"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              placeholder="Search…"
+              placeholder="Search"
               className="w-56 rounded-md border border-border-strong bg-surface-2 px-3 py-1.5 text-sm focus:border-accent-500"
             />
           </div>

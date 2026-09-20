@@ -8,7 +8,7 @@ import {
 } from "react";
 import { createPortal } from "react-dom";
 import AppHeader from "./AppHeader";
-import { GripIcon, TrashIcon } from "./icons";
+import { GripIcon, PlusIcon, TrashIcon } from "./icons";
 import CoverThumb from "./CoverThumb";
 import RowWaveform from "./RowWaveform";
 import {
@@ -143,42 +143,21 @@ export default function PlaylistsView({
             column that resized itself around the longest playlist name moved
             the track list every time one was renamed. The list beside it takes
             the rest of the window. */}
-        <aside className="sticky top-16 flex h-[calc(100vh-4rem)] w-[270px] shrink-0 flex-col gap-2 border-r border-border pr-4 pt-6">
+        <aside className="sticky top-16 flex h-[calc(100vh-4rem)] w-[270px] shrink-0 flex-col gap-2 border-r border-border pb-6 pr-4 pt-6">
           <p className="px-3 text-xs text-fg-subtle">
             {playlists.all.length === 1
               ? "1 playlist"
               : `${playlists.all.length} playlists`}
           </p>
 
-          {creating ? (
-            <input
-              autoFocus
-              value={draft}
-              onChange={(e) => setDraft(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === "Enter") commitCreate();
-                if (e.key === "Escape") setCreating(false);
-              }}
-              // Clicking away abandons it rather than creating something
-              // nobody asked for: the field opens pre-filled with a suggested
-              // name, so a blur that committed would make "New playlist" out
-              // of a mis-aimed click.
-              onBlur={() => setCreating(false)}
-              className="h-9 w-full min-w-0 rounded-md border border-accent-500 bg-surface-2 px-2 text-sm"
-              aria-label="New playlist name"
-            />
-          ) : (
-            <button
-              onClick={startCreate}
-              className="h-9 inline-flex w-full items-center justify-center rounded-md border border-border-strong px-3 text-sm hover:border-accent-500 hover:text-fg-accent"
-            >
-              New playlist…
-            </button>
-          )}
-
+          {/* The list hugs what is in it, so the control below sits directly
+              under the last playlist rather than at the window's edge. It
+              still shrinks — `min-h-0` and the default shrink — so thirty
+              playlists scroll inside it instead of carrying the control off
+              the bottom. */}
           <ul
             aria-label="Playlists"
-            className="-mr-2 flex min-h-0 flex-1 flex-col gap-0.5 overflow-y-auto pr-2"
+            className="-mr-2 flex min-h-0 flex-col gap-0.5 overflow-y-auto pr-2"
           >
             {playlists.all.map((p) => (
               <li key={p.id}>
@@ -202,6 +181,37 @@ export default function PlaylistsView({
               </li>
             ))}
           </ul>
+
+          {/* Below the list, not above it: the list is what the sidebar is
+              for, and a control over its head pushed every playlist down a
+              row to sit where the eye starts reading. Adding one is what you
+              do after looking. */}
+          {creating ? (
+            <input
+              autoFocus
+              value={draft}
+              onChange={(e) => setDraft(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") commitCreate();
+                if (e.key === "Escape") setCreating(false);
+              }}
+              // Clicking away abandons it rather than creating something
+              // nobody asked for: the field opens pre-filled with a suggested
+              // name, so a blur that committed would make "New playlist" out
+              // of a mis-aimed click.
+              onBlur={() => setCreating(false)}
+              className="h-9 w-full min-w-0 shrink-0 rounded-md border border-accent-500 bg-surface-2 px-2 text-sm"
+              aria-label="New playlist name"
+            />
+          ) : (
+            <button
+              onClick={startCreate}
+              className="h-9 inline-flex w-full shrink-0 items-center justify-center gap-2 rounded-md border border-border-strong px-3 text-sm hover:border-accent-500 hover:text-fg-accent"
+            >
+              <PlusIcon />
+              New playlist
+            </button>
+          )}
         </aside>
 
         <section className="min-w-0 flex-1 pt-6">
@@ -222,15 +232,10 @@ export default function PlaylistsView({
             <div className="flex flex-col items-center gap-3 rounded-xl border border-dashed border-border bg-surface py-20 text-center text-fg-subtle">
               <p className="text-lg text-fg-muted">No playlists yet</p>
               <p className="max-w-md font-sans text-sm">
-                A playlist is an order you make. Name one here, then select
-                tracks in the library and use &ldquo;Add to playlist&rdquo;.
+                A playlist is an order you make. Name one with &ldquo;New
+                playlist&rdquo; on the left, then select tracks in the library
+                and use &ldquo;Add to playlist&rdquo;.
               </p>
-              <button
-                onClick={startCreate}
-                className="h-9 inline-flex items-center justify-center mt-2 rounded-md bg-accent-600 px-4 text-sm font-medium text-white hover:bg-accent-500"
-              >
-                New playlist
-              </button>
             </div>
           )}
         </section>
