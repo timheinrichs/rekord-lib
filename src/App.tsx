@@ -30,6 +30,7 @@ import {
   type Toast,
 } from "./lib/toasts";
 import { useBandcamp } from "./lib/useBandcamp";
+import { usePlaylists } from "./lib/usePlaylists";
 import {
   DEFAULT_SETTINGS,
   loadSettings,
@@ -118,6 +119,11 @@ export default function App() {
   const [updatePromptSeen, setUpdatePromptSeen] = useState(false);
 
   const bc = useBandcamp(settings, account);
+  // The playlists. Here rather than in a view because two of them read the same
+  // list now, and a second `usePlaylists` would be a second copy: the hook has
+  // no store and no subscription, so a write in one view would leave the other
+  // showing what it last read.
+  const playlists = usePlaylists();
 
   // Load settings + Bandcamp status on startup.
   useEffect(() => {
@@ -321,6 +327,7 @@ export default function App() {
           >
             <LibraryView
               settings={settings}
+              playlists={playlists}
               onSettingsChange={updateSettings}
               originById={originById}
               onTracksChange={setLibraryTracks}

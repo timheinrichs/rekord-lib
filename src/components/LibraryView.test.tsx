@@ -141,13 +141,29 @@ vi.mock("../lib/player", () => ({
 
 // Imported after the mocks are declared, which is what vi.mock's hoisting is for.
 const { default: LibraryView } = await import("./LibraryView");
+const { usePlaylists } = await import("../lib/usePlaylists");
 const { forgetRowWaveforms } = await import("./RowWaveform");
+
+/**
+ * `App` owns the playlists now, so the harness calls the hook where the
+ * component used to — a wrapper rather than a stub, so these tests exercise the
+ * same `usePlaylists` they always did.
+ */
+function Harness({ settings }: { settings: Settings }) {
+  const playlists = usePlaylists();
+  return (
+    <LibraryView
+      settings={settings}
+      playlists={playlists}
+      originById={{}}
+      onOpenSettings={() => {}}
+    />
+  );
+}
 
 function renderLibrary(over: Partial<Settings> = {}) {
   const settings: Settings = { ...DEFAULT_SETTINGS, library_dir: "/lib", ...over };
-  return render(
-    <LibraryView settings={settings} originById={{}} onOpenSettings={() => {}} />,
-  );
+  return render(<Harness settings={settings} />);
 }
 
 /** A track as the scan produces it before tempo detection has run. */

@@ -84,7 +84,7 @@ import PlaylistMenu from "./PlaylistMenu";
 import PlaylistEditor from "./PlaylistEditor";
 import AddToPlaylistDialog from "./AddToPlaylistDialog";
 import { usePlayer, type PlayerTrack } from "../lib/player";
-import { usePlaylists } from "../lib/usePlaylists";
+import type { Playlists } from "../lib/usePlaylists";
 import { buildPlaylistGroups, playlistRows, wouldAdd } from "../lib/playlists";
 import { exportRekordbox } from "../lib/api";
 import MarqueeText from "./MarqueeText";
@@ -166,6 +166,15 @@ import FilterMenu from "./FilterMenu";
 
 interface Props {
   settings: Settings;
+  /**
+   * The playlists, and every way of changing them.
+   *
+   * A prop rather than a hook call, because two views read the same list now.
+   * `usePlaylists` has no store and no subscription — it reloads on mount and
+   * after each of its own writes — so a second call would be a second copy,
+   * and a write in one view would leave the other showing what it last read.
+   */
+  playlists: Playlists;
   /** Track id -> Bandcamp key, for the "Bandcamp" origin badge. */
   originById: Record<string, string>;
   /** Mirrors the scanned tracks up to the app (for Bandcamp sync). */
@@ -203,6 +212,7 @@ const RELINK_MESSAGE_MS = 8000;
 
 export default function LibraryView({
   settings,
+  playlists,
   onSettingsChange,
   originById,
   onTracksChange,
@@ -710,12 +720,6 @@ export default function LibraryView({
   useEffect(() => {
     onTracksChange?.(tracks);
   }, [tracks, onTracksChange]);
-
-  // Playlists: the list, their contents, and every way of changing them.
-  // Declared here rather than next to the grouping that reads them, because a
-  // replacing conversion moves a track's memberships and `runConvert` below has
-  // to re-read them afterwards.
-  const playlists = usePlaylists();
 
   // The playlist open in the editor, by id — the playlist itself is looked up
   // rather than copied, so a rename inside the dialog shows in its own header.
