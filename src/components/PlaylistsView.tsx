@@ -96,13 +96,16 @@ export default function PlaylistsView({
   return (
     <>
       <AppHeader title="Playlists" onTitleClick={onTitleClick} right={nav} />
-      <main className="mx-auto flex w-full max-w-6xl items-start gap-6 px-6 py-6">
+      <main className="flex w-full items-start gap-6 px-6 py-6">
         {/* The page scrolls, as everywhere else in this app — only the list of
             playlists scrolls on its own, and only when there are more of them
             than fit. A pane with its own scrollbar would be the app's first,
             and would leave the back-to-top button pointing at the wrong
             thing. */}
-        <aside className="sticky top-16 flex h-[calc(100vh-4rem)] w-64 shrink-0 flex-col gap-2 border-r border-border pr-4 pt-6">
+        {/* As wide as what is in it and no wider — the button sets the floor,
+            a long playlist name pushes against the cap and then truncates. The
+            list beside it takes the rest of the window. */}
+        <aside className="sticky top-16 flex h-[calc(100vh-4rem)] w-fit max-w-64 shrink-0 flex-col gap-2 border-r border-border pr-4 pt-6">
           <p className="px-3 text-xs text-fg-subtle">
             {playlists.all.length === 1
               ? "1 playlist"
