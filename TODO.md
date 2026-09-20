@@ -215,6 +215,30 @@ some entries are in another library folder and have no duration to add.
 **What would change that** — the sibling function is half an hour; the decision
 about incomplete totals is the part worth waiting for a real playlist to make.
 
+### Skipping tracks can deadlock WebKit's audio session
+
+**What** — skipping through a queue froze the app dead: the window stopped
+responding and did not come back. Sampling the hung process showed the Tauri
+side idle in its event loop and the **WebKit web process** blocked for good in
+a synchronous IPC — `sessionCanProduceAudioChanged` →
+`maybeActivateAudioSession` → `AudioSession::tryToSetActive` →
+`Connection::sendSyncMessage` → `waitForSyncReply`.
+
+**Why it is only mitigated** — the race is in the platform. Every `play()`
+re-activates the audio session over that round trip, and the only lever from
+here is how often it is asked. Track changes are coalesced now, so a burst of
+skips activates the session once instead of once per skip, and
+`src/lib/player.test.tsx` pins that. But one activation can still in principle
+meet another — a track ending into an auto-advance while the user presses
+next, say.
+
+**What would change that** — a recurrence with the coalescing in place, which
+would mean the frequency was not the whole story. The next thing to try is not
+touching the session at all on a skip: one element that keeps its source and
+seeks, or a silent pre-roll, both of which are larger than they sound. A
+sample of the hung web process is the evidence to collect either way; the
+stack above is what it looks like.
+
 ### The legacy `library` key in `rekord-lib.json`
 
 **What** — the pre-SQLite library, imported once by `db::migrate` and then left

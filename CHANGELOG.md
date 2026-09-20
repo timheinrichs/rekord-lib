@@ -27,6 +27,15 @@ contain incompatible changes.
   them except the two metadata editors, which hold unsaved typing and should
   not lose a form to a keystroke aimed at a field.
 
+### Fixed
+- **Skipping through tracks could freeze the app.** The window stopped
+  responding and did not recover. It was not the app's own code: sampling the
+  hung process showed WebKit's web process blocked for good in a synchronous
+  call to activate the audio session, which every `play()` makes. Track changes
+  are coalesced now, so skipping five tracks loads the one you land on and asks
+  the session once instead of five times — a mitigation rather than a repair,
+  and recorded as such in `TODO.md`.
+
 ### Changed
 - **Playlists are a place, not a fold.** The navigation is Library · Playlists ·
   Bandcamp, and the grouping switch goes back to four ways of folding one list,

@@ -40,6 +40,12 @@ export function subtitleParts(track: PlayerTrack): {
 }
 
 /** Clamps an index into [0, len-1] (0 for an empty queue). */
+/**
+ * How long a track change waits before it loads, so a burst of skips loads
+ * once. See the effect that uses it for why this exists at all.
+ */
+export const LOAD_COALESCE_MS = 120;
+
 export function clampIndex(i: number, len: number): number {
   if (len <= 0) return 0;
   return Math.max(0, Math.min(i, len - 1));
@@ -92,6 +98,8 @@ export function usePlayerProgress(): PlayerProgress {
  */
 export function PlayerProvider({ children }: { children: ReactNode }) {
   const audioRef = useRef<HTMLAudioElement | null>(null);
+  /** A track change is waiting out the coalescing window. */
+  const loading = useRef(false);
   const [queue, setQueue] = useState<PlayerTrack[]>([]);
   const [index, setIndex] = useState(0);
   const [playing, setPlaying] = useState(false);
@@ -139,6 +147,22 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   }, []);
 
   // Load and (re)start when the current track — or an explicit play() — changes.
+  //
+  // Coalesced, and not for tidiness: skipping through a queue froze the app.
+  // Sampling the hung process showed the Tauri side idle in its event loop and
+  // the WebKit web process blocked for good in a *synchronous* IPC —
+  // `sessionCanProduceAudioChanged` → `maybeActivateAudioSession` →
+  // `AudioSession::tryToSetActive` → `sendSyncMessage` → `waitForSyncReply`.
+  // Every `play()` re-activates the audio session over that round trip, and
+  // pressing next five times fires five of them into each other.
+  //
+  // So a burst of track changes loads once, at the track you land on, rather
+  // than each one you pass — which is also the difference between one full
+  // waveform decode and five. The delay is below what anyone notices on a
+  // single skip.
+  //
+  // This is a mitigation, not a repair: the race is in the platform, and the
+  // only lever from here is how often the session is asked to activate.
   const currentPath = current?.path;
   useEffect(() => {
     const a = audioRef.current;
@@ -150,15 +174,25 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       setDuration(0);
       return;
     }
-    a.src = convertFileSrc(currentPath);
-    a.currentTime = 0;
-    a.play().catch(() => setPlaying(false));
+    loading.current = true;
+    const start = setTimeout(() => {
+      loading.current = false;
+      a.src = convertFileSrc(currentPath);
+      a.currentTime = 0;
+      a.play().catch(() => setPlaying(false));
+    }, LOAD_COALESCE_MS);
+    return () => clearTimeout(start);
   }, [currentPath, token]);
 
   // Reflect play/pause state onto the element.
+  //
+  // Skipped while a load is pending, or this would undo the coalescing above:
+  // it also depends on `currentPath`, so every track change used to reach
+  // `play()` through here as well — one audio-session activation per skip,
+  // which is the thing that froze the app.
   useEffect(() => {
     const a = audioRef.current;
-    if (!a || !currentPath) return;
+    if (!a || !currentPath || loading.current) return;
     if (playing) a.play().catch(() => setPlaying(false));
     else a.pause();
   }, [playing, currentPath]);
