@@ -124,7 +124,7 @@ export default function PlaylistsView({
   return (
     <>
       <AppHeader title="Playlists" onTitleClick={onTitleClick} right={nav} />
-      <main className="flex w-full items-start gap-6 px-6 py-6">
+      <main className="flex w-full items-start gap-6 px-6 pb-6">
         {/* The page scrolls, as everywhere else in this app — only the list of
             playlists scrolls on its own, and only when there are more of them
             than fit. A pane with its own scrollbar would be the app's first,
@@ -195,7 +195,7 @@ export default function PlaylistsView({
           </ul>
         </aside>
 
-        <section className="min-w-0 flex-1">
+        <section className="min-w-0 flex-1 pt-6">
           {!playlists.loaded ? null : open ? (
             // Keyed by the playlist: switching must drop a half-typed rename,
             // an armed delete and any drag. A reorder does not change the id,
@@ -411,7 +411,7 @@ function OpenPlaylist({
 
   return (
     <>
-      <header className="mb-4 flex items-center gap-3 border-b border-border pb-3">
+      <header className="mb-4 flex items-center gap-3">
         <input
           value={name}
           onChange={(e) => setName(e.target.value)}
