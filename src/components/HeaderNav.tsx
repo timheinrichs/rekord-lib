@@ -4,9 +4,8 @@ import { useDismiss } from "../lib/useDismiss";
 import type { DownloadEntry } from "../lib/useBandcamp";
 import type { Severity } from "../lib/changelog";
 import type { BadgeLevel } from "../lib/events";
+import { VIEWS, type MainView } from "../lib/views";
 import { DownloadIcon, GearIcon, LogIcon } from "./icons";
-
-export type MainView = "library" | "bandcamp";
 
 interface Props {
   view: MainView;
@@ -58,16 +57,14 @@ export default function HeaderNav({
   return (
     <>
       <nav className="flex items-center gap-1 rounded-lg border border-border-strong p-0.5">
-        <TabButton
-          label="Library"
-          active={view === "library"}
-          onClick={() => onNavigate("library")}
-        />
-        <TabButton
-          label="Bandcamp"
-          active={view === "bandcamp"}
-          onClick={() => onNavigate("bandcamp")}
-        />
+        {VIEWS.map(([key, label]) => (
+          <TabButton
+            key={key}
+            label={label}
+            active={view === key}
+            onClick={() => onNavigate(key)}
+          />
+        ))}
       </nav>
 
       {/* The event log. Always reachable — the point of it is the run that went

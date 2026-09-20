@@ -1,56 +1,68 @@
 /**
- * Narrowing a query to the view the app is actually showing.
+ * Narrowing a query to one of the app's views.
  *
- * `App` keeps the library and the Bandcamp view mounted at all times and hides
- * one with Tailwind's `hidden` class, so a running scan or download survives
- * switching views. jsdom applies no stylesheet, so both are present and
+ * `App` keeps every main view mounted at all times and hides the inactive ones
+ * with Tailwind's `hidden` class, so a running scan or download survives
+ * switching views. jsdom applies no stylesheet, so all of them are present and
  * queryable, and `screen.getByRole("button", { name: "Open settings" })` finds
- * two of them.
+ * one per view.
  *
- * These helpers narrow by position, which is stable because it is the order
- * `App` renders them in — library first, Bandcamp second — and they assert the
- * `hidden` class alongside, so a test that queries the library view while the
- * app is showing Bandcamp fails saying so rather than passing on the wrong
- * element.
+ * These helpers narrow by **the name a view gives itself** — the `sr-only`
+ * `<h1>` that `AppHeader` renders from its `title`, of which there is exactly
+ * one per screen by that component's own rule. They used to narrow by
+ * position, "stable because it is the order `App` renders them in", and that
+ * was only accidentally safe: inserting a view between two others re-points a
+ * helper at the wrong element with no type error and nothing failing until a
+ * dozen tests start disagreeing about what they are looking at. A name cannot
+ * do that, and it makes reordering the tabs free.
+ *
+ * They assert the `hidden` class alongside, so a test that queries the library
+ * while the app is showing Bandcamp fails saying so rather than passing on the
+ * wrong element.
  */
 import { within } from "@testing-library/react";
 
-function wrappers(container: HTMLElement): HTMLElement[] {
-  // The two wrappers sit side by side under the app shell. They are picked out
-  // by the header each view renders rather than by their class, because the
-  // class is exactly what changes when the shown view changes — and the splash,
-  // the other child at this level, has no header.
-  const shell = container.querySelector<HTMLElement>("div.min-h-screen");
-  if (!shell) return [];
-  return Array.from(shell.children).filter((el): el is HTMLElement =>
-    el instanceof HTMLElement && el.querySelector("header") !== null,
-  );
-}
+import { VIEW_LABEL, type MainView } from "../lib/views";
 
-function view(container: HTMLElement, index: number, name: string) {
-  const found = wrappers(container)[index];
-  if (!found) {
+/** The settings overlay names itself too, and is not one of the views. */
+const LABEL: Record<MainView | "settings", string> = {
+  ...VIEW_LABEL,
+  settings: "Settings",
+};
+
+function wrapper(container: HTMLElement, which: MainView | "settings") {
+  const shell = container.querySelector<HTMLElement>("div.min-h-screen");
+  const name = LABEL[which];
+  const found = Array.from(shell?.children ?? []).filter(
+    (el): el is HTMLElement =>
+      el instanceof HTMLElement &&
+      el.querySelector("header h1")?.textContent === name,
+  );
+  // Loud rather than arbitrary: the position version picked one silently.
+  if (found.length > 1) {
+    throw new Error(`appDom: two elements call themselves \u201C${name}\u201D`);
+  }
+  if (!found[0]) {
     throw new Error(
       `appDom: no ${name} view in the tree — is the app still on the splash?`,
     );
   }
-  return found;
+  return found[0];
 }
 
 /** The library view, whether shown or hidden. */
 export function libraryView(container: HTMLElement) {
-  return within(view(container, 0, "library"));
+  return within(wrapper(container, "library"));
 }
 
 /** The Bandcamp view, whether shown or hidden. */
 export function bandcampView(container: HTMLElement) {
-  return within(view(container, 1, "Bandcamp"));
+  return within(wrapper(container, "bandcamp"));
 }
 
 /** Whether the app is currently showing the given view. */
-export function isShown(container: HTMLElement, which: "library" | "bandcamp") {
-  const found = view(container, which === "library" ? 0 : 1, which);
-  return !found.classList.contains("hidden");
+export function isShown(container: HTMLElement, which: MainView) {
+  return !wrapper(container, which).classList.contains("hidden");
 }
 
 /**

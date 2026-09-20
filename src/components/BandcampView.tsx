@@ -5,6 +5,7 @@ import { GridIcon, ListIcon } from "./icons";
 import { CollectionSkeleton } from "./Skeleton";
 import type { BulkProgress, DownloadEntry } from "../lib/useBandcamp";
 import type { BandcampAccount, BandcampItem } from "../types";
+import type { MainView } from "../lib/views";
 import type { BadgeLevel } from "../lib/events";
 import type { Severity } from "../lib/changelog";
 
@@ -25,7 +26,7 @@ interface Props {
   // Shared header nav
   onClearDownloads: () => void;
   onCancelDownload: (key: string) => void;
-  onNavigate: (v: "library" | "bandcamp") => void;
+  onNavigate: (v: MainView) => void;
   onOpenSettings: () => void;
   updateAvailable?: boolean;
   updateSeverity?: Severity | null;

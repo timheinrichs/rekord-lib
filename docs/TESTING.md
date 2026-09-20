@@ -117,9 +117,15 @@ Stated here rather than papered over in a test:
 - **Anything in Rust below the command.** The rename over the source, the
   `replace_source` trash and `convert_file`'s cleanup branches move files; that
   is the end-to-end suite's job and a Rust test's.
-- **jsdom has no stylesheet.** Both main views stay mounted and one is hidden
-  with a Tailwind class so a scan survives navigation, which means every query
-  finds two of everything. `src/test/appDom.ts` narrows.
+- **jsdom has no stylesheet.** Every main view stays mounted and the inactive
+  ones are hidden with a Tailwind class so a scan survives navigation, which
+  means every query finds one of everything per view. `src/test/appDom.ts`
+  narrows — **by the name a view gives itself**, the `sr-only` `<h1>` that
+  `AppHeader` renders, of which there is exactly one per screen. It narrowed by
+  position until 0.10.0, which was only accidentally safe: inserting a view
+  between two others re-points a helper at the wrong element with no type error
+  and nothing failing until a dozen tests disagree about what they are looking
+  at.
 - **jsdom has no layout either**, which is worse than it sounds:
   `getBoundingClientRect` answers zero for everything, so *where* something
   landed is not a question this level can be asked. "Add to playlist" opened
@@ -268,7 +274,7 @@ still worth reproducing on a quiet machine before it is believed.
 | … · `hold` | keeps a long-running command from answering, so the in-flight state is reachable |
 | … · `failItem` | a failure *inside* a successful return |
 | … · `restore` | leaves no-ops behind, because a listener may subscribe or unsubscribe after a test ends |
-| `src/test/appDom.ts` · `libraryView`, `bandcampView`, `overlay` | narrowing a query to the view on screen, or the dialog on top |
+| `src/test/appDom.ts` · `libraryView`, `bandcampView`, `overlay` | narrowing a query to a view by the name it gives itself, or to the dialog on top |
 | `src/test/factories.ts` · `makeTrack`, `makeMetadata`, `makeCompat` | the seed data, shared with the unit tests |
 | `src/e2e/*.e2e.test.tsx` | one file per flow: first run, scan, convert, duplicates, metadata, undo, playlists, grouping, toasts, Bandcamp, theme |
 | `src-tauri/src/lib.rs` · the `compile_error!` | the release guard |

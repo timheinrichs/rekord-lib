@@ -31,6 +31,7 @@ import {
 } from "./lib/toasts";
 import { useBandcamp } from "./lib/useBandcamp";
 import { usePlaylists } from "./lib/usePlaylists";
+import type { MainView } from "./lib/views";
 import {
   DEFAULT_SETTINGS,
   loadSettings,
@@ -63,8 +64,6 @@ interface BootState {
  * there to prevent.
  */
 const MIN_SPLASH_MS = 300;
-
-type MainView = "library" | "bandcamp";
 
 /**
  * Back to the top of the list.
