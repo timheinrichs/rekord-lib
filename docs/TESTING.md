@@ -274,7 +274,7 @@ still worth reproducing on a quiet machine before it is believed.
 | … · `hold` | keeps a long-running command from answering, so the in-flight state is reachable |
 | … · `failItem` | a failure *inside* a successful return |
 | … · `restore` | leaves no-ops behind, because a listener may subscribe or unsubscribe after a test ends |
-| `src/test/appDom.ts` · `libraryView`, `bandcampView`, `overlay` | narrowing a query to a view by the name it gives itself, or to the dialog on top |
+| `src/test/appDom.ts` · `libraryView`, `playlistsView`, `bandcampView`, `overlay` | narrowing a query to a view by the name it gives itself, or to the dialog on top |
 | `src/test/factories.ts` · `makeTrack`, `makeMetadata`, `makeCompat` | the seed data, shared with the unit tests |
 | `src/e2e/*.e2e.test.tsx` | one file per flow: first run, scan, convert, duplicates, metadata, undo, playlists, grouping, toasts, Bandcamp, theme |
 | `src-tauri/src/lib.rs` · the `compile_error!` | the release guard |
@@ -323,7 +323,7 @@ still worth reproducing on a quiet machine before it is believed.
 | The release country reaches the file | `metadata/write.rs` · `the_country_is_actually_written` |
 | Every rendered colour pair clears WCAG AA, in both themes | `contrast.test.ts` · the 25 cases |
 | The theme setting reaches `<html>`, and `system` resolves | `theme.e2e.test.tsx` · the three cases |
-| An open group and everything it contains are in the well, in all four groupings | `grouping.e2e.test.tsx` · "opening a group puts it and its rows in the well" |
+| An open group and everything it contains are in the well, in every grouping that folds | `grouping.e2e.test.tsx` · "opening a group puts it and its rows in the well" |
 | An action says what it did, once, in the backend's words | `toasts.e2e.test.tsx` · "says what was added, in the backend's own words", "leaves the same sentence in the log" |
 | What the log collects per file is never shown, and boot shows nothing | `toasts.e2e.test.tsx` · "stays quiet for what a scan collects per file", "raises nothing at boot, however full the log already is" |
 | Nothing reaches the database without `db::require` | `commands.rs` · `nothing_reaches_the_database_without_require` |

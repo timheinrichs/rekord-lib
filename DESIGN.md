@@ -417,6 +417,15 @@ horizontally scrolling container, virtualized, with **64 px rows** separated by
 `gap-3`. Bandcamp's collection switches between the same list rhythm and a
 responsive cover grid (`grid-cols-2 sm:grid-cols-3 md:grid-cols-4`, `gap-4`).
 
+The playlists view is the one **two-pane** screen: a `w-64` sidebar of
+playlists beside the open one, `gap-6`, `items-start`. The sidebar is `sticky
+top-16` rather than a panel of its own, because **the window is what scrolls in
+this app** — `useScrolled` reads `window.scrollY`, both bars dock off it and
+the back-to-top button drives it. Only the sidebar's *list* may scroll on its
+own, and only when there are more playlists than fit; a pane with its own
+scrollbar would be the app's first and would leave the back-to-top button
+pointing at something the user is not looking at.
+
 **Spacing** is Tailwind's 4 px scale, and the app really only uses seven steps:
 `0.5` (2px) for pill padding, `1`/`1.5` (4/6px) for icon clusters, `2` (8px) as
 the default control gap, `3` (12px) for row padding and list gaps, `4` (16px)

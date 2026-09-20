@@ -28,6 +28,23 @@ contain incompatible changes.
   not lose a form to a keystroke aimed at a field.
 
 ### Changed
+- **Playlists are a place, not a fold.** The navigation is Library · Playlists ·
+  Bandcamp, and the grouping switch goes back to four ways of folding one list,
+  which is what it was always for. Two things a playlist stops inheriting from
+  the table: a search and a filter that hid rows of a list whose whole content
+  is its order, and column headers that claimed to have sorted it — they wrote
+  `aria-sort` and told a screen reader so, having sorted nothing. The new view
+  is about order: a sidebar of playlists, one open beside it, rename, reorder,
+  remove, delete. Editing tags, converting and deleting files stay in the
+  library, and so does "Add to playlist", which acts on a selection made there.
+  A track can now also be dragged to the *end* of a playlist, which the table
+  had no way to offer; in exchange a drag moves one row rather than a whole
+  selection. "Unsorted" is gone — it existed because a grouping has to account
+  for every row, and the library already shows everything.
+- **The trash can is back on every library row.** It was hidden on playlist
+  rows, because "−" and a trash can one step apart differ by an icon and mean
+  losing a place in a set or losing the file. Those two now live on different
+  screens.
 - **The dot on the gear is about problems again.** It used to light up for any
   unread entry, because a finished export had no other way of saying so. It has
   one now, so an ordinary confirmation no longer raises it — a hint that is

@@ -4,16 +4,17 @@ Where the library stops being this app's business. Everything else here
 prepares files; this is the part that hands them over.
 
 ```
-Library table ── "Playlists" grouping ──────────────────────────────┐
-  │  selection → Add to playlist  ─────────────┐                    │
-  │  drag / ↑ ↓ / −                            │                    │
-  ▼                                            ▼                    ▼
-lib/playlists.ts  (pure: what the new order is)                     │
-  │                                                                 │
-  ▼  the whole list, never a diff                                   │
-playlist_set ── playlist_items(playlist_id, path, position) ────────┤
+Library view                         Playlists view                 │
+  selection → Add to playlist        drag / ↑ ↓ / − / rename        │
+       │                                    │                       │
+       └──────────────┬─────────────────────┘                       │
+                      ▼                                             │
+       lib/playlists.ts  (pure: what the new order is)              │
+                      │                                             │
+                      ▼  the whole list, never a diff               │
+       playlist_set ── playlist_items(playlist_id, path, position)  │
                                                                     │
-                                    "Export for Rekordbox" ─────────┘
+Library view ─────────────────── "Export for Rekordbox" ────────────┘
                                             │
                                             ▼
                               export::rekordbox::collection_xml
@@ -21,6 +22,12 @@ playlist_set ── playlist_items(playlist_id, path, position) ─────�
                                             ▼
                                      rekordbox.xml
 ```
+
+Two screens write to one pure core. Which one does what is not arbitrary: a
+track gets *into* a playlist from the library, because what goes in is a
+selection made there; everything about the *order* happens in the playlists
+view. The export hangs off the library for the reason the backend gives — it
+writes the whole collection, and the playlists ride along inside it.
 
 ## Why membership is its own table
 
@@ -57,7 +64,6 @@ what the new order is, and it is pure:
 | `stepPlaylistItem` | one row up or down, expressed as the same move |
 | `uniquePlaylistName` | a name that is not taken |
 | `wouldAdd` | how many of a selection a playlist would actually gain |
-| `buildPlaylistGroups` | the grouping's heads and their tracks |
 
 `stepPlaylistItem` sharing the drag's rule is deliberate: moving *down* has to
 aim one row further along than it looks, because the track is lifted out before
@@ -68,57 +74,79 @@ At the ends nothing happens, and it happens by returning *the same list* rather
 than an identical copy — that identity is what lets the caller skip a write for
 a button press that changes nothing.
 
-## In the UI it is a grouping, not a sidebar
+## In the UI it is a view, not a grouping
 
-Flat / Album / Label / Folder / **Playlists**. The virtualised table, every
-column, the selection and the group heads carry over unchanged, and the window
-keeps its shape.
+Library · Playlists · Bandcamp. It was the fifth entry of the grouping switch
+until 0.10.0, next to Flat, Album, Label and Folder — and the switch's own
+comment had admitted the mismatch since it was written: *"unlike the three
+before it this one does not fold the library into a different shape — it shows
+an order the user made."* Those four are derived from the tags of the same
+rows. A playlist is authored data with its own table, its own commands and its
+own export.
 
-- The order comes from the playlist, **not** from the sort — the one grouping
-  where the rows are not sorted, because the order is the content.
-- The position sits in the chevron's column. A track row has nothing to expand,
-  so that cell existed only to keep the columns in line; in a playlist the
-  number is what the row is.
-- **Unsorted** is always there, even empty. It is where a track lands when it
-  leaves a playlist, and a bucket that appears only sometimes is one nobody
-  learns to look in.
-- "Add to playlist" says what each entry would do — `+3`, `+1 of 4`, or
-  `already in` for one that holds the whole selection, which is then not
-  clickable. Said rather than hidden: it is also the answer to "are these
-  already in there?". It is a **dialog** since 0.10.0, not a dropdown: the
-  trigger sits among the selection's actions in the header, so it moved as rows
-  were picked, and a menu anchored to a control that moves had already opened
-  off the top of the window once. With the room a dialog has, making a new
-  playlist is an action of its own rather than the last row of the list — and
-  with no playlists yet it is the *only* action, so the dialog opens on it.
-- A path with no visible track is skipped rather than drawn empty: it may be
-  filtered out, or the file may be gone and the row already pruned.
+**What it inherited there, and lost by leaving.**
 
-**And a dialog, for what a grouping cannot do.** *Edit…* on the group head's
-menu opens the playlist as a list of its own: rename, reorder, remove, delete.
-It is not a second mechanism — every button calls the same `usePlaylists`
-operation the row actions do, which computes the new list with the same pure
-functions and writes it whole. It exists for the two things the table cannot
-answer:
+- **A search and a filter.** They hide rows of a list whose entire content is
+  its order, which is why the position a track held had to be read off the
+  stored playlist rather than off the screen: a row showing "1" that was really
+  the fifth entry would refuse to move up with four tracks above it.
+- **Sort headers that were not inert.** This is the one worth being blunt
+  about, because the old version of this document implied a guard that never
+  existed. `SortableHeader` is always live and always writes `aria-sort`, and
+  the playlist group builder was simply the one that never received the sort.
+  So a click over a playlist told a screen reader the table had been sorted
+  when it had not, re-faded the list and threw away its measured row heights.
+  Nothing guards it now and nothing needs to: the case is gone with its host,
+  and `SortableHeader` is local to `LibraryView`, so the new view cannot reach
+  it even by accident.
+- **An Unsorted bucket.** It existed because a *grouping* has to account for
+  every row in the table it folds. A view has no such duty, and "what is in no
+  playlist yet" is a question the library answers better, since it shows
+  everything. The bucket is gone, and with it the argument that used to justify
+  it here — *"a bucket that appears only sometimes is one nobody learns to look
+  in"* — which was right about a grouping and does not carry.
 
-- **The whole playlist, in its own order.** The table shows what the filter left
-  over, so "move this to the top" is a move relative to rows that may not be
-  there. The dialog has no filter and no sort.
-- **The entries the loaded library has no row for.** `buildPlaylistGroups`
-  skips them — correctly, since a filtered list must not sprout empty rows —
-  which leaves a playlist that says "12 tracks" showing 9, with nothing to
-  reconcile the difference against. `playlistRows` keeps them, by their file
-  name.
+**What the view is for: order.** A sidebar of playlists with their counts, one
+open beside it, and four verbs — reorder, rename, remove, delete. There is no
+selection and no bulk action: editing tags, converting and deleting files are
+the library's job, where the filter and the columns are, and a second selection
+model beside that one would be more chrome than this removed. It is also why a
+drag here moves one row rather than a selection.
 
-  What such an entry is, precisely, is worth being exact about, because the
-  obvious answer is wrong: **not a deleted file.** `playlist_items.path`
-  references `tracks(path)` `ON DELETE CASCADE`, so a track that leaves the
-  library takes its memberships with it, and `set_playlist_paths` drops a path
-  the library does not hold rather than storing one. What remains is the case
-  the two queries disagree on — `all_playlist_paths` reads every membership,
-  `load_tracks` reads one `library_dir` — a track in **another library folder**,
-  which is what switching folders without relocating leaves behind. Those files
-  are intact, so the row says where they are instead of calling them missing.
+It gained one thing the table could not offer. There a row could only be
+dropped *in front of* another, so appending by drag was impossible and the ↓
+button was the only way to reach the end of a list. The view has a drop target
+after the last row.
+
+**Getting tracks in stays in the library.** "Add to playlist" says what each
+entry would do — `+3`, `+1 of 4`, or `already in` for one that holds the whole
+selection, which is then not clickable. Said rather than hidden: it is also the
+answer to "are these already in there?". It is a **dialog** since 0.10.0, not a
+dropdown: the trigger sits among the selection's actions in the header, so it
+moved as rows were picked, and a menu anchored to a control that moves had
+already opened off the top of the window once. With the room a dialog has,
+making a new playlist is an action of its own rather than the last row of the
+list — and with no playlists yet it is the *only* action, so the dialog opens
+on it.
+
+It did not move to the playlists view, and the reason is worth keeping: the
+dialog has a destination half — a list of playlists — and a subject half, which
+is a selection made in the library table. Only the second is expensive, and it
+cannot leave the table it is made in.
+
+**The entries the loaded library has no row for.** A playlist that says "12
+tracks" over 9 rows is one nobody can make sense of, so `playlistRows` keeps
+them, by file name. What such an entry is, precisely, is worth being exact
+about, because the obvious answer is wrong: **not a deleted file.**
+`playlist_items.path` references `tracks(path)` `ON DELETE CASCADE`, so a track
+that leaves the library takes its memberships with it, and `set_playlist_paths`
+drops a path the library does not hold rather than storing one. What remains is
+the case the two queries disagree on — `all_playlist_paths` reads every
+membership, `load_tracks` reads one `library_dir` — a track in **another
+library folder**, which is what switching folders without relocating leaves
+behind. Those files are intact, so the row says where they are instead of
+calling them missing, and removing one is offered as what it is: taking it out
+of the playlist.
 
 Every change is optimistic and then reconciled — the new order is on screen
 before the write returns, because a drag that snaps back reads as a failed drag,
@@ -200,10 +228,9 @@ comes from a native panel the user drove.
 | … · `edit_overlay`, `EditOverlay` | the one place the backend interprets a pending edit, and how leniently |
 | `src/lib/playlists.ts` | every ordering rule, pure |
 | `src/lib/usePlaylists.ts` | the state, and the optimistic-then-reconciled write |
-| `src/components/LibraryView.tsx` | the grouping, the drag, the row actions — move up, move down, remove; **no delete**, because in a playlist row "−" and a trash can one step apart differ by an icon and mean losing a place in a set versus losing the file |
-| `src/components/PlaylistMenu.tsx` | rename/delete and the way into the editor |
+| `src/components/LibraryView.tsx` | the selection a playlist is filled from, and the export |
 | `src/components/AddToPlaylistDialog.tsx` | getting tracks in, and what each playlist would gain |
-| `src/components/PlaylistEditor.tsx` · with `playlists.ts` · `playlistRows` | the whole playlist as a list — including the entries the grouping skips |
+| `src/components/PlaylistsView.tsx` · with `playlists.ts` · `playlistRows` | the sidebar, the open playlist, the drag and the row actions — move up, move down, remove; **no delete**, because "−" and a trash can one step apart differ by an icon and mean losing a place in a set versus losing the file, and deleting a file is the library's job |
 
 ## Verification links
 
@@ -215,20 +242,21 @@ comes from a native panel the user drove.
 | …and nothing else is | `db/mod.rs` · `a_playlist_write_forgives_a_missing_track_and_nothing_else` |
 | A relocation carries the memberships, the edits, the fingerprints **and the waveforms** with it | `db/mod.rs` · `relocate_keeps_identity_including_edits_fingerprints_and_playlists` |
 | A replacing conversion carries them too, instead of emptying the playlist | `db/mod.rs` · `a_replacing_conversion_carries_the_row_and_its_playlists`; `convert.e2e.test.tsx` · "keeps a converted track in the playlist it was in" |
-| A row is numbered by the playlist, not by the filter | `playlists.test.ts` · "numbers a row by the playlist, not by what the filter left over", "counts a path the library no longer holds, and does not draw it" |
-| A track in two playlists is two rows | `playlists.e2e.test.tsx` · "draws a track that is in two playlists as two rows" |
+| Every stored entry is listed, numbered by the playlist | `playlists.test.ts` · `playlistRows` cases; `PlaylistsView.test.tsx` · "shows the stored order, numbered" |
+| A track can be in two playlists, with its own place in each | `playlists.e2e.test.tsx` · "keeps a track in two playlists, each with its own place" |
 | A playlist row removes, and cannot delete the file | `playlists.e2e.test.tsx` · "takes a track out of the playlist, but not off the disk" |
-| The dialog opens from the menu and writes the order it shows | `playlists.e2e.test.tsx` · "edits a playlist in the dialog, and writes the order it shows" |
+| The view shows the whole stored playlist and writes the order it shows | `playlists.e2e.test.tsx` · "edits a playlist in the dialog, and writes the order it shows" |
+| A drag reaches `move`, including onto the end of the list | `PlaylistsView.test.tsx` · "reorders by drag, including onto the end of the list" |
+| Switching playlists drops an armed delete | `PlaylistsView.test.tsx` · "drops an armed delete when another playlist is opened" |
 | The picker says `+N`, `+N of M` and `already in`, and refuses the last | `AddToPlaylistDialog.test.tsx` · "says what each playlist would gain…"; `playlists.e2e.test.tsx` · "will not offer a playlist the selection is already in" |
 | It commits once and leaves, and Escape cancels the field before the dialog | `AddToPlaylistDialog.test.tsx` · "commits once and leaves", "gives Escape to the field before the dialog" |
 | It lands in the middle of a real window, wherever its trigger is | `e2e/menus.spec.ts` · "centres the playlist picker, and covers the window behind it" |
 | Putting tracks in says so, once, in the backend's words | `toasts.e2e.test.tsx` · "says what was added, in the backend's own words"; `commands.rs` · `a_playlist_write_reports_membership_and_not_order` |
-| It lists every stored entry, ends disabled, and keeps an entry from another library folder visible | `PlaylistEditor.test.tsx`; `playlists.test.ts` · `playlistRows` cases |
-| The name field shows the stored name, not a rename that did not happen | `PlaylistEditor.test.tsx` · "shows the stored name, not a rename that did not happen" |
+| The ends of the list are disabled, and an entry from another library folder stays visible | `PlaylistsView.test.tsx` · "disables the moves that would go nowhere"; `playlists.test.ts` · `playlistRows` cases |
+| The name field shows the stored name, not a rename that did not happen | `PlaylistsView.test.tsx` · "treats an emptied field as a cancelled edit", "renames on Enter and leaves the name alone on Escape" |
 | A refused write puts the row back | `playlists.e2e.test.tsx` · "puts a row back where the database has it when a write fails" |
 | Step and drag are the same move | `playlists.test.ts` · "agrees with the drag, which is the point of sharing its rule" |
 | A move that cannot happen writes nothing | `playlists.test.ts` · "moves the last track down to nowhere, and the first up to nowhere" |
-| The grouping shows the playlist's order and an Unsorted bucket | `playlists.test.ts` · `buildPlaylistGroups` cases |
 | A playlist that would gain nothing is not offered | `playlists.e2e.test.tsx` · "will not offer a playlist the selection is already in", `playlists.test.ts` · `wouldAdd` |
 | The selection reaches the backend in screen order | `playlists.e2e.test.tsx` · "puts a selection into a new playlist, in the order on screen" |
 | The export goes where the dialog points, and nowhere on cancel | `playlists.e2e.test.tsx` · "exports the library where the save dialog points", "writes nothing when the save dialog is cancelled" |

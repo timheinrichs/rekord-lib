@@ -187,6 +187,34 @@ to read for the same reason it makes it longer.
 log and was not. The cheap version is pruning `info` first and keeping the
 problems to the cap, which is a `WHERE level = 'info'` in the same transaction.
 
+### I8a · A playlist cannot be dragged onto another one
+
+**What** — the playlists view has a sidebar of every playlist beside the open
+one, which looks exactly like a drop target for the rows next to it.
+
+**Why not** — it would put a second meaning on a gesture that already has one.
+Inside the list a drag reorders; onto a sidebar row it would either move a track
+between playlists or copy it into one, and there is no way to tell which is
+meant from the gesture alone. "Put these somewhere" already has an answer that
+says what it will do before it does it: the picker dialog, from a selection in
+the library.
+
+**What would change that** — somebody reaching for it and being surprised it
+does nothing, plus a decision about copy versus move that a modifier key or a
+drop menu could carry.
+
+### I8b · A playlist does not say how long it is
+
+**What** — the view's header counts tracks. A DJ set is measured in minutes.
+
+**Why not** — `formatDuration` has no hours branch, so a three-hour set would
+read "184:22", and fixing that in place would change the Length column too. It
+needs a sibling `formatRuntime` and a decision about what a total means when
+some entries are in another library folder and have no duration to add.
+
+**What would change that** — the sibling function is half an hour; the decision
+about incomplete totals is the part worth waiting for a real playlist to make.
+
 ### The legacy `library` key in `rekord-lib.json`
 
 **What** — the pre-SQLite library, imported once by `db::migrate` and then left

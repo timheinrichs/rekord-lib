@@ -86,7 +86,8 @@ category.
 - Installation is a `.dmg` for Apple Silicon, ad-hoc signed, so Gatekeeper warns
   once on first launch; the app updates itself from then on.
 - Real work happens on large collections: filter and search, grouping by album,
-  label, folder or playlist, multi-select with shift ranges, a virtualized list.
+  label or folder, playlists in a view of their own, multi-select with shift
+  ranges, a virtualized list.
 
 ## Capabilities and Constraints
 

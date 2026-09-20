@@ -335,7 +335,7 @@ decision this entry defers:
 - There is room for a menu to open from them, downward, without leaving the
   window (the Downward Menu Rule in `DESIGN.md`).
 - Nothing is added that is only visible while something is selected *and* only
-  in one grouping — the table already has five.
+  in one grouping — the table has four.
 
 A bar that appears at the bottom of the table over the selection is the obvious
 candidate and the one to argue against first, since the app has no bottom bar
@@ -343,51 +343,6 @@ today and a new persistent region is a bigger change than it looks.
 
 *Size: M · blocks nothing; the picker it used to block became a dialog in
 0.10.0 and no longer waits on it*
-
-### I8 · Playlists are their own view, not a grouping
-
-**What** — the top-level navigation becomes **Library · Playlists · Bandcamp**.
-`MainView` (`App.tsx`, `HeaderNav.tsx`) gains a third value, and `Playlists`
-leaves the grouping switch (`GROUPINGS` in `lib/grouping.ts`), which goes back
-to being four ways of folding one list.
-
-**Why** — asked for directly, and the switch already admits the mismatch in its
-own comment: *"unlike the three before it this one does not fold the library
-into a different shape — it shows an order the user made."* Flat, Album, Label
-and Folder are all derived from the tags of the same rows; a playlist is
-authored data with its own table, its own commands, its own dialog (I3) and its
-own export. Sitting in the switch, it inherits behaviour that does not fit it:
-
-- **The search and filter apply to it.** A playlist that says "12 tracks" draws
-  9 while a filter is on, which is what forced `positions` to be taken from the
-  stored list and what the I3 dialog exists to make reconcilable.
-- **The sort headers are inert there** — the one grouping whose rows must not be
-  sorted, in a table whose headers all invite it.
-- **"Unsorted" exists because a *grouping* must account for every row.** A view
-  has no such duty; there, "tracks in no playlist" would be a feature if it is
-  kept, not an obligation.
-
-**What it forces a decision on** — the tab is an afternoon; these are the work:
-
-- **Is the table still the body of the view?** Cheapest is the same virtualised
-  table with the grouping locked to `playlist` — and then the sort headers still
-  have to become inert or disappear, rather than being quietly ignored.
-- **Group heads, or a list beside one open playlist?** The second reads more
-  like what people expect from a playlist view, and it would absorb both the
-  playlist editor and much of the picker dialog — but it is a second layout,
-  not a locked grouping.
-- **Where does "Export for Rekordbox" belong?** It writes the whole library
-  *plus* every playlist and today sits in the library header. Either that is
-  already the wrong home for it, or it stays there and the playlists view has no
-  export of its own — worth settling explicitly rather than by whichever screen
-  gets built first.
-- **What does the view show with nothing in it?** The grouping never needed an
-  empty state, because Unsorted was always there.
-
-*Size: M as a third tab over a locked grouping · L if the playlists move into a
-sidebar and the table's sort/filter behaviour is reworked around them. Nothing
-blocks it; I3 shipped, and its dialog either stays as the per-playlist editor or
-is absorbed by the view.*
 
 ---
 
@@ -526,4 +481,4 @@ issue still resolves one and so that none of them is ever reused.
 | E — Security and distribution | **E2** harden Bandcamp download handling · **E3** narrow the `assetProtocol` scope · **E4** dependency auditing in CI · **E5** move the Discogs secret into the Keychain |
 | F — Documentation and process | **F1** functional docs per feature area · **F2** [COMPARISON.md](COMPARISON.md) · **F3** [CONTRIBUTING.md](../CONTRIBUTING.md) · **F5** severity marking in the changelog · **F6** [COMMANDS.md](COMMANDS.md) · **F7** [TODO.md](../TODO.md) |
 | G — Reach and test depth | **G1** end-to-end tests, in two layers, see [TESTING.md](TESTING.md) |
-| I — Interface and playback | **I1** an expanded group looks expanded · **I3** edit a playlist in a dialog · **I4** the player says which album · **I5** "Add to playlist" is a dialog · **I7** an action that changed something says so |
+| I — Interface and playback | **I1** an expanded group looks expanded · **I3** edit a playlist in a dialog · **I4** the player says which album · **I5** "Add to playlist" is a dialog · **I7** an action that changed something says so · **I8** playlists are their own view |
