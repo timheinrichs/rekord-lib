@@ -72,4 +72,20 @@ describe("createWaveformCache", () => {
     await cache.get("/a.aiff", compute);
     expect(compute).toHaveBeenCalledTimes(2);
   });
+
+  it("forgets everything on request", async () => {
+    // What a finished scan needs: the run may have rewritten a tag on any file
+    // in the library, and every picture in here is of the bytes as they were.
+    const compute = vi.fn(async () => wf(1));
+    const cache = createWaveformCache();
+
+    await cache.get("/a.aiff", compute);
+    await cache.get("/b.aiff", compute);
+    cache.clear();
+    expect(cache.size()).toBe(0);
+
+    await cache.get("/a.aiff", compute);
+    await cache.get("/b.aiff", compute);
+    expect(compute).toHaveBeenCalledTimes(4);
+  });
 });

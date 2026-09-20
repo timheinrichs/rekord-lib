@@ -7,14 +7,24 @@ import type { Waveform as WaveformData } from "../types";
 import { formatDuration } from "../lib/format";
 import {
   CloseIcon,
+  ExpandIcon,
   NextIcon,
   PauseIcon,
   PlayIcon,
   PrevIcon,
 } from "./icons";
 
+interface Props {
+  /**
+   * Open the track surface. Absent while it is already open, so the button
+   * closes it instead — one control, two directions, the way the gear works.
+   */
+  onExpand?: () => void;
+  expanded?: boolean;
+}
+
 /** Bottom bar that shows the current track and transport controls. */
-export default function PlayerBar() {
+export default function PlayerBar({ onExpand, expanded }: Props = {}) {
   const {
     current,
     playing,
@@ -179,6 +189,17 @@ export default function PlayerBar() {
           <span className="hidden whitespace-nowrap text-xs text-fg-subtle sm:inline">
             {formatDuration(time)} / {formatDuration(duration)}
           </span>
+          {onExpand && (
+            <button
+              onClick={onExpand}
+              className="flex h-9 w-9 items-center justify-center rounded-full text-fg-muted hover:text-fg"
+              title={expanded ? "Back to the library" : "Open this track"}
+              aria-label={expanded ? "Back to the library" : "Open this track"}
+              aria-pressed={!!expanded}
+            >
+              <ExpandIcon />
+            </button>
+          )}
           <button
             onClick={close}
             className="flex h-9 w-9 items-center justify-center rounded-full text-fg-muted hover:text-fg"

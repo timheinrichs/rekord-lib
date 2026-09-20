@@ -276,7 +276,7 @@ still worth reproducing on a quiet machine before it is believed.
 | … · `restore` | leaves no-ops behind, because a listener may subscribe or unsubscribe after a test ends |
 | `src/test/appDom.ts` · `libraryView`, `playlistsView`, `bandcampView`, `overlay` | narrowing a query to a view by the name it gives itself, or to the dialog on top |
 | `src/test/factories.ts` · `makeTrack`, `makeMetadata`, `makeCompat` | the seed data, shared with the unit tests |
-| `src/e2e/*.e2e.test.tsx` | one file per flow: first run, scan, convert, duplicates, metadata, undo, playlists, grouping, toasts, Bandcamp, theme, playback settings |
+| `src/e2e/*.e2e.test.tsx` | one file per flow: first run, scan, convert, duplicates, metadata, undo, playlists, grouping, toasts, Bandcamp, theme, playback settings, the track surface |
 | `src-tauri/src/lib.rs` · the `compile_error!` | the release guard |
 | `src-tauri/Cargo.toml` · `[features] wdio` | the optional dependency |
 | `scripts/e2e-app.mjs` · `prepare`, `build`, `writeManifest` | fixture, wiped data dir, debug bundle, and the paths the config reads |

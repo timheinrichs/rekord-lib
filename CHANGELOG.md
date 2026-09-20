@@ -10,6 +10,27 @@ contain incompatible changes.
 ## [Unreleased]
 
 ### Added
+- **A track you can open.** The small waveform in a row now opens that track on
+  a surface of its own — a large waveform that scrolls under a fixed playhead
+  while it plays, with a time ruler, bar numbers and, at last, **the beat grid
+  drawn on it**. The grid has been stored and written into the Rekordbox export
+  since 0.8; nothing has ever shown it, because a whole track in 112 pixels puts
+  the beats of a 128 BPM track under a pixel apart. Five zoom levels, stated as
+  how many seconds are on screen rather than as a factor: at 128 BPM, 16 s is
+  eight bars. The player bar keeps the overview and the transport — the surface
+  adds the close look and nothing you already had.
+
+  The picture it draws is computed when the track is opened and stored nowhere.
+  Raising the resolution of the *stored* waveform would have invalidated every
+  one of them and re-decoded the whole library for something only the open track
+  needs. While the decode runs, the stored overview is on screen — coarse, and
+  with the grid and the playhead already exact on top of it, because those come
+  from numbers rather than from the picture.
+
+  Under `prefers-reduced-motion` the window does not scroll. It pages: the
+  playhead moves inside a window that stands still and jumps on when it is left.
+  Every number and every line is still there, which is what that rule asks for
+  and what a canvas cannot be told by CSS.
 - **The app has a volume of its own.** A Playback section in the settings sets
   the level the player starts at and keeps; until now the only way to change it
   was the system mixer, which changes it for everything else on the machine too.

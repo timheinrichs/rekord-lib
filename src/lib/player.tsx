@@ -71,6 +71,21 @@ interface PlayerApi {
   close: () => void;
   /** Seek to a fraction (0..1) of the current track. */
   seek: (fraction: number) => void;
+  /**
+   * The position in seconds, read straight off the element.
+   *
+   * For a consumer that draws once a frame, and nothing else: it is not state,
+   * so it re-renders nothing and a component that *displays* a time will show a
+   * stale one. Those use `usePlayerProgress()`, which is a quarter as fast and
+   * is React state.
+   *
+   * A getter and not the element, on purpose. Handing out the `<audio>` node
+   * would hand out `play()`, `src` and with them the audio session — every one
+   * of which is a way around the coalescing described below, which exists
+   * because activating that session is a synchronous round trip that can hang
+   * the web process.
+   */
+  currentTime: () => number;
 }
 
 /** Playback position, in its own context so ~4×/s updates don't re-render
@@ -151,6 +166,8 @@ export function PlayerProvider({
     setQueue([]);
     setIndex(0);
   }, []);
+
+  const currentTime = useCallback(() => audioRef.current?.currentTime ?? 0, []);
 
   const seek = useCallback((fraction: number) => {
     const a = audioRef.current;
@@ -244,6 +261,7 @@ export function PlayerProvider({
       prev,
       close,
       seek,
+      currentTime,
     }),
     [
       current,
@@ -259,6 +277,7 @@ export function PlayerProvider({
       prev,
       close,
       seek,
+      currentTime,
     ],
   );
 

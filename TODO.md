@@ -105,23 +105,20 @@ not, and it comes back exactly once. Rewriting dismissal keys inside
 **What would change that** — a group id that is not a path. See
 [docs/DUPLICATES.md](docs/DUPLICATES.md).
 
-### The beat grid is stored and exported, but not drawn
+### The beat grid is drawn, but only on the track surface
 
-**What** — `tracks.beat_offset_secs` plus the tempo is a full grid, and A2 writes
-it into the Rekordbox export as a `TEMPO` marker. Nothing draws it under the
-waveform in the app, which is what **B3** was originally for and what
-`COMPARISON.md` claimed for two releases before the claim was corrected.
+**What** — the grid is drawn now, on the zoomed waveform of the track surface.
+The 112 px waveform in the library row still shows none: at that scale the beats
+of a 128 BPM track are under a pixel apart, which is what the previous version
+of this entry was about.
 
-**Why not act** — the value only started being stored with A2, and the waveform
-row is 112 px wide for a whole track: at that scale the beats of a 128 BPM track
-are under a pixel apart, so "draw the grid" means deciding what to draw first.
-The player bar's larger waveform is where it would actually be legible.
+**Why not act** — nothing legible fits. The options are a grid that is a solid
+block, or the first beat alone as a single mark — and the second is a different
+idea that nobody has asked for yet.
 
-**What would change that** — a zoomed waveform, or a decision that the row
-should show the first beat alone rather than a grid. Drawing it is this entry;
-*moving* it — the anchor, the downbeat, a tempo corrected by hand — is `B8` in
-[docs/FUTURE_CONSIDERATIONS.md](docs/FUTURE_CONSIDERATIONS.md), and waits on the
-same larger waveform.
+**What would change that** — a use for it. A mark on the row that said *this
+track has a grid* would be a status, not a grid, and `StatusIcons` is where a
+status belongs.
 
 ### I1a · A group head is clickable, but not operable from the keyboard
 

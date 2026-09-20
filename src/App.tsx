@@ -8,10 +8,11 @@ import EventLogModal from "./components/EventLogModal";
 import UpdateModal from "./components/UpdateModal";
 import PlayerBar from "./components/PlayerBar";
 import PlaylistsView from "./components/PlaylistsView";
+import TrackView from "./components/TrackView";
 import Toasts from "./components/Toasts";
 import { ArrowUpIcon } from "./components/icons";
 import { useScrolled } from "./lib/useScrolled";
-import { PlayerProvider } from "./lib/player";
+import { PlayerProvider, usePlayer } from "./lib/player";
 import { CloseIcon } from "./components/icons";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { bandcampStatus, startScan } from "./lib/api";
@@ -33,7 +34,7 @@ import {
 import { useBandcamp } from "./lib/useBandcamp";
 import { usePlaylists } from "./lib/usePlaylists";
 import type { ColumnId } from "./lib/columns";
-import type { Edits } from "./lib/grouping";
+import { metaOf, type Edits } from "./lib/grouping";
 import type { MainView } from "./lib/views";
 import {
   DEFAULT_SETTINGS,
@@ -118,9 +119,81 @@ function BackToTop() {
   );
 }
 
+/**
+ * The track surface, and the one invariant behind it: it is always the track
+ * the player is on.
+ *
+ * A component of its own rather than a block in `App`, because it needs
+ * `usePlayer()` and `App` renders the provider — so this is the first place
+ * inside it that knows which track is playing. It also means closing the player
+ * closes the surface, with no second piece of state to keep in step.
+ */
+function TrackSurface({
+  tracks,
+  edits,
+  settings,
+  onSettingsChange,
+  onClose,
+}: {
+  tracks: TrackAnalysis[];
+  edits: Edits;
+  settings: Settings;
+  onSettingsChange: (patch: Partial<Settings>) => void;
+  onClose: () => void;
+}) {
+  const { current } = usePlayer();
+  const track = current
+    ? (tracks.find((t) => t.path === current.path) ?? null)
+    : null;
+
+  // Nothing playing, nothing to show. `close` on the bar empties the queue, and
+  // a surface for a track that is no longer there would be a screen with a
+  // heading and a blank.
+  useEffect(() => {
+    if (!current) onClose();
+  }, [current, onClose]);
+
+  return (
+    <div className="animate-fade-in">
+      <AppHeader
+        title="Track"
+        onTitleClick={onClose}
+        right={
+          <button
+            onClick={onClose}
+            className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-border-strong text-fg-muted hover:border-accent-500 hover:text-fg-accent"
+            title="Back to the library"
+            aria-label="Back to the library"
+          >
+            <CloseIcon />
+          </button>
+        }
+      />
+      {track ? (
+        <TrackView
+          track={track}
+          metadata={metaOf(track, edits)}
+          settings={settings}
+          onSettingsChange={onSettingsChange}
+        />
+      ) : (
+        <main className="mx-auto max-w-6xl px-6 py-8">
+          <p className="font-sans text-sm text-fg-subtle">
+            This track is not in the library, so there is nothing stored to show
+            for it.
+          </p>
+        </main>
+      )}
+    </div>
+  );
+}
+
 export default function App() {
   const [view, setView] = useState<MainView>("library");
   const [settingsOpen, setSettingsOpen] = useState(false);
+  // Whether the track surface is up. Not which track: that is always the one
+  // the player is on, so closing the player closes this with it.
+  const [trackOpen, setTrackOpen] = useState(false);
   const [settings, setSettings] = useState<Settings>(DEFAULT_SETTINGS);
   /**
    * The settings as they stand, so a patch can be merged outside a state
@@ -380,7 +453,9 @@ export default function App() {
 
   // Which surface is on screen. Both main views stay mounted, so the fade is
   // replayed on the wrapper rather than by remounting.
-  const surface = settingsOpen ? "settings" : view;
+  // Settings wins over the track surface, so there is never a second `h1` on
+  // screen — `appDom` throws rather than guessing when there is.
+  const surface = settingsOpen ? "settings" : trackOpen ? "track" : view;
   const libraryFade = useReplayAnimation<HTMLDivElement>(surface);
   const playlistsFade = useReplayAnimation<HTMLDivElement>(surface);
   const bandcampFade = useReplayAnimation<HTMLDivElement>(surface);
@@ -421,7 +496,7 @@ export default function App() {
           <div
             ref={libraryFade}
             className={
-              view !== "library" || settingsOpen ? "hidden" : "animate-fade-in"
+              surface !== "library" ? "hidden" : "animate-fade-in"
             }
           >
             <LibraryView
@@ -435,6 +510,7 @@ export default function App() {
               onFilesDeleted={bc.forgetDownloads}
               nav={renderNav()}
               onOpenSettings={() => setSettingsOpen(true)}
+              onOpenTrack={() => setTrackOpen(true)}
               onLibraryDirChange={(dir) => updateSettings({ library_dir: dir })}
             />
           </div>
@@ -442,7 +518,7 @@ export default function App() {
           <div
             ref={playlistsFade}
             className={
-              view !== "playlists" || settingsOpen ? "hidden" : "animate-fade-in"
+              surface !== "playlists" ? "hidden" : "animate-fade-in"
             }
           >
             <PlaylistsView
@@ -459,7 +535,7 @@ export default function App() {
           <div
             ref={bandcampFade}
             className={
-              view !== "bandcamp" || settingsOpen ? "hidden" : "animate-fade-in"
+              surface !== "bandcamp" ? "hidden" : "animate-fade-in"
             }
           >
             <BandcampView
@@ -504,6 +580,23 @@ export default function App() {
             />
           )}
 
+
+          {/* Mounted while it is open, hidden while the settings are over it —
+              the same treatment the three views get, and for a reason of its
+              own: unmounting it would stop it noticing that the player was
+              closed underneath, and it would come back with a heading over a
+              blank. */}
+          {trackOpen && (
+            <div className={surface !== "track" ? "hidden" : undefined}>
+              <TrackSurface
+                tracks={libraryTracks}
+                edits={libraryEdits}
+                settings={settings}
+                onSettingsChange={updateSettings}
+                onClose={() => setTrackOpen(false)}
+              />
+            </div>
+          )}
           {settingsOpen && (
             <div className="animate-fade-in">
               <AppHeader
@@ -540,7 +633,10 @@ export default function App() {
         toasts={toasts}
         onExpire={(id) => setToasts((prev) => dismissToast(prev, id))}
       />
-      <PlayerBar />
+      <PlayerBar
+        onExpand={() => setTrackOpen((open) => !open)}
+        expanded={trackOpen}
+      />
     </PlayerProvider>
   );
 }

@@ -1,4 +1,6 @@
 import { Store } from "@tauri-apps/plugin-store";
+
+import { DEFAULT_ZOOM_SPAN } from "./gridLane";
 import type { TargetFormat } from "../types";
 import type { ThemePreference } from "./theme";
 
@@ -109,6 +111,14 @@ export interface Settings {
    * on every launch is the same complaint one step smaller.
    */
   volume: number;
+  /**
+   * How many seconds the zoomed waveform on the track surface shows at once.
+   *
+   * Stated as a span rather than a zoom factor, because that is the thing being
+   * chosen: at 128 BPM, 16 s is eight bars. A factor would show a different
+   * amount of music on a different window.
+   */
+  waveform_zoom_secs: number;
 }
 
 /**
@@ -146,6 +156,7 @@ export const DEFAULT_SETTINGS: Settings = {
   // different application. `system` is one click away.
   theme: "dark",
   volume: 1,
+  waveform_zoom_secs: DEFAULT_ZOOM_SPAN,
 };
 
 // Same store file as the Rust backend (separate keys).

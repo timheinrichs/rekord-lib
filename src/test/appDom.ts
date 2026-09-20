@@ -24,13 +24,17 @@ import { within } from "@testing-library/react";
 
 import { VIEW_LABEL, type MainView } from "../lib/views";
 
-/** The settings overlay names itself too, and is not one of the views. */
-const LABEL: Record<MainView | "settings", string> = {
+/**
+ * The two surfaces that name themselves and are not tabs: the settings, and the
+ * one track the player is on.
+ */
+const LABEL: Record<MainView | "settings" | "track", string> = {
   ...VIEW_LABEL,
   settings: "Settings",
+  track: "Track",
 };
 
-function wrapper(container: HTMLElement, which: MainView | "settings") {
+function wrapper(container: HTMLElement, which: MainView | "settings" | "track") {
   const shell = container.querySelector<HTMLElement>("div.min-h-screen");
   const name = LABEL[which];
   const found = Array.from(shell?.children ?? []).filter(
@@ -63,6 +67,11 @@ export function playlistsView(container: HTMLElement) {
 /** The Bandcamp view, whether shown or hidden. */
 export function bandcampView(container: HTMLElement) {
   return within(wrapper(container, "bandcamp"));
+}
+
+/** The track surface, which is only in the tree while it is open. */
+export function trackView(container: HTMLElement) {
+  return within(wrapper(container, "track"));
 }
 
 /** Whether the app is currently showing the given view. */

@@ -155,6 +155,7 @@ import {
   type FilterContext,
   type TrackFilter,
 } from "../lib/trackFilter";
+import { forgetAllDetail, forgetDetail } from "../lib/detailWaveforms";
 import ColumnMenu from "./ColumnMenu";
 import RowWaveform, {
   forgetRowWaveforms,
@@ -190,6 +191,8 @@ interface Props {
   /** Shared header navigation (Library/Bandcamp tabs, downloads, gear). */
   nav?: ReactNode;
   onOpenSettings: () => void;
+  /** Opens the track surface for whatever the player has just been given. */
+  onOpenTrack?: () => void;
   /** Re-points the library after the folder was found again (see lib/relocate). */
   onLibraryDirChange?: (dir: string) => void;
   /**
@@ -225,6 +228,7 @@ export default function LibraryView({
   onFilesDeleted,
   nav,
   onOpenSettings,
+  onOpenTrack,
   onLibraryDirChange,
 }: Props) {
   const [tracks, setTracks] = useState<TrackAnalysis[]>([]);
@@ -553,6 +557,7 @@ export default function LibraryView({
           // analysis stores per track, so a run stopped halfway still stored
           // some.
           forgetRowWaveforms();
+          forgetAllDetail();
           // Keep working through the library: a full sweep leaves a backlog, and
           // a targeted run may have been capped by the single-flight guard. Not
           // after a cancel — that was a deliberate stop.
@@ -785,6 +790,12 @@ export default function LibraryView({
         // A conversion re-embeds the cover, and an in-place one keeps the path,
         // which is exactly when a cached thumbnail outlives the file it shows.
         forgetCoverThumbs([...outputs, ...res.map((r) => r.source_path)]);
+        // And the picture of the audio, for the in-place half of that same
+        // sentence: a 96 kHz AIFF resampled to 48 kHz keeps its path, and the
+        // detail waveform is keyed by path alone.
+        for (const path of [...outputs, ...res.map((r) => r.source_path)]) {
+          forgetDetail(path);
+        }
         // What the merge produced, so the sync below can be handed the new
         // list instead of reading `tracksRef` — which is assigned during
         // render and therefore still holds the pre-merge one here.
@@ -2197,7 +2208,29 @@ export default function LibraryView({
                     case "waveform":
                       return (
                         <td key={c.id} className={pad}>
-                          <RowWaveform path={t.path} />
+                          {/* The small waveform opens the large one — the one
+                              mapping in the row that needs no label, and no new
+                              control in a table that has enough of them. It
+                              plays the track first, because the surface shows
+                              the track the player is on and nothing else. */}
+                          <button
+                            onClick={(e) => {
+                              // The row opens the metadata editor, and this is
+                              // inside it. Without this the click would do both
+                              // — and the dialog would mount inside a view that
+                              // is now hidden, to appear unasked on the way
+                              // back. `CoverThumb`'s play button stops the same
+                              // click for the same reason.
+                              e.stopPropagation();
+                              playFrom(renderOrder, index);
+                              onOpenTrack?.();
+                            }}
+                            className="block cursor-pointer"
+                            title="Open this track"
+                            aria-label="Open this track"
+                          >
+                            <RowWaveform path={t.path} />
+                          </button>
                         </td>
                       );
                     case "title":

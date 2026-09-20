@@ -24,9 +24,9 @@ import {
 } from "../lib/theme";
 import { HeartIcon } from "./icons";
 import ReleaseNotes from "./ReleaseNotes";
+import VolumeControl from "./VolumeControl";
 import {
   BPM_RANGE_PRESETS,
-  clampVolume,
   DOWNLOAD_FORMAT_LABELS,
   type DownloadFormat,
   type Settings,
@@ -38,11 +38,6 @@ import {
   type ScanProgress,
   type TargetFormat,
 } from "../types";
-
-/** The volume as the whole number the readout and the screen reader both use. */
-function volumePercent(volume: number): number {
-  return Math.round(volume * 100);
-}
 
 const LICENSES_URL =
   "https://github.com/timheinrichs/rekord-lib/blob/main/THIRD_PARTY_LICENSES.md";
@@ -429,31 +424,11 @@ export default function SettingsView({
           The level the player starts at, and keeps. The system mixer is the
           other way to change it, and it changes everything else with it.
         </p>
-        {/* The readout sits outside the label: inside it, it would become part
-            of the slider's own name ("Volume 42%") and change on every step. */}
-        <div className="mt-4 flex items-center gap-3 text-sm">
-          <label className="flex items-center gap-3">
-            <span className="text-fg-muted">Volume</span>
-            <input
-              type="range"
-              min={0}
-              max={1}
-              step={0.01}
-              value={settings.volume}
-              // What the slider says out loud is what it says on screen. The
-              // raw value is `0.42`, and the readout beside it is `42%`.
-              aria-valuetext={`${volumePercent(settings.volume)}%`}
-              onChange={(e) =>
-                onSettingsChange({
-                  volume: clampVolume(e.currentTarget.valueAsNumber),
-                })
-              }
-              className="w-56 accent-accent-500"
-            />
-          </label>
-          <span className="w-12 text-right tabular-nums text-fg">
-            {volumePercent(settings.volume)}%
-          </span>
+        <div className="mt-4">
+          <VolumeControl
+            volume={settings.volume}
+            onChange={(volume) => onSettingsChange({ volume })}
+          />
         </div>
       </section>
 

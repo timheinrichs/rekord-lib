@@ -22,6 +22,8 @@ export interface WaveformCache {
   get(path: string, compute: (path: string) => Promise<Waveform>): Promise<Waveform>;
   /** Drops an entry, so the next request recomputes it. */
   forget(path: string): void;
+  /** Drops all of them — the file behind every one of them may have changed. */
+  clear(): void;
   size(): number;
 }
 
@@ -54,6 +56,10 @@ export function createWaveformCache(limit = 24): WaveformCache {
 
     forget(path) {
       entries.delete(path);
+    },
+
+    clear() {
+      entries.clear();
     },
 
     size() {
