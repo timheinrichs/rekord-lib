@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  dropBefore,
   addToPlaylist,
   movePlaylistItem,
   movePlaylistItems,
@@ -204,5 +205,30 @@ describe("playlistRows", () => {
 
   it("has nothing to show for an empty playlist", () => {
     expect(playlistRows([], known)).toEqual([]);
+  });
+});
+
+describe("dropBefore", () => {
+  const paths = ["a", "b", "c"];
+  const box = { top: 100, height: 64 };
+
+  it("takes the gap above the row when the pointer is in its upper half", () => {
+    expect(dropBefore(paths, 1, 110, box)).toBe("b");
+  });
+
+  it("takes the gap below it when the pointer is in its lower half", () => {
+    expect(dropBefore(paths, 1, 150, box)).toBe("c");
+  });
+
+  it("answers the end of the list below the last row", () => {
+    // `null` is what `movePlaylistItems` already takes for "append", and it is
+    // the gap a drop target on the row itself can never express — which is why
+    // the table needed a separate box under the list to reach it.
+    expect(dropBefore(paths, 2, 150, box)).toBeNull();
+  });
+
+  it("puts the midpoint in the upper half, so the two halves never overlap", () => {
+    expect(dropBefore(paths, 1, 132, box)).toBe("b");
+    expect(dropBefore(paths, 1, 133, box)).toBe("c");
   });
 });

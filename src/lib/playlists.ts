@@ -171,6 +171,27 @@ export interface PlaylistRow {
 }
 
 /**
+ * Which gap a drag is pointing at, as a path to insert before — or `null` for
+ * the end of the list, which is what `movePlaylistItems` already takes.
+ *
+ * The pointer decides by which half of the row it is in, so every gap between
+ * two rows is reachable and so is the one after the last. A drop target that is
+ * the row itself can only ever mean "before this one", which leaves the end of
+ * a playlist unreachable by drag — the table had that problem and answered it
+ * with a separate box below the list.
+ */
+export function dropBefore(
+  paths: readonly string[],
+  index: number,
+  y: number,
+  box: { top: number; height: number },
+): string | null {
+  const lower = y > box.top + box.height / 2;
+  if (!lower) return paths[index] ?? null;
+  return paths[index + 1] ?? null;
+}
+
+/**
  * Every entry of a playlist, in order, including the ones the library has no
  * row for.
  *

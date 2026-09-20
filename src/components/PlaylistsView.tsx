@@ -10,7 +10,7 @@ import {
 } from "../lib/columns";
 import { formatBpm, formatDuration, formatKey } from "../lib/format";
 import { metaOf } from "../lib/grouping";
-import { playlistRows } from "../lib/playlists";
+import { dropBefore, playlistRows } from "../lib/playlists";
 import type { Edits } from "../lib/grouping";
 import type { Playlists } from "../lib/usePlaylists";
 import type { Playlist, TrackAnalysis } from "../types";
@@ -263,7 +263,13 @@ function OpenPlaylist({
   const [name, setName] = useState(open.name);
   const [confirming, setConfirming] = useState(false);
   const [drag, setDrag] = useState<string[] | null>(null);
-  const [dropAt, setDropAt] = useState<{ before: string | null } | null>(null);
+  /**
+   * The gap a drop would use: a path to insert before, `null` for the end of
+   * the list, `undefined` for no target at all. The last two must stay apart —
+   * conflated, the line under the last row paints itself the moment a drag
+   * starts, before the pointer has said anything.
+   */
+  const [dropAt, setDropAt] = useState<string | null | undefined>(undefined);
   // Escape restores the stored name and then blurs; the blur handler has to
   // read the ref, because `setName` has not applied yet when it runs.
   const cancelled = useRef(false);
@@ -401,12 +407,15 @@ function OpenPlaylist({
     }
   };
 
+  /** The stored order, which is what a drop is expressed against. */
+  const paths = rows.map((r) => r.path);
+
   const commitDrop = (before: string | null) => {
-    const paths = drag;
+    const moving = drag;
     setDrag(null);
-    setDropAt(null);
-    if (!paths) return;
-    void playlists.move(open.id, paths, before);
+    setDropAt(undefined);
+    if (!moving) return;
+    void playlists.move(open.id, moving, before);
   };
 
   return (
@@ -479,59 +488,55 @@ function OpenPlaylist({
               </tr>
             </thead>
             <tbody aria-label="Tracks in this playlist">
-              {rows.map((row) => (
-                <tr
-                  key={row.path}
-                  draggable
-                  onDragStart={() => setDrag([row.path])}
-                  onDragOver={(e) => {
-                    e.preventDefault();
-                    setDropAt({ before: row.path });
-                  }}
-                  onDrop={(e) => {
-                    e.preventDefault();
-                    commitDrop(row.path);
-                  }}
-                  onDragEnd={() => {
-                    // Escape and a drop outside both end a drag without a drop;
-                    // clearing only on drop is how the accent line got left
-                    // painted under a row.
-                    setDrag(null);
-                    setDropAt(null);
-                  }}
-                  className={`group h-16 border-b border-border last:border-0 hover:bg-surface-2 ${
-                    dropAt?.before === row.path
-                      ? "border-t-2 border-t-accent-500"
-                      : ""
-                  }`}
-                >
-                  {cols.map((c) => cell(c, row))}
-                </tr>
-              ))}
+              {rows.map((row, i) => {
+                const last = i === rows.length - 1;
+                // The line sits in the gap the drop would use: above this row,
+                // or below it when the gap is the end of the list.
+                const above = dropAt === row.path;
+                const below = last && dropAt === null && drag !== null;
+                return (
+                  <tr
+                    key={row.path}
+                    draggable
+                    onDragStart={(e) => {
+                      // WebKit refuses a drag that carries nothing: without
+                      // this the drag starts and then no `dragover` or `drop`
+                      // is ever delivered, so the row lifts and nothing else
+                      // happens. This app ships on WebKit.
+                      e.dataTransfer.setData("text/plain", row.path);
+                      e.dataTransfer.effectAllowed = "move";
+                      setDrag([row.path]);
+                    }}
+                    onDragOver={(e) => {
+                      e.preventDefault();
+                      e.dataTransfer.dropEffect = "move";
+                      const box = e.currentTarget.getBoundingClientRect();
+                      setDropAt(dropBefore(paths, i, e.clientY, box));
+                    }}
+                    onDrop={(e) => {
+                      e.preventDefault();
+                      const box = e.currentTarget.getBoundingClientRect();
+                      commitDrop(dropBefore(paths, i, e.clientY, box));
+                    }}
+                    onDragEnd={() => {
+                      // Escape and a drop outside both end a drag without a
+                      // drop; clearing only on drop is how the accent line got
+                      // left painted under a row.
+                      setDrag(null);
+                      setDropAt(undefined);
+                    }}
+                    className={`group h-16 border-b border-border hover:bg-surface-2 ${
+                      last && !below ? "border-b-0" : ""
+                    } ${above ? "border-t-2 border-t-accent-500" : ""} ${
+                      below ? "border-b-2 border-b-accent-500" : ""
+                    }`}
+                  >
+                    {cols.map((c) => cell(c, row))}
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
-          {/* The end of the list, which the table had no way to offer: there a
-              row could only be dropped *in front of* another, so appending was
-              the ↓ button's job alone. Only while a drag is in flight, or every
-              playlist ends in a dashed box. */}
-          {drag && (
-            <div
-              aria-hidden
-              onDragOver={(e) => {
-                e.preventDefault();
-                setDropAt({ before: null });
-              }}
-              onDrop={(e) => {
-                e.preventDefault();
-                commitDrop(null);
-              }}
-              className={`m-3 h-9 rounded-md border-2 border-dashed ${
-                dropAt?.before === null
-                  ? "border-accent-500 bg-accent-500/5"
-                  : "border-border-strong"
-              }`}
-            />
-          )}
         </div>
       )}
     </>

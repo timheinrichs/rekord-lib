@@ -1,4 +1,10 @@
-import { fireEvent, render, screen, within } from "@testing-library/react";
+import {
+  createEvent,
+  fireEvent,
+  render,
+  screen,
+  within,
+} from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 import PlaylistsView from "./PlaylistsView";
@@ -72,6 +78,39 @@ const rows = () =>
   within(
     screen.getByRole("rowgroup", { name: "Tracks in this playlist" }),
   ).getAllByRole("row");
+
+/** jsdom has no layout, so the rows are given one: 64 px tall, stacked. */
+function withGeometry() {
+  rows().forEach((r, i) => {
+    r.getBoundingClientRect = () =>
+      ({
+        top: i * 64,
+        height: 64,
+        bottom: i * 64 + 64,
+        left: 0,
+        right: 0,
+        width: 0,
+      }) as DOMRect;
+  });
+}
+
+/**
+ * A drag event that carries a pointer position.
+ *
+ * jsdom implements no `DragEvent`, so Testing Library falls back to a plain
+ * event and the mouse coordinates in the init are dropped — which is exactly
+ * the field the component reads to decide which gap is meant.
+ */
+function dragAt(
+  kind: "dragOver" | "drop",
+  el: HTMLElement,
+  clientY: number,
+  dataTransfer: unknown,
+) {
+  const ev = createEvent[kind](el, { dataTransfer });
+  Object.defineProperty(ev, "clientY", { value: clientY });
+  fireEvent(el, ev);
+}
 
 describe("PlaylistsView", () => {
   it("lists the playlists with their counts, and opens the first", () => {
@@ -161,14 +200,24 @@ describe("PlaylistsView", () => {
     expect(screen.getByRole("button", { name: "Delete playlist" })).toBeVisible();
   });
 
-  it("reorders by drag, including onto the end of the list", async () => {
+  it("reorders by drag, onto a gap and onto the end of the list", async () => {
     // The table could only ever drop a row *in front of* another, so appending
-    // by drag was impossible there and only the ↓ button could do it.
+    // by drag was impossible there and only the ↓ button could do it. Here the
+    // half of the row the pointer is in decides which gap is meant, so the one
+    // after the last row is reachable too.
     const { move } = setup();
+    withGeometry();
 
-    fireEvent.dragStart(rows()[1]);
-    fireEvent.dragOver(rows()[0]);
-    fireEvent.drop(rows()[0]);
+    // Neither field is optional in WebKit: a drag that carries nothing is
+    // aborted before any `dragover` is delivered.
+    const transfer = { setData: vi.fn(), effectAllowed: "", dropEffect: "" };
+
+    fireEvent.dragStart(rows()[1], { dataTransfer: transfer });
+    expect(transfer.setData).toHaveBeenCalledWith("text/plain", `${LIB}/b.aiff`);
+
+    // Upper half of the first row: the gap above it.
+    dragAt("dragOver", rows()[0], 10, transfer);
+    dragAt("drop", rows()[0], 10, transfer);
     expect(move).toHaveBeenCalledExactlyOnceWith(
       1,
       [`${LIB}/b.aiff`],
@@ -176,20 +225,35 @@ describe("PlaylistsView", () => {
     );
 
     move.mockClear();
-    fireEvent.dragStart(rows()[0]);
-    // The zone only exists while a drag is in flight, and it is deliberately
-    // `aria-hidden` — a drop target is a pointer affordance, and nobody who
-    // cannot drag can use it. So it is found by where it is: the last child of
-    // the panel, after the table.
-    const panel = screen
-      .getByRole("rowgroup", { name: "Tracks in this playlist" })
-      .closest("table")!.parentElement!;
-    const tail = panel.lastElementChild!;
-    expect(tail.className).toContain("border-dashed");
-    fireEvent.dragOver(tail);
-    fireEvent.drop(tail);
-    // `null` is the end of the list, which is what `movePlaylistItems` takes.
+    withGeometry();
+    fireEvent.dragStart(rows()[0], { dataTransfer: transfer });
+    // Lower half of the last row: the end of the list, which `move` takes as
+    // `null`.
+    dragAt("dragOver", rows()[1], 120, transfer);
+    dragAt("drop", rows()[1], 120, transfer);
     expect(move).toHaveBeenCalledExactlyOnceWith(1, [`${LIB}/a.aiff`], null);
+  });
+
+  it("draws the line in the gap the drop would use, and not before", async () => {
+    // The indicator is the whole feedback: without it a drag is a guess about
+    // where the row will land.
+    setup();
+    withGeometry();
+    const transfer = { setData: vi.fn(), effectAllowed: "", dropEffect: "" };
+
+    // Nothing is marked until the pointer says where.
+    fireEvent.dragStart(rows()[1], { dataTransfer: transfer });
+    expect(rows()[1].className).not.toContain("accent-500");
+
+    dragAt("dragOver", rows()[0], 10, transfer);
+    expect(rows()[0].className).toContain("border-t-accent-500");
+
+    dragAt("dragOver", rows()[1], 120, transfer);
+    expect(rows()[1].className).toContain("border-b-accent-500");
+
+    // And a drag that ends without a drop leaves nothing painted.
+    fireEvent.dragEnd(rows()[1]);
+    expect(rows()[1].className).not.toContain("accent-500");
   });
 
   it("says what an empty playlist is for", async () => {
