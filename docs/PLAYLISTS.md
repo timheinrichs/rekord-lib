@@ -141,13 +141,19 @@ carried HTML5 handlers from 0.9.0 and were therefore never draggable at all —
 invisible to every test level, because only a person in the real app can find
 it.
 
-So the geometry is worked out in `gapAt` instead of read off a drop target, and
-three details are load-bearing. The press captures the pointer, or the drag
-stops the moment it leaves the row it began on. "No target yet" stays distinct
-from "the end of the list" — conflated, the line under the last row paints
-itself the moment a press begins, before the pointer has travelled. And the
-list is `select-none` while a row is carried, because a pointer drawn across
-table cells selects their text and painted every row the drag crossed.
+**The row moves as you carry it**, rather than a line being drawn where it
+would go. The list reorders under the pointer and the numbers follow, so what
+is dropped is exactly what was already on screen — there is nothing to indicate
+and nothing to imagine. `gapIndexAt` says which gap the pointer is in and
+`reorderAt` puts the row there; both are pure and read against the order **on
+screen**, not the stored one, because the pointer can only mean something about
+the rows it is actually over. The write is expressed against the stored list
+once, at the end, by asking which path now follows the one that moved.
+
+Two details are load-bearing. The press captures the pointer, or the drag stops
+the moment it leaves the row it began on. And the list is `select-none` while a
+row is carried, because a pointer drawn across table cells selects their text
+and painted every row the drag crossed.
 
 **A row is picked up by a handle**, not anywhere. That keeps the grab cursor
 off the whole row, and it is what makes the gesture reachable without a
@@ -156,13 +162,12 @@ focus. It replaced a pair of ↑ ↓ buttons that did the same job less well —
 there is no keyboard equivalent of a drag, so the two could not simply be
 dropped.
 
-What follows the pointer is a **copy of the row**, portalled out of the table.
-Three things made that the answer rather than styling the row itself: a `<tr>`
-in a `border-collapse: collapse` table does not reliably paint a shadow, so
-the thing that must look lifted cannot be the row; anything `fixed` inside a
-view would anchor to the document because the view wrappers carry a transform;
-and a plain element can use the raised tone, which a row cannot without
-colliding with the hover state. The row that stays behind goes translucent.
+The row being carried is translucent, and that is all it is. A shadow would say
+"lifted" better, but the table is `border-collapse: collapse` and a box-shadow
+on a row of one is not reliably painted — a class that may render nothing is
+worse than a quieter effect that always does. The raised *tone* would paint, and
+is not taken either: `surface-2` is the hover tone, and `designRules` fails an
+element that hovers to it and also rests on it.
 
 **Getting tracks in stays in the library.** "Add to playlist" says what each
 entry would do — `+3`, `+1 of 4`, or `already in` for one that holds the whole
@@ -292,14 +297,14 @@ comes from a native panel the user drove.
 | A track can be in two playlists, with its own place in each | `playlists.e2e.test.tsx` · "keeps a track in two playlists, each with its own place" |
 | A playlist row removes, and cannot delete the file | `playlists.e2e.test.tsx` · "takes a track out of the playlist, but not off the disk" |
 | The view shows the whole stored playlist and writes the order it shows | `playlists.e2e.test.tsx` · "shows the whole stored playlist and writes the order it shows" |
-| A drag reaches `move`, including onto the end of the list | `PlaylistsView.test.tsx` · "reorders by pointer, onto a gap and onto the end of the list" |
+| The row moves as it is carried, and what is written is what was shown | `PlaylistsView.test.tsx` · "moves the row itself as the pointer travels, and writes what is shown", "carries a row to the end of the list" |
+| An abandoned drag leaves the stored order alone | `PlaylistsView.test.tsx` · "puts the row back when the gesture is cancelled" |
 | A press that never travelled moves nothing, and only the handle picks a row up | `PlaylistsView.test.tsx` · "does not move anything when the press never travelled", "does not arm a drag from the row's other buttons" |
 | The handle reorders from the keyboard, and not past the ends | `PlaylistsView.test.tsx` · "reorders from the keyboard, and not past the ends" |
-| A copy follows the pointer, and only once the press has travelled | `PlaylistsView.test.tsx` · "carries a copy of the row under the pointer" |
 | Nothing is selected while a row is carried | `PlaylistsView.test.tsx` · "marks no text while a row is being carried" |
 | Playing from a row queues the playlist, in its order | `playlists.e2e.test.tsx` · "plays a track from the playlist, queueing the playlist" |
-| Which gap a pointer means, including the one after the last row | `playlists.test.ts` · `gapAt` cases |
-| The line is drawn in that gap, and only once the pointer has travelled | `PlaylistsView.test.tsx` · "draws the line in the gap the move would use, and not before" |
+| Which gap a pointer means, including the one past the last row | `playlists.test.ts` · `gapIndexAt` cases |
+| The row lands where it looks like it will, dragged either way | `playlists.test.ts` · `reorderAt` cases |
 | The view's columns are the table's minus four, and follow the same hidden set | `columns.test.ts` · `playlistColumns` cases |
 | Switching playlists drops an armed delete | `PlaylistsView.test.tsx` · "drops an armed delete when another playlist is opened" |
 | The picker says `+N`, `+N of M` and `already in`, and refuses the last | `AddToPlaylistDialog.test.tsx` · "says what each playlist would gain…"; `playlists.e2e.test.tsx` · "will not offer a playlist the selection is already in" |

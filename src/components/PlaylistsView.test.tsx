@@ -200,86 +200,63 @@ describe("PlaylistsView", () => {
     expect(screen.getByRole("button", { name: "Delete playlist" })).toBeVisible();
   });
 
-  it("reorders by pointer, onto a gap and onto the end of the list", async () => {
-    // Pointer events, not HTML5 drag and drop: the window enables Tauri's own
-    // file drop so the library can be filled by dragging files in, and that
-    // takes drag and drop at the webview level — `dragstart` fires inside the
-    // page and no `dragover` or `drop` ever arrives. The table's row drag was
-    // dead from the day it shipped for exactly that reason.
+  it("moves the row itself as the pointer travels, and writes what is shown", () => {
+    // The whole interaction, and the reason there is no indicator to draw: the
+    // list reorders under the pointer, so what is dropped is what was already
+    // on screen. The rows are numbered by their place, so the numbers follow.
     const { move } = setup();
     withGeometry();
+    const titles = () => rows().map((r) => within(r).getAllByText(/Alpha|Beta/)[0].textContent);
 
-    // Upper half of the first row: the gap above it.
-    drag(rows()[1], 100, 10);
+    expect(titles()).toEqual(["Alpha", "Beta"]);
+
+    fireEvent.pointerDown(handle(rows()[1]), { button: 0, clientY: 100 });
+    // Into the upper half of the first row: Beta is already above Alpha.
+    fireEvent.pointerMove(rows()[1], { clientY: 10 });
+    expect(titles()).toEqual(["Beta", "Alpha"]);
+    expect(rows()[0].textContent?.trim().startsWith("1")).toBe(true);
+    // Nothing is written until it is let go.
+    expect(move).not.toHaveBeenCalled();
+
+    fireEvent.pointerUp(rows()[1], { clientY: 10 });
+    // Expressed against the stored list: Beta goes before Alpha.
     expect(move).toHaveBeenCalledExactlyOnceWith(
       1,
       [`${LIB}/b.aiff`],
       `${LIB}/a.aiff`,
     );
+  });
 
-    move.mockClear();
+  it("carries a row to the end of the list", () => {
+    // The gap a drop target *on* a row could never express, which is why the
+    // pointer's position rather than a row is what decides.
+    const { move } = setup();
     withGeometry();
-    // Past the last row: the end of the list, which `move` takes as `null`.
     drag(rows()[0], 10, 400);
     expect(move).toHaveBeenCalledExactlyOnceWith(1, [`${LIB}/a.aiff`], null);
   });
 
-  it("does not move anything when the press never travelled", async () => {
-    // A click on a row is not a drag. Without the threshold, pressing anywhere
-    // and letting go would write the order back over itself.
+  it("puts the row back when the gesture is cancelled", () => {
+    // The preview is only a preview: an abandoned drag must leave the stored
+    // order alone and stop showing its own idea of it.
+    const { move } = setup();
+    withGeometry();
+    fireEvent.pointerDown(handle(rows()[1]), { button: 0, clientY: 100 });
+    fireEvent.pointerMove(rows()[1], { clientY: 10 });
+    expect(rows()[0]).toHaveTextContent("Beta");
+
+    fireEvent.pointerCancel(rows()[1]);
+    expect(rows()[0]).toHaveTextContent("Alpha");
+    expect(move).not.toHaveBeenCalled();
+  });
+
+  it("does not move anything when the press never travelled", () => {
+    // A click on the handle is not a drag. Without the threshold, pressing and
+    // letting go would write the order back over itself.
     const { move } = setup();
     withGeometry();
     drag(rows()[1], 100, 102);
     expect(move).not.toHaveBeenCalled();
-  });
-
-  it("draws the line in the gap the move would use, and not before", async () => {
-    // The indicator is the whole feedback: without it a drag is a guess about
-    // where the row will land.
-    setup();
-    withGeometry();
-
-    // Nothing is marked until the pointer has travelled.
-    fireEvent.pointerDown(handle(rows()[1]), { button: 0, clientY: 100 });
-    expect(rows()[1].className).not.toContain("accent-500");
-
-    fireEvent.pointerMove(rows()[1], { clientY: 10 });
-    expect(rows()[0].className).toContain("border-t-accent-500");
-
-    fireEvent.pointerMove(rows()[1], { clientY: 400 });
-    expect(rows()[1].className).toContain("border-b-accent-500");
-
-    // A cancelled gesture leaves nothing painted and moves nothing.
-    fireEvent.pointerCancel(rows()[1]);
-    expect(rows()[1].className).not.toContain("accent-500");
-  });
-
-  it("marks no text while a row is being carried", async () => {
-    // A pointer drawn across table cells selects their text, which painted
-    // every row the drag passed over in the selection colour — the drag looked
-    // like it was picking up everything it crossed.
-    setup();
-    withGeometry();
-    const body = screen.getByRole("rowgroup", { name: "Tracks in this playlist" });
-    expect(body.className).not.toContain("select-none");
-
-    fireEvent.pointerDown(handle(rows()[1]), { button: 0, clientY: 100 });
-    expect(body.className).toContain("select-none");
-
-    // And it is selectable again afterwards, so a title can still be copied.
-    fireEvent.pointerUp(rows()[1], { clientY: 100 });
-    expect(body.className).not.toContain("select-none");
-  });
-
-  it("goes translucent while it is being carried", async () => {
-    setup();
-    withGeometry();
-    expect(rows()[1].className).not.toContain("opacity-");
-
-    fireEvent.pointerDown(handle(rows()[1]), { button: 0, clientY: 100 });
-    expect(rows()[1].className).toContain("opacity-40");
-    // Only the one being carried.
-    expect(rows()[0].className).not.toContain("opacity-");
   });
 
   it("does not arm a drag from the row's other buttons", async () => {
@@ -292,23 +269,6 @@ describe("PlaylistsView", () => {
     );
     expect(removeTracks).toHaveBeenCalledOnce();
     expect(move).not.toHaveBeenCalled();
-  });
-
-  it("carries a copy of the row under the pointer", async () => {
-    // A `<tr>` in a collapsed table cannot paint a shadow, so the thing that
-    // looks lifted is a copy outside the table — and it must not appear until
-    // the press has actually travelled.
-    setup();
-    withGeometry();
-    fireEvent.pointerDown(handle(rows()[1]), { button: 0, clientY: 100 });
-    expect(screen.queryByText("Beta", { selector: "p" })).toBeInTheDocument();
-
-    fireEvent.pointerMove(rows()[1], { clientY: 10 });
-    // Two now: the row, and the copy being carried.
-    expect(screen.getAllByText("Beta")).toHaveLength(2);
-
-    fireEvent.pointerUp(rows()[1], { clientY: 10 });
-    expect(screen.getAllByText("Beta")).toHaveLength(1);
   });
 
   it("says what an empty playlist is for", async () => {

@@ -50,9 +50,9 @@ contain incompatible changes.
   a track is what follows it in the set. Reordering by dragging a row works for
   the first time — the table's rows
   carried it since 0.9.0 and it never did anything, because the window's file
-  drop takes drag and drop before the page sees it. A line shows the gap the
-  row will land in, including the one after the last row, which the table had
-  no way to offer; in exchange a drag moves one row rather than a selection. "Unsorted" is gone — it existed because a grouping has to account
+  drop takes drag and drop before the page sees it. The row moves as you carry it — the list
+  reorders under the pointer, so what is dropped is what is already on screen —
+  and it can be carried past the last row, which the table had no way to offer; in exchange a drag moves one row rather than a selection. "Unsorted" is gone — it existed because a grouping has to account
   for every row, and the library already shows everything.
 - **The trash can is back on every library row.** It was hidden on playlist
   rows, because "−" and a trash can one step apart differ by an icon and mean

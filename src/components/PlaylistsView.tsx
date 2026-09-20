@@ -1,5 +1,4 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import { createPortal } from "react-dom";
 import AppHeader from "./AppHeader";
 import { GripIcon, TrashIcon } from "./icons";
 import CoverThumb from "./CoverThumb";
@@ -12,7 +11,7 @@ import {
 import { formatBpm, formatDuration, formatKey } from "../lib/format";
 import { metaOf } from "../lib/grouping";
 import { usePlayer, type PlayerTrack } from "../lib/player";
-import { gapAt, playlistRows } from "../lib/playlists";
+import { gapIndexAt, playlistRows, reorderAt } from "../lib/playlists";
 import type { Edits } from "../lib/grouping";
 import type { Playlists } from "../lib/usePlaylists";
 import type { Playlist, TrackAnalysis } from "../types";
@@ -267,26 +266,19 @@ function OpenPlaylist({
   /** How far a press has to travel before it is a drag and not a click. */
   const DRAG_THRESHOLD = 4;
 
+  /** The row being carried, and where the press began — for the threshold. */
+  const [drag, setDrag] = useState<{ path: string; from: number } | null>(null);
   /**
-   * The row being carried: where the press began (for the threshold), where
-   * inside the row it was grabbed and how wide the row is (so the copy sits
-   * under the pointer where the row was), and where the pointer is now.
+   * The order on screen while a row is being carried, or `null` when it is the
+   * stored one.
+   *
+   * The preview *is* the interaction: the row moves to where it would land
+   * rather than a line being drawn where it would go, so what is dropped is
+   * exactly what was already on screen. It is also why the geometry below is
+   * read against this order rather than the stored one — the pointer can only
+   * mean something about the rows it is actually over.
    */
-  const [drag, setDrag] = useState<{
-    path: string;
-    from: number;
-    grabY: number;
-    left: number;
-    width: number;
-    y: number;
-  } | null>(null);
-  /**
-   * The gap a drop would use: a path to insert before, `null` for the end of
-   * the list, `undefined` for no target at all. The last two must stay apart —
-   * conflated, the line under the last row paints itself the moment a drag
-   * starts, before the pointer has said anything.
-   */
-  const [dropAt, setDropAt] = useState<string | null | undefined>(undefined);
+  const [preview, setPreview] = useState<string[] | null>(null);
   // Escape restores the stored name and then blurs; the blur handler has to
   // read the ref, because `setName` has not applied yet when it runs.
   const cancelled = useRef(false);
@@ -468,7 +460,20 @@ function OpenPlaylist({
     if (i >= 0) player.play(queue, i, true);
   };
 
-  const carried = drag ? rows.find((r) => r.path === drag.path) : null;
+  /**
+   * The rows as they are on screen: the preview while a row is carried, the
+   * stored order otherwise. Positions are renumbered with it, because a
+   * playlist's numbers are what the order *is* — leaving them behind would
+   * show a list that disagrees with itself mid-drag.
+   */
+  const shown = useMemo(() => {
+    if (!preview) return rows;
+    const byRow = new Map(rows.map((r) => [r.path, r]));
+    return preview.flatMap((p, i) => {
+      const row = byRow.get(p);
+      return row ? [{ ...row, position: i + 1 }] : [];
+    });
+  }, [preview, rows]);
 
   const body = useRef<HTMLTableSectionElement>(null);
   const boxes = () =>
@@ -481,39 +486,32 @@ function OpenPlaylist({
     row: PlaylistRow,
   ) => {
     if (e.button !== 0) return;
-    const tr = e.currentTarget.closest("tr");
-    if (!tr) return;
-    const box = tr.getBoundingClientRect();
     // Stops the text selection the gesture would otherwise begin.
     e.preventDefault();
     e.currentTarget.setPointerCapture(e.pointerId);
-    setDrag({
-      path: row.path,
-      from: e.clientY,
-      grabY: e.clientY - box.top,
-      left: box.left,
-      width: box.width,
-      y: e.clientY,
-    });
+    setDrag({ path: row.path, from: e.clientY });
   };
 
   const moveDrag = (y: number) => {
     if (!drag) return;
-    setDrag({ ...drag, y });
     // A press that has not travelled is a click, not a drag.
     if (Math.abs(y - drag.from) < DRAG_THRESHOLD) return;
-    setDropAt(gapAt(paths, boxes(), y));
+    const shown = preview ?? paths;
+    setPreview(reorderAt(shown, drag.path, gapIndexAt(boxes(), y)));
   };
 
   const endDrag = (commit: boolean) => {
     const moving = drag;
-    const at = dropAt;
+    const order = preview;
     setDrag(null);
-    setDropAt(undefined);
-    // `undefined` means the press never travelled, so there is nothing to do —
-    // as distinct from `null`, which is a deliberate drop at the end.
-    if (!commit || !moving || at === undefined) return;
-    void playlists.move(open.id, [moving.path], at);
+    setPreview(null);
+    // No preview means the press never travelled: a click, not a drag.
+    if (!commit || !moving || !order) return;
+    // The write is expressed against the stored list, so the order on screen is
+    // turned back into "before which path" — the one that follows it there, or
+    // the end.
+    const i = order.indexOf(moving.path);
+    void playlists.move(open.id, [moving.path], order[i + 1] ?? null);
   };
 
   return (
@@ -595,12 +593,8 @@ function OpenPlaylist({
               aria-label="Tracks in this playlist"
               className={drag ? "cursor-grabbing select-none" : ""}
             >
-              {rows.map((row, i) => {
-                const last = i === rows.length - 1;
-                // The line sits in the gap the drop would use: above this row,
-                // or below it when the gap is the end of the list.
-                const above = dropAt === row.path;
-                const below = last && dropAt === null && drag !== null;
+              {shown.map((row, i) => {
+                const last = i === shown.length - 1;
                 return (
                   <tr
                     key={row.path}
@@ -610,17 +604,12 @@ function OpenPlaylist({
                     }}
                     onPointerUp={() => endDrag(true)}
                     onPointerCancel={() => endDrag(false)}
-                    // The row being carried goes translucent, and only that.
-                    // A shadow would say "lifted" better, but the table is
-                    // `border-collapse: collapse` — checked in the built CSS —
-                    // and a box-shadow on a row of one is not reliably painted.
-                    // A class that may render nothing is worse than a quieter
-                    // effect that always does.
+                    // The row being carried is translucent and already where
+                    // it would land: the list reorders under the pointer, so
+                    // there is nothing to indicate and nothing to imagine.
                     className={`group h-16 border-b border-border hover:bg-surface-2 ${
                       drag?.path === row.path ? "opacity-40" : ""
-                    } ${last && !below ? "border-b-0" : ""} ${
-                      above ? "border-t-2 border-t-accent-500" : ""
-                    } ${below ? "border-b-2 border-b-accent-500" : ""}`}
+                    } ${last ? "border-b-0" : ""}`}
                   >
                     {cols.map((c) => cell(c, row))}
                   </tr>
@@ -631,48 +620,6 @@ function OpenPlaylist({
         </div>
       )}
 
-      {/*
-        The row, picked up and following the pointer.
-
-        A copy rather than the row itself, and portalled out of the table, for
-        three reasons that all point the same way: a `<tr>` in a
-        `border-collapse: collapse` table does not reliably paint a shadow, so
-        the thing that has to look lifted cannot be the row; anything `fixed`
-        inside the view would anchor to the document rather than the screen,
-        because the view wrappers in `App.tsx` carry a transform; and the copy
-        is a plain element, so it can say "raised" with the tone the design
-        system reserves for exactly that.
-
-        It shows what is being carried rather than a pixel copy of the row —
-        the place, the title, the artist. `pointer-events-none`, or it would
-        take the moves it exists to follow.
-      */}
-      {carried &&
-        drag &&
-        dropAt !== undefined &&
-        createPortal(
-          <div
-            aria-hidden
-            style={{
-              left: drag.left,
-              top: drag.y - drag.grabY,
-              width: drag.width,
-            }}
-            className="pointer-events-none fixed z-[60] flex h-16 items-center gap-3 rounded-lg border border-border-strong bg-surface-2 px-4 shadow-lg shadow-black/40"
-          >
-            <span className="w-6 shrink-0 text-right text-xs tabular-nums text-fg-subtle">
-              {carried.position}
-            </span>
-            <div className="min-w-0 flex-1">
-              <p className="truncate text-sm text-fg">{carried.title}</p>
-              <p className="truncate text-xs text-fg-subtle">
-                {carried.artist || "—"}
-              </p>
-            </div>
-            <GripIcon />
-          </div>,
-          document.body,
-        )}
     </>
   );
 }

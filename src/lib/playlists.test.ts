@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
-  gapAt,
+  gapIndexAt,
+  reorderAt,
   addToPlaylist,
   movePlaylistItem,
   movePlaylistItems,
@@ -208,36 +209,51 @@ describe("playlistRows", () => {
   });
 });
 
-describe("gapAt", () => {
-  const paths = ["a", "b", "c"];
+describe("gapIndexAt", () => {
   // Three 64 px rows, stacked from 100.
   const boxes = [0, 1, 2].map((i) => ({ top: 100 + i * 64, height: 64 }));
 
-  it("takes the gap above a row when the pointer is in its upper half", () => {
-    expect(gapAt(paths, boxes, 170)).toBe("b");
+  it("counts gaps from the top, above the first being nought", () => {
+    expect(gapIndexAt(boxes, 0)).toBe(0);
+    expect(gapIndexAt(boxes, 110)).toBe(0);
   });
 
-  it("takes the gap below it when the pointer is in its lower half", () => {
-    expect(gapAt(paths, boxes, 210)).toBe("c");
+  it("crosses into the next gap at a row's midpoint", () => {
+    expect(gapIndexAt(boxes, 131)).toBe(0);
+    expect(gapIndexAt(boxes, 133)).toBe(1);
   });
 
-  it("answers the end of the list below the last row's midpoint", () => {
-    // `null` is what `movePlaylistItems` already takes for "append", and it is
-    // the gap a drop target *on* a row can never express, because a row can
-    // only mean "before this one".
-    expect(gapAt(paths, boxes, 280)).toBeNull();
+  it("answers past the last row with the length", () => {
+    expect(gapIndexAt(boxes, 9999)).toBe(3);
+  });
+});
+
+describe("reorderAt", () => {
+  const shown = ["a", "b", "c", "d"];
+
+  it("moves a row up into the gap the pointer is in", () => {
+    expect(reorderAt(shown, "c", 0)).toEqual(["c", "a", "b", "d"]);
+    expect(reorderAt(shown, "c", 1)).toEqual(["a", "c", "b", "d"]);
   });
 
-  it("answers the end of the list past every row", () => {
-    expect(gapAt(paths, boxes, 9999)).toBeNull();
+  it("moves a row down to where it looks like it will land", () => {
+    // The adjustment that matters: taking the row out shifts every gap below
+    // it up by one, so without it a downward drag lands one row short.
+    expect(reorderAt(shown, "a", 2)).toEqual(["b", "a", "c", "d"]);
+    expect(reorderAt(shown, "a", 4)).toEqual(["b", "c", "d", "a"]);
   });
 
-  it("puts a midpoint in the upper half, so the two halves never overlap", () => {
-    expect(gapAt(paths, boxes, 132)).toBe("a");
-    expect(gapAt(paths, boxes, 133)).toBe("b");
+  it("leaves the order alone when the row is already in that gap", () => {
+    expect(reorderAt(shown, "b", 1)).toEqual(shown);
+    expect(reorderAt(shown, "b", 2)).toEqual(shown);
   });
 
-  it("answers the first gap above the whole list", () => {
-    expect(gapAt(paths, boxes, 0)).toBe("a");
+  it("clamps a gap outside the list", () => {
+    expect(reorderAt(shown, "b", 99)).toEqual(["a", "c", "d", "b"]);
+    expect(reorderAt(shown, "b", -3)).toEqual(["b", "a", "c", "d"]);
+  });
+
+  it("shrugs at a path it does not hold", () => {
+    expect(reorderAt(shown, "zz", 1)).toEqual(shown);
   });
 });

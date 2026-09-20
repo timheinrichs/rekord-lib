@@ -177,35 +177,42 @@ export interface RowBox {
 }
 
 /**
- * Which gap a pointer at `y` is in, as a path to insert before — or `null` for
- * the end of the list, which is what `movePlaylistItems` already takes.
+ * Which gap a pointer at `y` is in, counting from the top: `0` is above the
+ * first row, `boxes.length` below the last.
  *
- * Reordering is done with pointer events rather than HTML5 drag and drop,
- * which is not a style choice: the window enables Tauri's own file drop so the
- * library can be filled by dragging files in, and that handler takes drag and
- * drop at the webview level — `dragstart` still fires inside the page, but no
- * `dragover` and no `drop` are ever delivered. So the geometry has to be worked
- * out here rather than read off a drop target.
- *
- * Which half of a row the pointer is in decides which of its two gaps is meant,
- * so every gap between two rows is reachable and so is the one after the last —
- * the gap a drop target *on* a row can never express, because a row can only
- * mean "before this one".
+ * A row's midpoint is the boundary, so every gap is reachable and the two
+ * halves never overlap. The boxes are the rows **as they are on screen**, which
+ * during a drag is the preview order rather than the stored one — the pointer
+ * can only mean something about what it is actually over.
  */
-export function gapAt(
-  paths: readonly string[],
-  boxes: readonly RowBox[],
-  y: number,
-): string | null {
+export function gapIndexAt(boxes: readonly RowBox[], y: number): number {
   for (let i = 0; i < boxes.length; i++) {
-    const box = boxes[i];
-    if (y >= box.top + box.height) continue;
-    return y > box.top + box.height / 2
-      ? (paths[i + 1] ?? null)
-      : (paths[i] ?? null);
+    if (y < boxes[i].top + boxes[i].height / 2) return i;
   }
-  // Past the last row: the end of the list.
-  return null;
+  return boxes.length;
+}
+
+/**
+ * `shown` with `path` moved into `gap`.
+ *
+ * `gap` counts positions in `shown` *including* `path` itself, because that is
+ * what the pointer can see. Removing the row first shifts every gap below it up
+ * by one, which is the adjustment that makes dragging a row downwards land
+ * where it looks like it will rather than one row short.
+ *
+ * Used for the live preview and then for the commit, so what is dropped is
+ * exactly what was on screen.
+ */
+export function reorderAt(
+  shown: readonly string[],
+  path: string,
+  gap: number,
+): string[] {
+  const from = shown.indexOf(path);
+  if (from === -1) return [...shown];
+  const without = shown.filter((p) => p !== path);
+  const at = Math.max(0, Math.min(gap > from ? gap - 1 : gap, without.length));
+  return [...without.slice(0, at), path, ...without.slice(at)];
 }
 
 /**
