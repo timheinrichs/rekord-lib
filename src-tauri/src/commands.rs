@@ -18,7 +18,7 @@ use crate::metadata::{artwork, suggest, write};
 use crate::models::{
     BandcampAccount, BandcampDownloadResult, BandcampItem, ConvertJob, ConvertOptions,
     ConvertResult, CoverInput, DeleteResult, DupCandidate, DuplicateGroup, EventLevel, EventLog,
-    MetadataSuggestions,
+    GridEdit, MetadataSuggestions,
     RelocateResult, SkippedFile, TrackAnalysis, UndoEntry, WriteMetadataItem,
 };
 
@@ -518,7 +518,7 @@ pub async fn export_rekordbox_xml(app: AppHandle, dir: String, dest: String) -> 
         // database again — `events::record` does, to store the event — would
         // deadlock against this very guard. It froze the whole app after a
         // successful export, with the log line already printed.
-        let (tracks, playlists, edits) = {
+        let (tracks, playlists, edits, grids) = {
             let database = db::require(&handle)?;
             let conn = database.conn()?;
             let tracks = db::load_tracks(&conn, &dir)?;
@@ -536,7 +536,10 @@ pub async fn export_rekordbox_xml(app: AppHandle, dir: String, dest: String) -> 
             // what the export writes. `load_edits` stays opaque JSON; reading
             // the shape is the export module's own business.
             let edits = export::rekordbox::edit_overlay(&db::load_edits(&conn)?);
-            (tracks, playlists, edits)
+            // And the grids somebody placed by hand, which win over the
+            // detected ones for the same reason those edits win over the tags.
+            let grids = db::load_grid_edits(&conn)?;
+            (tracks, playlists, edits, grids)
         };
 
         // Stat'd here rather than carried on the row: the size is part of the
@@ -552,7 +555,8 @@ pub async fn export_rekordbox_xml(app: AppHandle, dir: String, dest: String) -> 
             })
             .collect();
 
-        let xml = export::rekordbox::collection_xml(&tracks, &playlists, &sizes, &edits);
+        let xml =
+            export::rekordbox::collection_xml(&tracks, &playlists, &sizes, &edits, &grids);
         std::fs::write(&target, xml)?;
         Ok(tracks.len())
     })
@@ -1619,6 +1623,72 @@ pub fn edit_clear(app: AppHandle, paths: Vec<String>) -> AppResult<()> {
     Ok(())
 }
 
+/// Every hand-set beat grid, keyed by track path.
+///
+/// Loaded whole beside the tracks, the way `edits_load` is: it is an overlay,
+/// and the list that draws it wants the whole overlay rather than one path at a
+/// time. `tracks.beat_offset_secs` keeps meaning what the detector found, which
+/// is what makes "reset to detected" possible at all.
+#[tauri::command]
+pub fn grid_edits_load(
+    app: AppHandle,
+) -> AppResult<std::collections::HashMap<String, GridEdit>> {
+    let database = db::require(&app)?;
+    let conn = database.conn()?;
+    Ok(db::load_grid_edits(&conn)?)
+}
+
+/// Stores the grid for one track. A `downbeat` outside 1..4 is refused rather
+/// than written: it goes straight into `Battito` in the Rekordbox export, and
+/// the players read it.
+#[tauri::command]
+pub fn grid_edit_set(app: AppHandle, path: String, edit: GridEdit) -> AppResult<()> {
+    check_grid(&edit)?;
+    let database = db::require(&app)?;
+    let conn = database.conn()?;
+    Ok(db::set_grid_edit(&conn, &path, &edit)?)
+}
+
+/// What a grid has to be before it is stored.
+///
+/// Its own function so it can be tested without a window: a `#[tauri::command]`
+/// takes an `AppHandle`, and the values being checked are the two that leave the
+/// app — `downbeat` is written into the export as `Battito` and read by a
+/// player, and a tempo of zero produces a grid with no spacing at all. The
+/// schema carries the same two as `CHECK` constraints, because `set_grid_edit`
+/// is reachable without coming through here.
+fn check_grid(edit: &GridEdit) -> AppResult<()> {
+    if !(1..=4).contains(&edit.downbeat) {
+        return Err(AppError::Probe(format!(
+            "a downbeat is 1 to 4, not {}",
+            edit.downbeat
+        )));
+    }
+    if !(edit.bpm.is_finite() && edit.bpm > 0.0) {
+        return Err(AppError::Probe(format!(
+            "a grid needs a tempo, not {}",
+            edit.bpm
+        )));
+    }
+    if !edit.offset_secs.is_finite() || edit.offset_secs < 0.0 {
+        return Err(AppError::Probe(
+            "a grid's anchor is a position in the track".into(),
+        ));
+    }
+    Ok(())
+}
+
+/// Forgets a hand-set grid, so the track has the detected one again.
+#[tauri::command]
+pub fn grid_edit_clear(app: AppHandle, paths: Vec<String>) -> AppResult<()> {
+    let database = db::require(&app)?;
+    let conn = database.conn()?;
+    for path in &paths {
+        db::clear_grid_edit(&conn, path)?;
+    }
+    Ok(())
+}
+
 /// The last duplicate result.
 #[tauri::command]
 pub fn duplicates_load(app: AppHandle) -> AppResult<Vec<serde_json::Value>> {
@@ -2655,6 +2725,51 @@ pub fn cancel_bandcamp_download(state: State<'_, BandcampDownloadState>, key: St
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    mod grid {
+        use super::*;
+
+        fn edit() -> GridEdit {
+            GridEdit {
+                offset_secs: 0.25,
+                bpm: 128.0,
+                downbeat: 1,
+                edited_ms: 1_700_000_000_000,
+            }
+        }
+
+        #[test]
+        fn a_grid_on_a_beat_of_the_bar_is_stored() {
+            for downbeat in 1..=4 {
+                assert!(check_grid(&GridEdit { downbeat, ..edit() }).is_ok());
+            }
+        }
+
+        #[test]
+        fn a_bar_position_outside_four_four_is_refused() {
+            // It is written into the export as `Battito` and a player reads it;
+            // a 0 or a 7 there is a grid nobody can interpret.
+            for downbeat in [0, 5, -1, 97] {
+                assert!(check_grid(&GridEdit { downbeat, ..edit() }).is_err());
+            }
+        }
+
+        #[test]
+        fn a_tempo_that_is_not_one_is_refused() {
+            for bpm in [0.0, -128.0, f64::NAN, f64::INFINITY] {
+                assert!(check_grid(&GridEdit { bpm, ..edit() }).is_err());
+            }
+        }
+
+        #[test]
+        fn an_anchor_that_is_not_a_position_is_refused() {
+            for offset_secs in [-1.0, f64::NAN, f64::INFINITY] {
+                assert!(check_grid(&GridEdit { offset_secs, ..edit() }).is_err());
+            }
+            // Zero is a position: the first beat of a track can be at zero.
+            assert!(check_grid(&GridEdit { offset_secs: 0.0, ..edit() }).is_ok());
+        }
+    }
 
     fn deleted(path: &str, success: bool) -> DeleteResult {
         DeleteResult {

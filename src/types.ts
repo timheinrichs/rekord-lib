@@ -37,6 +37,17 @@ export interface TrackMetadata {
 export interface Waveform {
   peak: number[];
   rms: number[];
+  /**
+   * How much audio the bins cover, in seconds — the *decoded* length, present
+   * only where this came from a decode.
+   *
+   * Not the same number as the probed duration: a VBR MP3 can be a couple of
+   * hundred milliseconds out, and a zoomed drawing that maps a bin back to a
+   * moment with the wrong one stretches against a beat grid and a playhead that
+   * both run on real time. The player bar never noticed, because it maps bins
+   * to a fraction of itself and never asks how long the track is.
+   */
+  duration_secs?: number;
 }
 
 export interface CompatIssue {
@@ -100,6 +111,24 @@ export interface TrackAnalysis {
    * one nobody has analysed, and goes back into the backlog at every start.
    */
   grid_absent: boolean;
+}
+
+/**
+ * A beat grid somebody placed by hand.
+ *
+ * Kept apart from `TrackAnalysis.beat_offset_secs`, which stays what the
+ * detector last found: this is the overlay, in the same relationship to it as a
+ * pending `TrackEdit` is to the tags on disk. That is what makes "reset to
+ * detected" possible — there is always something to go back to.
+ */
+export interface GridEdit {
+  /** Seconds from the start of the track to the anchor beat. */
+  offset_secs: number;
+  /** The tempo it was placed against — provenance, not authority. */
+  bpm: number;
+  /** Which beat of the bar the anchor is, 1..4. `Battito` in the export. */
+  downbeat: number;
+  edited_ms: number;
 }
 
 export interface ConvertOptions {

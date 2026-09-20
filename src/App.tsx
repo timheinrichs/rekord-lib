@@ -129,12 +129,15 @@ function BackToTop() {
  * closes the surface, with no second piece of state to keep in step.
  */
 function TrackSurface({
+  visible,
   tracks,
   edits,
   settings,
   onSettingsChange,
   onClose,
 }: {
+  /** False while the settings are over it — see the wrapper that renders this. */
+  visible: boolean;
   tracks: TrackAnalysis[];
   edits: Edits;
   settings: Settings;
@@ -172,6 +175,7 @@ function TrackSurface({
       {track ? (
         <TrackView
           track={track}
+          visible={visible}
           metadata={metaOf(track, edits)}
           settings={settings}
           onSettingsChange={onSettingsChange}
@@ -589,6 +593,7 @@ export default function App() {
           {trackOpen && (
             <div className={surface !== "track" ? "hidden" : undefined}>
               <TrackSurface
+                visible={surface === "track"}
                 tracks={libraryTracks}
                 edits={libraryEdits}
                 settings={settings}

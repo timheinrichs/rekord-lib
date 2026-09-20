@@ -131,15 +131,31 @@ describe("the track surface", () => {
   });
 
   it("keeps the stored overview when the closer look cannot be had", async () => {
+    // The stored overview answers from the scan's cache; only the decode fails.
     // A file that is busy for a moment is not a file with no waveform, so the
-    // lane keeps the coarse picture and says so rather than going blank.
-    fake.state.waveforms = [];
+    // lane keeps the coarse picture and says which one it is showing.
+    fake.fail("waveform", "no audio decoded");
     const { container } = render(<App />);
     await openFromRow(container);
 
     await waitFor(() =>
       expect(
         trackView(container).getByText(/the closer look is unavailable/i),
+      ).toBeInTheDocument(),
+    );
+  });
+
+  it("says so rather than claiming a picture it does not have", async () => {
+    // Nothing stored and nothing decodable: the lane is blank, and a caption
+    // about an overview would be describing an empty rectangle.
+    fake.state.waveforms = [];
+    fake.fail("waveform", "no audio decoded");
+    const { container } = render(<App />);
+    await openFromRow(container);
+
+    await waitFor(() =>
+      expect(
+        trackView(container).getByText(/could not be read for a waveform/i),
       ).toBeInTheDocument(),
     );
   });

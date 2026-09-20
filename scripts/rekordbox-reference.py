@@ -20,7 +20,8 @@ so a one-number detector cannot be scored against it the same way as a steady
 one — the benchmark buckets by this column instead of pretending the reference
 is equally solid everywhere.
 
-`beat_secs` is the position of the grid's first `<TEMPO>` marker — a beat, so a
+`battito` is which beat of the bar that marker is; `beat_secs` is the position
+of the grid's first `<TEMPO>` marker — a beat, so a
 detector can be scored on *phase* against it. Comparing raw seconds would be
 meaningless (two grids can name different beats and still agree), which is why
 the benchmark reduces both modulo the beat period.
@@ -116,6 +117,11 @@ def rows_from(xml_path: str):
             # Empty where the collection was never analysed for key. Kept as a
             # row anyway: the tempo reference is useful on its own.
             "key": (track.get("Tonality") or "").strip(),
+            # Which beat of the bar that first marker is. Rekordbox writes it;
+            # we asserted 1 on every track until the grid became editable, and
+            # the round-trip check in `export::rekordbox` is what keeps the two
+            # honest about it.
+            "battito": (track.findall("TEMPO")[0].get("Battito") or "").strip(),
         }
 
         # Two files with the same name in different folders hash alike. Keeping
@@ -159,6 +165,9 @@ def main() -> int:
             "#              file it was meant to.\n"
             "# key:         Rekordbox Tonality, verbatim. Empty = not analysed.\n"
             "# beat_secs:   position of the first beat marker, for grid phase.\n"
+            "# battito:     which beat of the bar that marker is (Rekordbox\n"
+            "#              Battito). Appended after the others, so an older\n"
+            "#              file without it still parses.\n"
         )
         writer = csv.DictWriter(
             fh,
@@ -169,6 +178,7 @@ def main() -> int:
                 "secs",
                 "key",
                 "beat_secs",
+                "battito",
             ],
         )
         writer.writeheader()

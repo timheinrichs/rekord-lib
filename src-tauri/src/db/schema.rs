@@ -17,6 +17,7 @@ use super::DbResult;
 /// start. Only changes that transform or drop existing data need a step in
 /// [`super::migrate`].
 ///
+/// - 11: `grid_edits`
 /// - 10: `tracks.grid_absent_at`
 /// - 9: `tracks.beat_offset_secs`, `tracks.beat_confidence`; `playlists`,
 ///   `playlist_items`
@@ -28,7 +29,7 @@ use super::DbResult;
 /// - 3: `undo_entries`
 /// - 2: `dismissed_groups`
 /// - 1: initial
-pub const SCHEMA_VERSION: i64 = 10;
+pub const SCHEMA_VERSION: i64 = 11;
 
 /// Key under which the schema version lives in `schema_meta`.
 pub const KEY_SCHEMA_VERSION: &str = "schema_version";
@@ -185,6 +186,50 @@ CREATE TABLE IF NOT EXISTS waveforms (
 CREATE TABLE IF NOT EXISTS edits (
     path    TEXT PRIMARY KEY,
     payload TEXT NOT NULL
+);
+
+-- A beat grid the user placed by hand.
+--
+-- Its own table and not a column on `tracks`, for the reason `edits` is its own
+-- table: a rescan rewrites the whole `tracks` row, and
+-- `invalidate_on_version_change` re-probes every file once per release. This is
+-- user data, and the detector must never overwrite it — so it is overlaid on
+-- read and never merged into the row, which also leaves
+-- `tracks.beat_offset_secs` meaning exactly one thing: what the detector last
+-- found. That is what "reset to detected" reads.
+--
+-- Unlike `edits` it *does* carry a foreign key. Cascade means a deleted track
+-- cannot leave a row behind, and it means a `relocate_tracks` that forgets this
+-- table fails at `COMMIT` rather than quietly dropping what somebody placed by
+-- hand. `edits` has none because nothing carries it either way; this one is
+-- keyed the way `playlist_items` and `waveforms` are.
+--
+-- No mtime and no algo version: this is not a cache and nothing invalidates it.
+-- The beats are in the music, and a tag write or a re-encode does not move
+-- them. Only the user clears it, through "reset to detected".
+CREATE TABLE IF NOT EXISTS grid_edits (
+    path        TEXT PRIMARY KEY REFERENCES tracks(path) ON DELETE CASCADE,
+    -- Seconds from the start of the track to the anchor beat. Same unit and
+    -- meaning as `tracks.beat_offset_secs`, so the export reads one or the
+    -- other without converting.
+    offset_secs REAL    NOT NULL,
+    -- The tempo the anchor was placed against. Provenance, not authority: the
+    -- tempo itself lives where every other tempo lives, in the tag and in the
+    -- pending `edits` row. This is here so the app can ask whether the phase
+    -- still belongs to the period now on the row.
+    bpm         REAL    NOT NULL,
+    -- Which beat of the bar the anchor is, 1..4. `Battito` in the Rekordbox
+    -- export, which has asserted 1 since A2 and never detected it.
+    downbeat    INTEGER NOT NULL,
+    edited_ms   INTEGER NOT NULL,
+    -- Checked here and not only in the command that writes it. `set_grid_edit`
+    -- is a plain `pub fn`, and the two values are the ones that leave the app:
+    -- `downbeat` is written into the export as `Battito` and a player reads it,
+    -- and a tempo of zero would make `beatsInWindow` produce a grid with no
+    -- spacing. A mis-phased bar count is invisible in a drawing, which is
+    -- exactly the kind of wrong that wants a constraint rather than a reviewer.
+    CHECK (downbeat BETWEEN 1 AND 4),
+    CHECK (bpm > 0)
 );
 
 CREATE TABLE IF NOT EXISTS duplicate_groups (

@@ -7,7 +7,6 @@ import {
   formatDuration,
   formatKey,
   formatSampleRate,
-  keyConfidenceLabel,
 } from "../lib/format";
 import { nearestSpan, ZOOM_SPANS, type Grid } from "../lib/gridLane";
 import { usePlayer } from "../lib/player";
@@ -21,6 +20,8 @@ const EMPTY: Waveform = { peak: [], rms: [] };
 interface Props {
   /** The row for the track the player is on. */
   track: TrackAnalysis;
+  /** False while the settings are over it: the lane stops asking for frames. */
+  visible?: boolean;
   /** Its metadata with any pending edit applied — what the library shows. */
   metadata: TrackMetadata;
   settings: Settings;
@@ -43,6 +44,7 @@ interface Props {
  */
 export default function TrackView({
   track,
+  visible,
   metadata,
   settings,
   onSettingsChange,
@@ -57,6 +59,15 @@ export default function TrackView({
       : null;
 
   const duration = track.audio.duration_secs ?? 0;
+  // The phase was measured against the tempo the detector found; a hand-typed
+  // one is a different period, and the beats walk away from the audio within a
+  // few bars. Said rather than silently drawn — a grid one beat out looks
+  // exactly like a grid on time.
+  const driftsFromEdit =
+    grid != null &&
+    track.metadata.bpm != null &&
+    metadata.bpm != null &&
+    Math.abs(metadata.bpm - track.metadata.bpm) > 0.005 * track.metadata.bpm;
 
   return (
     <main className="mx-auto max-w-6xl space-y-6 px-6 py-8">
@@ -87,14 +98,11 @@ export default function TrackView({
           durationSecs={duration}
           grid={grid}
           spanSecs={span}
+          visible={visible}
           onSeek={(secs) => seek(duration ? secs / duration : 0)}
         />
         <p className="font-sans text-sm text-fg-subtle" role="status">
-          {wave.state === "loading"
-            ? "Reading the file for a closer look"
-            : wave.state === "coarse"
-              ? "Showing the stored overview — the closer look is unavailable"
-              : " "}
+          {laneNote(wave)}
         </p>
 
         <div className="flex flex-wrap items-center justify-between gap-4">
@@ -141,16 +149,20 @@ export default function TrackView({
                   value={`${grid.anchorSecs.toFixed(3)} s`}
                 />
                 <Fact label="Tempo" value={`${grid.bpm.toFixed(2)} BPM`} />
-                <Fact
-                  label="Detected"
-                  value={confidence(track.beat_confidence)}
-                />
+                <Fact label="Confidence" value={beatConfidence(track)} />
               </dl>
               <p className="mt-3 font-sans text-sm text-fg-subtle">
                 The anchor is the beat the grid is measured from, and the app
                 asserts it is the first of its bar. Neither can be moved by hand
                 yet.
               </p>
+              {driftsFromEdit && (
+                <p className="mt-3 font-sans text-sm text-fg-warning">
+                  The tempo was changed by hand and the anchor was not: it was
+                  measured against {track.metadata.bpm?.toFixed(2)} BPM, so the
+                  grid drifts from here on.
+                </p>
+              )}
             </>
           ) : (
             <p className="mt-3 font-sans text-sm text-fg-subtle">
@@ -174,12 +186,35 @@ function Fact({ label, value }: { label: string; value: string }) {
   );
 }
 
-function confidence(value: number | null | undefined): string {
-  const label = keyConfidenceLabel(value);
-  return label ? `${value?.toFixed(2)} (${label})` : "—";
+/**
+ * How clearly the phase won, as the detector's own number.
+ *
+ * Bare, and deliberately not dressed up the way the key's confidence is: that
+ * one has a percentage vocabulary because it was measured against 2180
+ * Rekordbox keys and means something on its own. Nothing here has been
+ * measured against anything, so a word would be an invention.
+ */
+function beatConfidence(track: TrackAnalysis): string {
+  const value = track.beat_confidence;
+  return value == null ? "—" : value.toFixed(2);
 }
 
 type WaveState = "loading" | "coarse" | "detail";
+
+/**
+ * What the line under the lane says about the picture on it.
+ *
+ * It reads the bins as well as the state, because "the closer look is
+ * unavailable" is a claim about what *is* on screen — and a file ffmpeg cannot
+ * read at all leaves the lane blank under a caption saying an overview is on it.
+ */
+function laneNote(wave: { state: WaveState; data: Waveform }): string {
+  if (wave.state === "loading") return "Reading the file for a closer look";
+  if (wave.state === "detail") return "\u00A0";
+  return wave.data.peak.length
+    ? "Showing the stored overview — the closer look is unavailable"
+    : "This file could not be read for a waveform";
+}
 
 /**
  * The bins for the lane: the stored overview at once, the detail array when it
@@ -206,9 +241,10 @@ function useTrackWaveform(path: string): { data: Waveform; state: WaveState } {
     setState("loading");
     void overviewWaveform(path)
       .then((w) => {
+        if (!live || !w.peak.length) return;
         // Only if the detail has not already won the race — a track whose
         // decode was cached answers before the overview does.
-        if (live && w.peak.length) setData((d) => (d.peak.length ? d : w));
+        setData((d) => (d.peak.length ? d : w));
       })
       .catch(() => {});
     void detailFor(path)

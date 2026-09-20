@@ -45,6 +45,7 @@ import type {
   DeleteResult,
   DuplicateGroup,
   EventLevel,
+  GridEdit,
   EventLog,
   MetadataSuggestions,
   RelocateResult,
@@ -67,6 +68,8 @@ export interface FakeState {
   files: string[];
   tracks: TrackAnalysis[];
   edits: Record<string, TrackEdit>;
+  /** Hand-set beat grids, keyed by path — the overlay, not the detected value. */
+  gridEdits: Record<string, GridEdit>;
   groups: DuplicateGroup[];
   events: AppEvent[];
   undo: UndoEntry[];
@@ -117,6 +120,12 @@ export interface FakeState {
 
 const DB_UNAVAILABLE = "the library database is unavailable";
 
+/** A waveform of `bins` bins. Shape, not data — no test asserts on a value. */
+function ramp(bins: number) {
+  const peak = Array.from({ length: bins }, (_, i) => (i + 1) / bins);
+  return { peak, rms: peak.map((v) => v / 2), duration_secs: bins / 200 };
+}
+
 /**
  * When the fake Keychain says a credential was stored. Fixed rather than
  * `Date.now()`: a test that asserts on the date must not depend on the day it
@@ -129,6 +138,7 @@ function defaults(): FakeState {
     files: [],
     tracks: [],
     edits: {},
+    gridEdits: {},
     groups: [],
     events: [],
     undo: [],
@@ -291,10 +301,21 @@ export function installFakeBackend(
       // only has to answer "more when detail was asked for", which is the
       // property a caller can be wrong about.
       const bins = args.resolution === "detail" ? 24_000 : 2400;
-      const ramp = Array.from({ length: bins }, (_, i) => (i + 1) / bins);
-      return { peak: ramp, rms: ramp.map((v) => v / 2) };
+      return ramp(bins);
     },
-    stored_waveforms: () => ({}),
+    stored_waveforms: (args) => {
+      // Answered from the same seed the decode is, because that is the real
+      // relationship: the scan stores an overview for every track it analysed,
+      // and `api.waveform` asks here first. A test that wants the *detail*
+      // decode to fail while the overview is on screen seeds the path and then
+      // `fail("waveform", …)`, which is exactly a file that went busy.
+      const paths = (args.paths as string[]) ?? [];
+      return Object.fromEntries(
+        paths
+          .filter((p) => state.waveforms.includes(p))
+          .map((p) => [p, ramp(2400)]),
+      );
+    },
 
     // --- library and edits ---
     library_load: () => state.tracks,
@@ -404,6 +425,23 @@ export function installFakeBackend(
     },
     library_relocate: (): RelocateResult => ({ moved: state.tracks.length, skipped: 0 }),
     edits_load: () => state.edits,
+    grid_edits_load: () => state.gridEdits,
+    grid_edit_set: (args) => {
+      const edit = args.edit as GridEdit;
+      // The command refuses these rather than writing them: `downbeat` goes
+      // straight into `Battito` in the export, and the players read it.
+      if (edit.downbeat < 1 || edit.downbeat > 4) {
+        throw new Error(`a downbeat is 1 to 4, not ${edit.downbeat}`);
+      }
+      state.gridEdits[args.path as string] = edit;
+      return null;
+    },
+    grid_edit_clear: (args) => {
+      for (const path of (args.paths as string[]) ?? []) {
+        delete state.gridEdits[path];
+      }
+      return null;
+    },
     edit_set: (args) => {
       state.edits[args.path as string] = args.edit as TrackEdit;
       return null;
@@ -670,6 +708,9 @@ export function installFakeBackend(
     "edits_load",
     "edit_set",
     "edit_clear",
+    "grid_edits_load",
+    "grid_edit_set",
+    "grid_edit_clear",
     "duplicates_load",
     "duplicates_save",
     "duplicates_dismiss",

@@ -282,6 +282,23 @@ pub struct UndoEntry {
     pub items: Vec<WriteMetadataItem>,
 }
 
+/// A beat grid somebody placed by hand.
+///
+/// Kept apart from `TrackAnalysis`'s `beat_offset_secs`, which stays what the
+/// detector last found: this is the overlay, in the same relationship to it as
+/// a pending `edits` row is to the tags on disk. The export resolves the two,
+/// the same way `track_xml` already resolves a metadata edit against a row.
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+pub struct GridEdit {
+    /// Seconds from the start of the track to the anchor beat.
+    pub offset_secs: f64,
+    /// The tempo it was placed against — provenance, not authority.
+    pub bpm: f64,
+    /// Which beat of the bar the anchor is, 1..4.
+    pub downbeat: i64,
+    pub edited_ms: i64,
+}
+
 /// A playlist, without its contents.
 ///
 /// The tracks are a separate table and a separate call: the sidebar-shaped

@@ -1,5 +1,5 @@
 import { invoke } from "@tauri-apps/api/core";
-import type { RelocateResult, TrackAnalysis, TrackEdit } from "../types";
+import type { GridEdit, RelocateResult, TrackAnalysis, TrackEdit } from "../types";
 
 /**
  * The track database lives in SQLite in the Rust backend, not in the JSON
@@ -72,4 +72,26 @@ export function saveEdit(path: string, edit: TrackEdit): Promise<void> {
 export function clearEdits(paths: string[]): Promise<void> {
   if (!paths.length) return Promise.resolve();
   return invoke("edit_clear", { paths });
+}
+
+/**
+ * Every hand-set beat grid, keyed by path.
+ *
+ * Loaded whole beside the tracks, the way the pending edits are: it is an
+ * overlay on what the detector found, and the list that draws it wants all of
+ * it rather than one path at a time.
+ */
+export function loadGridEdits(): Promise<Record<string, GridEdit>> {
+  return invoke<Record<string, GridEdit>>("grid_edits_load");
+}
+
+/** Stores the grid for one track, replacing whatever was there. */
+export function saveGridEdit(path: string, edit: GridEdit): Promise<void> {
+  return invoke("grid_edit_set", { path, edit });
+}
+
+/** Forgets them, so those tracks have the detected grid again. */
+export function clearGridEdits(paths: string[]): Promise<void> {
+  if (!paths.length) return Promise.resolve();
+  return invoke("grid_edit_clear", { paths });
 }

@@ -1,6 +1,11 @@
 import { useCallback, useEffect, useRef } from "react";
 
-import { drawLane, laneColours, type LaneFrame } from "../lib/gridCanvas";
+import {
+  drawLane,
+  laneColours,
+  type LaneColours,
+  type LaneFrame,
+} from "../lib/gridCanvas";
 import {
   beatsInWindow,
   laneWindow,
@@ -27,6 +32,16 @@ interface Props {
   spanSecs: number;
   /** Seek to a moment in the track. */
   onSeek: (secs: number) => void;
+  /**
+   * Whether the lane is actually on screen.
+   *
+   * The surface stays mounted while the settings are over it — that is what
+   * lets it notice the player being closed — and `display: none` stops nothing.
+   * Without this the frame loop keeps running at sixty wakeups a second for a
+   * canvas whose `clientWidth` is zero, which is exactly what `usePlayhead`'s
+   * own comment warns about.
+   */
+  visible?: boolean;
 }
 
 /**
@@ -59,7 +74,7 @@ function ScrollingLane(props: Props) {
   const { canvas, paint } = useLane(props, laneWindow);
   // A frame loop only while there is movement to draw. Paused, the last frame
   // is already right, and a loop would be sixty wakeups a second to redraw it.
-  usePlayhead(playing, currentTime, paint);
+  usePlayhead(playing && props.visible !== false, currentTime, paint);
   // Paused, the frame clock is the wrong one to listen to and there is still
   // one thing that moves: a seek. From the bar, or from a click on this very
   // lane. Without this the playhead stays where it was until playback resumes,
@@ -78,6 +93,18 @@ function SteppedLane(props: Props) {
   return canvas;
 }
 
+/** The palette for the theme now on `<html>`, re-read only when that changes. */
+function coloursFor(
+  el: HTMLElement,
+  cache: { current: { theme?: string; colours: LaneColours } | null },
+): LaneColours {
+  const theme = document.documentElement.dataset.theme;
+  if (!cache.current || cache.current.theme !== theme) {
+    cache.current = { theme, colours: laneColours(el) };
+  }
+  return cache.current.colours;
+}
+
 /**
  * Everything the two lanes share: the canvas, the palette, the click target,
  * and one `paint` that takes a position and draws it.
@@ -90,6 +117,16 @@ function useLane(
   const ref = useRef<HTMLCanvasElement | null>(null);
   /** The window the last frame drew, so a click lands where it looks. */
   const shown = useRef<LaneWindow>({ from: 0, to: spanSecs });
+  /**
+   * The palette, and the theme it was read for.
+   *
+   * `laneColours` calls `getComputedStyle`, which forces a style recalculation
+   * — sixty times a second, over a document that still has the whole library
+   * table in it behind this surface. The tokens only change when the theme
+   * does, and `applyTheme` writes that onto `<html>` as an attribute, which is
+   * a string comparison rather than a layout question.
+   */
+  const palette = useRef<{ theme?: string; colours: LaneColours } | null>(null);
 
   const paint = useCallback(
     (nowSecs: number) => {
@@ -100,10 +137,14 @@ function useLane(
       const frame: LaneFrame = {
         data,
         durationSecs,
+        // The decoded span where the bins brought one, the probed duration
+        // where they did not — a stored overview is read back beside a row that
+        // already knows how long its track is.
+        binsSpanSecs: data.duration_secs ?? durationSecs,
         window: w,
         nowSecs,
         beats: grid ? beatsInWindow(w, grid, durationSecs) : [],
-        colours: laneColours(el),
+        colours: coloursFor(el, palette),
       };
       drawLane(el, frame);
       // Set here rather than rendered, for the same reason the drawing is: this

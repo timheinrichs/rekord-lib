@@ -118,13 +118,27 @@ reachable through this API and no view passes `true`. Only `forceBpm` is, from
 | `edits_load` | — | `AppResult<Record<string, TrackEdit>>` |
 | `edit_set` | `path`, `edit` | `AppResult<()>` |
 | `edit_clear` | `paths` | `AppResult<()>` |
+| `grid_edits_load` | — | `AppResult<Record<string, GridEdit>>` |
+| `grid_edit_set` | `path`, `edit` | `AppResult<()>` |
+| `grid_edit_clear` | `paths` | `AppResult<()>` |
 
 `library_delete` forgets rows; it does not touch files. Deleting a file is
 `delete_files`. `library_relocate` re-points stored paths at a moved folder and
 never deletes: what it cannot find under the new root is reported as skipped. It
-has to carry **every** table keyed by the path — edits, fingerprints, waveforms,
-playlist memberships — because a child left behind fails the `COMMIT` rather
-than the statement, and takes the whole relocation with it.
+has to carry **every** table keyed by the path — edits, hand-set beat grids,
+fingerprints, waveforms, playlist memberships — because a child left behind
+fails the `COMMIT` rather than the statement, and takes the whole relocation
+with it. The grid is the one of those the *conversion* path also carries
+(`replace_track`), where the pending edit and the two caches are dropped: a
+conversion re-encodes the same music and does not move a beat.
+
+The three `grid_edit*` commands are the same shape as the three above them, and
+for the same reason. A hand-placed anchor is user data, so it lives in its own
+table rather than in a `tracks` column the next rescan rewrites — and
+`tracks.beat_offset_secs` keeps meaning exactly one thing, what the detector
+last found, which is what *reset to detected* goes back to. `grid_edit_set`
+refuses a `downbeat` outside 1..4 instead of storing it: it is written into the
+Rekordbox export as `Battito`, and the players read it.
 
 `playlist_set` replaces a playlist's contents with exactly the list it is given,
 in that order — never a diff. The order is the payload, and `src/lib/playlists.ts`

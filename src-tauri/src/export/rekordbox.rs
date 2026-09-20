@@ -31,7 +31,7 @@
 //! collection rather than only browsed in the xml view. Nothing to write here,
 //! and nothing missing.
 
-use crate::models::{Playlist, TrackAnalysis, TrackMetadata};
+use crate::models::{GridEdit, Playlist, TrackAnalysis, TrackMetadata};
 use std::collections::HashMap;
 
 /// One playlist and the paths in it, in order.
@@ -88,6 +88,7 @@ pub fn collection_xml(
     playlists: &[PlaylistExport],
     sizes: &HashMap<String, u64>,
     edits: &HashMap<String, TrackMetadata>,
+    grids: &HashMap<String, GridEdit>,
 ) -> String {
     // Rekordbox keys playlist entries by TrackID, so every track needs one that
     // is stable within the document. The index is exactly that, and nothing
@@ -121,6 +122,7 @@ pub fn collection_xml(
             i as i64 + 1,
             sizes.get(&track.path).copied(),
             edits.get(&track.path),
+            grids.get(&track.path),
         ));
     }
     out.push_str("  </COLLECTION>\n");
@@ -152,6 +154,7 @@ fn track_xml(
     id: i64,
     size: Option<u64>,
     edit: Option<&TrackMetadata>,
+    grid: Option<&GridEdit>,
 ) -> String {
     // Resolved once, here: everything below reads `md` and none of it needs to
     // know whether the values came from the file's tags or from an edit the
@@ -209,14 +212,26 @@ fn track_xml(
     line.push_str(&format!(" Location=\"{}\"", location_url(&t.path)));
 
     // The grid: one marker, because our detector produces one tempo per track,
-    // so a grid is a period and a phase (B3). `Metro` and `Battito` say "4/4,
-    // and this marker is beat 1" — the bar position we do not detect, which is
-    // why every marker claims the same one rather than pretending to know.
-    match (md.bpm, t.beat_offset_secs) {
+    // so a grid is a period and a phase (B3).
+    //
+    // A hand-placed grid wins over the detected one, the same way a pending
+    // metadata edit wins over the row's tags and through the same shape — an
+    // overlay resolved on read, so `tracks.beat_offset_secs` keeps meaning what
+    // the detector found and "reset to detected" has something to reset to.
+    //
+    // `Metro` stays `4/4`: nothing in the app knows a time signature. `Battito`
+    // no longer does. It said "this marker is beat 1" on every track because
+    // the bar position was never detected; now it says which beat the user
+    // declared the anchor to be, and only falls back to 1 where nobody has.
+    let (offset, battito) = match grid {
+        Some(g) => (Some(g.offset_secs), g.downbeat),
+        None => (t.beat_offset_secs.map(f64::from), 1),
+    };
+    match (md.bpm, offset) {
         (Some(bpm), Some(offset)) if bpm > 0.0 => {
             line.push_str(">\n");
             line.push_str(&format!(
-                "      <TEMPO Inizio=\"{offset:.3}\" Bpm=\"{bpm:.2}\" Metro=\"4/4\" Battito=\"1\"/>\n",
+                "      <TEMPO Inizio=\"{offset:.3}\" Bpm=\"{bpm:.2}\" Metro=\"4/4\" Battito=\"{battito}\"/>\n",
             ));
             line.push_str("    </TRACK>\n");
         }
@@ -375,6 +390,24 @@ mod tests {
         HashMap::new()
     }
 
+    /// No hand-set grids, so the detected one is what gets written.
+    fn detected_only() -> HashMap<String, GridEdit> {
+        HashMap::new()
+    }
+
+    /// One hand-placed grid, for the cases that are about them.
+    fn placed(path: &str, offset_secs: f64, downbeat: i64) -> HashMap<String, GridEdit> {
+        HashMap::from([(
+            path.to_string(),
+            GridEdit {
+                offset_secs,
+                bpm: 127.6,
+                downbeat,
+                edited_ms: 1_700_000_000_000,
+            },
+        )])
+    }
+
     fn list(id: i64, name: &str) -> Playlist {
         Playlist {
             id,
@@ -387,7 +420,7 @@ mod tests {
 
     #[test]
     fn a_track_carries_what_the_app_knows_about_it() {
-        let xml = collection_xml(&[track("/lib/a.aiff", "Opening")], &[], &nothing(), &unedited());
+        let xml = collection_xml(&[track("/lib/a.aiff", "Opening")], &[], &nothing(), &unedited(), &detected_only());
         assert!(xml.contains("<DJ_PLAYLISTS Version=\"1.0.0\">"));
         assert!(xml.contains("TrackID=\"1\""));
         assert!(xml.contains("Name=\"Opening\""));
@@ -406,10 +439,80 @@ mod tests {
     }
 
     #[test]
+    fn a_hand_placed_grid_wins_over_the_detected_one() {
+        // The overlay, in the same relationship to the row as a pending
+        // metadata edit: the detector's 30.250 is still on the row, and what
+        // goes into the file is what somebody placed.
+        let xml = collection_xml(
+            &[track("/lib/a.aiff", "Opening")],
+            &[],
+            &nothing(),
+            &unedited(),
+            &placed("/lib/a.aiff", 0.482, 1),
+        );
+        assert!(
+            xml.contains("<TEMPO Inizio=\"0.482\" Bpm=\"128.00\" Metro=\"4/4\" Battito=\"1\"/>"),
+            "{xml}"
+        );
+        assert!(!xml.contains("30.250"), "{xml}");
+    }
+
+    #[test]
+    fn battito_says_which_beat_of_the_bar_the_anchor_is() {
+        // The value B3 never detected and A2 asserted anyway. A player reads
+        // this: `Battito="3"` means the bar started two beats earlier, and
+        // every quantized jump inherits it.
+        let xml = collection_xml(
+            &[track("/lib/a.aiff", "Opening")],
+            &[],
+            &nothing(),
+            &unedited(),
+            &placed("/lib/a.aiff", 0.482, 3),
+        );
+        assert!(xml.contains("Battito=\"3\"/>"), "{xml}");
+    }
+
+    #[test]
+    fn a_grid_placed_on_a_track_with_no_detected_one_is_still_written() {
+        // The case the row cannot express: the detector found no phase, the
+        // user placed one. Reading the offset off the row would write nothing.
+        let mut t = track("/lib/a.aiff", "Opening");
+        t.beat_offset_secs = None;
+        let xml = collection_xml(
+            &[t],
+            &[],
+            &nothing(),
+            &unedited(),
+            &placed("/lib/a.aiff", 1.0, 2),
+        );
+        assert!(
+            xml.contains("<TEMPO Inizio=\"1.000\" Bpm=\"128.00\" Metro=\"4/4\" Battito=\"2\"/>"),
+            "{xml}"
+        );
+    }
+
+    #[test]
+    fn a_grid_for_a_track_outside_the_collection_changes_nothing() {
+        // The same property `edits` has: the overlay is keyed by path and the
+        // collection decides what is written.
+        let xml = collection_xml(
+            &[track("/lib/a.aiff", "Opening")],
+            &[],
+            &nothing(),
+            &unedited(),
+            &placed("/lib/somewhere-else.aiff", 9.0, 4),
+        );
+        assert!(
+            xml.contains("<TEMPO Inizio=\"30.250\" Bpm=\"128.00\" Metro=\"4/4\" Battito=\"1\"/>"),
+            "{xml}"
+        );
+    }
+
+    #[test]
     fn a_track_with_no_grid_is_a_single_empty_element() {
         let mut t = track("/lib/a.aiff", "Opening");
         t.beat_offset_secs = None;
-        let xml = collection_xml(&[t], &[], &nothing(), &unedited());
+        let xml = collection_xml(&[t], &[], &nothing(), &unedited(), &detected_only());
         assert!(!xml.contains("<TEMPO"));
         assert!(xml.contains("/>\n"), "{xml}");
     }
@@ -421,7 +524,7 @@ mod tests {
         let mut t = track("/lib/a.aiff", "Interlude");
         t.metadata.bpm = None;
         t.beat_offset_secs = None;
-        let xml = collection_xml(&[t], &[], &nothing(), &unedited());
+        let xml = collection_xml(&[t], &[], &nothing(), &unedited(), &detected_only());
         assert!(xml.contains("AverageBpm=\"0.00\""), "{xml}");
     }
 
@@ -431,7 +534,7 @@ mod tests {
         // shows everywhere in this app.
         let mut t = track("/lib/no-tags.aiff", "");
         t.metadata.title = None;
-        let xml = collection_xml(&[t], &[], &nothing(), &unedited());
+        let xml = collection_xml(&[t], &[], &nothing(), &unedited(), &detected_only());
         assert!(xml.contains("Name=\"no-tags.aiff\""), "{xml}");
     }
 
@@ -442,7 +545,7 @@ mod tests {
             list(1, "Warmup"),
             vec!["/lib/b.aiff".to_string(), "/lib/a.aiff".to_string()],
         )];
-        let xml = collection_xml(&tracks, &playlists, &nothing(), &unedited());
+        let xml = collection_xml(&tracks, &playlists, &nothing(), &unedited(), &detected_only());
         assert!(xml.contains("<NODE Name=\"Warmup\" Type=\"1\" KeyType=\"0\" Entries=\"2\">"));
         // In playlist order, which is the whole point of storing an order.
         let first = xml.find("<TRACK Key=\"2\"/>").unwrap();
@@ -459,7 +562,7 @@ mod tests {
             list(1, "Set"),
             vec!["/lib/a.aiff".to_string(), "/lib/gone.aiff".to_string()],
         )];
-        let xml = collection_xml(&tracks, &playlists, &nothing(), &unedited());
+        let xml = collection_xml(&tracks, &playlists, &nothing(), &unedited(), &detected_only());
         assert!(xml.contains("Entries=\"1\""), "{xml}");
     }
 
@@ -468,7 +571,7 @@ mod tests {
         let mut t = track("/lib/a.aiff", "Rock & \"Roll\" <mix>");
         t.metadata.artist = Some("A & B".into());
         let playlists = vec![(list(1, "Peak & Close"), vec!["/lib/a.aiff".to_string()])];
-        let xml = collection_xml(&[t], &playlists, &nothing(), &unedited());
+        let xml = collection_xml(&[t], &playlists, &nothing(), &unedited(), &detected_only());
         assert!(xml.contains("Name=\"Rock &amp; &quot;Roll&quot; &lt;mix&gt;\""), "{xml}");
         assert!(xml.contains("Name=\"Peak &amp; Close\""));
         assert!(!xml.contains("& \""), "a bare ampersand would not parse");
@@ -484,7 +587,7 @@ mod tests {
         t.metadata.album = Some("Edge\u{fffe}case\u{ffff}".into());
         // Legal, and worth keeping: tab, newline, return and the rest of BMP.
         t.metadata.artist = Some("Two\tNames\u{fdd0}".into());
-        let xml = collection_xml(&[t], &[], &nothing(), &unedited());
+        let xml = collection_xml(&[t], &[], &nothing(), &unedited(), &detected_only());
 
         assert!(xml.contains("Name=\"BellEnd\""), "{xml}");
         assert!(xml.contains("Album=\"Edgecase\""), "{xml}");
@@ -548,7 +651,22 @@ mod tests {
         a.metadata.bpm = Some(127.6);
         a.beat_offset_secs = Some(30.5);
         let b = track("/lib/b.aiff", "Beta");
-        std::fs::write(&xml_path, collection_xml(&[a, b], &[], &nothing(), &unedited())).unwrap();
+        // One of the two carries a hand-placed grid on beat three, which is the
+        // half of this format we had never written before: `Battito` was the
+        // literal 1 on every track until the grid became editable. The reader
+        // learned the attribute in the same change, so this is the loop
+        // closing on it rather than on our own assumption.
+        std::fs::write(
+            &xml_path,
+            collection_xml(
+                &[a, b],
+                &[],
+                &nothing(),
+                &unedited(),
+                &placed("/lib/b.aiff", 0.482, 3),
+            ),
+        )
+        .unwrap();
 
         let script = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
             .parent()
@@ -575,6 +693,10 @@ mod tests {
         assert!(csv.contains("127.60"), "{csv}");
         assert!(csv.contains("30.5000"), "{csv}");
         assert!(csv.contains(",Am,"), "{csv}");
+        // The detected anchor of the one track, and the hand-placed anchor and
+        // bar position of the other, both read back off the file.
+        assert!(csv.contains(",30.5000,1"), "{csv}");
+        assert!(csv.contains(",0.4820,3"), "{csv}");
     }
 
     #[test]
@@ -582,7 +704,7 @@ mod tests {
         // Without them Rekordbox' summary reads "0 Byte, 0 kbps", which looks
         // like a broken file rather than a field we did not fill in.
         let sizes = std::collections::HashMap::from([("/lib/a.aiff".to_string(), 37_108_800u64)]);
-        let xml = collection_xml(&[track("/lib/a.aiff", "Opening")], &[], &sizes, &unedited());
+        let xml = collection_xml(&[track("/lib/a.aiff", "Opening")], &[], &sizes, &unedited(), &detected_only());
         assert!(xml.contains("Size=\"37108800\""), "{xml}");
         // 37,108,800 bytes over 210.4 s ≈ 1411 kbps, which is CD PCM.
         assert!(xml.contains("BitRate=\"1411\""), "{xml}");
@@ -590,7 +712,7 @@ mod tests {
 
     #[test]
     fn a_file_that_cannot_be_stated_is_exported_without_one() {
-        let xml = collection_xml(&[track("/lib/a.aiff", "Opening")], &[], &nothing(), &unedited());
+        let xml = collection_xml(&[track("/lib/a.aiff", "Opening")], &[], &nothing(), &unedited(), &detected_only());
         assert!(!xml.contains("Size="));
         assert!(!xml.contains("BitRate="));
     }
@@ -624,7 +746,7 @@ mod tests {
             })),
         )]);
         let overlay = edit_overlay(&edits);
-        let xml = collection_xml(&[track("/lib/a.aiff", "Opening")], &[], &nothing(), &overlay);
+        let xml = collection_xml(&[track("/lib/a.aiff", "Opening")], &[], &nothing(), &overlay, &detected_only());
         assert!(xml.contains("Name=\"Opening (corrected)\""), "{xml}");
         assert!(xml.contains("Artist=\"Testverse &amp; Co\""), "{xml}");
         // The edit replaces the metadata rather than merging into it, so a
@@ -649,7 +771,7 @@ mod tests {
         ]);
         let overlay = edit_overlay(&edits);
         assert!(overlay.is_empty());
-        let xml = collection_xml(&[track("/lib/a.aiff", "Opening")], &[], &nothing(), &overlay);
+        let xml = collection_xml(&[track("/lib/a.aiff", "Opening")], &[], &nothing(), &overlay, &detected_only());
         assert!(xml.contains("Name=\"Opening\""), "{xml}");
     }
 
@@ -661,7 +783,7 @@ mod tests {
             "/other/z.aiff".to_string(),
             pending(serde_json::json!({ "title": "Elsewhere", "has_cover": false })),
         )]));
-        let xml = collection_xml(&[track("/lib/a.aiff", "Opening")], &[], &nothing(), &overlay);
+        let xml = collection_xml(&[track("/lib/a.aiff", "Opening")], &[], &nothing(), &overlay, &detected_only());
         assert!(xml.contains("Name=\"Opening\""), "{xml}");
         assert!(!xml.contains("Elsewhere"), "{xml}");
     }

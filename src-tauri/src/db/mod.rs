@@ -21,7 +21,7 @@ use tauri::{AppHandle, Manager, State};
 use crate::audio::compat;
 use crate::error::{AppError, AppResult};
 use crate::models::{
-    Playlist,
+    GridEdit, Playlist,
     AppEvent, AudioInfo, EventLevel, RelocateResult, TrackAnalysis, TrackMetadata, UndoEntry,
     WriteMetadataItem,
 };
@@ -429,7 +429,8 @@ fn relocated_path(path: &str, old_dir: &str, new_dir: &str) -> Option<String> {
 /// for that path exists yet; everything else is counted as skipped and left
 /// alone, because this runs precisely when the user is trying to recover data.
 /// Foreign keys are deferred for the transaction: `fingerprints.path`,
-/// `waveforms.path` and `playlist_items.path` all reference `tracks(path)`, so
+/// `waveforms.path`, `grid_edits.path` and `playlist_items.path` all reference
+/// `tracks(path)`, so
 /// updating the parent key would otherwise fail before the child rows can
 /// follow. **Every one of them has to be listed here.** A child left behind
 /// does not fail where it was forgotten — it fails at `COMMIT`, as a bare
@@ -462,6 +463,8 @@ pub fn relocate_tracks(
         let mut move_fingerprint = tx.prepare("UPDATE fingerprints SET path = ?2 WHERE path = ?1")?;
         let mut move_waveform = tx.prepare("UPDATE waveforms SET path = ?2 WHERE path = ?1")?;
         let mut move_edit = tx.prepare("UPDATE edits SET path = ?2 WHERE path = ?1")?;
+        let mut move_grid =
+            tx.prepare("UPDATE grid_edits SET path = ?2 WHERE path = ?1")?;
         let mut move_member =
             tx.prepare("UPDATE playlist_items SET path = ?2 WHERE path = ?1")?;
 
@@ -478,6 +481,7 @@ pub fn relocate_tracks(
             move_fingerprint.execute(params![old_path, new_path])?;
             move_waveform.execute(params![old_path, new_path])?;
             move_edit.execute(params![old_path, new_path])?;
+            move_grid.execute(params![old_path, new_path])?;
             move_member.execute(params![old_path, new_path])?;
             result.moved += 1;
         }
@@ -509,6 +513,13 @@ pub fn relocate_tracks(
 ///   foreign keys satisfied: they reference `tracks(path)`, which is being
 ///   rewritten under them.
 ///
+/// **What does move, and is the exception.** The hand-set `grid_edits` row. A
+/// conversion resamples or re-containers the same music; it does not move a
+/// beat, and an anchor somebody placed by hand is worth more than the risk. The
+/// one case it gets wrong is a *lossy* source, where the decoder's priming can
+/// shift the whole timeline by a few milliseconds — and a few milliseconds the
+/// user can see and correct beats silently discarding their work.
+///
 /// The row keeps the old file's `mtime_ms`/`size_bytes`, so
 /// [`needs_reanalysis`] sees the mismatch and the next scan re-probes the
 /// track — which is right, because its container, sample rate and depth are
@@ -537,6 +548,14 @@ pub fn replace_track(conn: &mut Connection, old_path: &str, new_path: &str) -> D
             // membership is the duplicate, not the survivor.
             tx.execute(
                 "UPDATE OR IGNORE playlist_items SET path = ?2 WHERE path = ?1",
+                params![old_path, new_path],
+            )?;
+            // And the hand-set grid, for the reason in the doc comment: the
+            // conversion re-encodes the same music and does not move a beat.
+            // `OR IGNORE` for the merge case — `path` is the primary key here
+            // too, and a grid already on the target is the one its user placed.
+            tx.execute(
+                "UPDATE OR IGNORE grid_edits SET path = ?2 WHERE path = ?1",
                 params![old_path, new_path],
             )?;
             if taken {
@@ -652,6 +671,63 @@ pub fn set_edit(conn: &Connection, path: &str, payload: &Value) -> DbResult<()> 
 
 pub fn clear_edit(conn: &Connection, path: &str) -> DbResult<()> {
     conn.execute("DELETE FROM edits WHERE path = ?1", params![path])?;
+    Ok(())
+}
+
+// --- hand-set beat grids -----------------------------------------------------
+
+/// Every grid the user has placed, keyed by track path.
+///
+/// Loaded whole, the way `load_edits` is and for the same two reasons: there is
+/// one row per track that has one, and every consumer — the export, the surface
+/// that draws it — wants the overlay for a list rather than for one path.
+pub fn load_grid_edits(conn: &Connection) -> DbResult<HashMap<String, GridEdit>> {
+    let mut stmt = conn.prepare(
+        "SELECT path, offset_secs, bpm, downbeat, edited_ms FROM grid_edits",
+    )?;
+    let rows = stmt.query_map([], |row| {
+        Ok((
+            row.get::<_, String>(0)?,
+            GridEdit {
+                offset_secs: row.get(1)?,
+                bpm: row.get(2)?,
+                downbeat: row.get(3)?,
+                edited_ms: row.get(4)?,
+            },
+        ))
+    })?;
+    let mut out = HashMap::new();
+    for row in rows {
+        let (path, edit) = row?;
+        out.insert(path, edit);
+    }
+    Ok(out)
+}
+
+/// Stores the grid for one track, replacing whatever was there.
+pub fn set_grid_edit(conn: &Connection, path: &str, edit: &GridEdit) -> DbResult<()> {
+    conn.execute(
+        "INSERT INTO grid_edits (path, offset_secs, bpm, downbeat, edited_ms)
+         VALUES (?1, ?2, ?3, ?4, ?5)
+         ON CONFLICT(path) DO UPDATE SET
+             offset_secs = excluded.offset_secs,
+             bpm         = excluded.bpm,
+             downbeat    = excluded.downbeat,
+             edited_ms   = excluded.edited_ms",
+        params![
+            path,
+            edit.offset_secs,
+            edit.bpm,
+            edit.downbeat,
+            edit.edited_ms
+        ],
+    )?;
+    Ok(())
+}
+
+/// Forgets the hand-set grid, so the detected one is what the track has again.
+pub fn clear_grid_edit(conn: &Connection, path: &str) -> DbResult<()> {
+    conn.execute("DELETE FROM grid_edits WHERE path = ?1", params![path])?;
     Ok(())
 }
 
@@ -1168,6 +1244,15 @@ mod tests {
         );
     }
 
+    fn grid_edit(offset_secs: f64) -> GridEdit {
+        GridEdit {
+            offset_secs,
+            bpm: 128.0,
+            downbeat: 1,
+            edited_ms: 1_700_000_000_000,
+        }
+    }
+
     fn track(path: &str) -> TrackAnalysis {
         TrackAnalysis {
             id: path.to_string(),
@@ -1659,7 +1744,7 @@ mod tests {
     }
 
     #[test]
-    fn relocate_keeps_identity_including_edits_fingerprints_and_playlists() {
+    fn relocate_keeps_identity_including_edits_grids_fingerprints_and_playlists() {
         let dir = tempfile::tempdir().unwrap();
         let new_root = dir.path().to_string_lossy().to_string();
         std::fs::create_dir(dir.path().join("sub")).unwrap();
@@ -1675,6 +1760,7 @@ mod tests {
         // relocation works right up until a user has played something.
         waveform_save(&conn, "/old/sub/a.aiff", fs, 1, &[4, 5, 6]).unwrap();
         set_edit(&conn, "/old/sub/a.aiff", &serde_json::json!({"title": "x"})).unwrap();
+        set_grid_edit(&conn, "/old/sub/a.aiff", &grid_edit(0.25)).unwrap();
         let list = create_playlist(&conn, "Set").unwrap();
         set_playlist_paths(&mut conn, list, &["/old/sub/a.aiff".to_string()]).unwrap();
 
@@ -1693,6 +1779,10 @@ mod tests {
         want.insert(new_path.clone(), fs);
         assert!(waveforms_load(&conn, &want, 1).unwrap().contains_key(&new_path));
         assert!(load_edits(&conn).unwrap().contains_key(&new_path));
+        // The hand-set grid has no foreign key of its own to complain, so
+        // forgetting it here would lose it in silence — which is what makes it
+        // worth asserting next to the ones that fail loudly.
+        assert!(load_grid_edits(&conn).unwrap().contains_key(&new_path));
         // A membership left pointing at the old path does not merely go
         // missing: the deferred foreign key turns it into a failed COMMIT, so
         // one playlist would have cost the user the whole relocation.
@@ -1754,6 +1844,7 @@ mod tests {
         fingerprint_put(&conn, "/lib/a.wav", fs, 1, &[1, 2, 3]).unwrap();
         waveform_save(&conn, "/lib/a.wav", fs, 1, &[9, 9]).unwrap();
         set_edit(&conn, "/lib/a.wav", &serde_json::json!({"title": "x"})).unwrap();
+        set_grid_edit(&conn, "/lib/a.wav", &grid_edit(0.25)).unwrap();
         // In two playlists, because that is a case 0.8.0 already had to fix
         // once: the row is one track, the memberships are two.
         let warmup = create_playlist(&conn, "Warmup").unwrap();
@@ -1775,12 +1866,127 @@ mod tests {
         // The edit was written into the file by the conversion, so it is spent
         // rather than pending on the new path.
         assert!(load_edits(&conn).unwrap().is_empty());
+        // The hand-set grid is the opposite case and the two are asserted
+        // together on purpose: a conversion re-encodes the same music and does
+        // not move a beat, so the anchor comes along. Made "consistent" with
+        // the edit above, this is silently discarded user work.
+        let grids = load_grid_edits(&conn).unwrap();
+        assert_eq!(grids.get("/lib/a.aiff").map(|g| g.offset_secs), Some(0.25));
+        assert!(!grids.contains_key("/lib/a.wav"));
         // And the caches describe audio that is no longer there.
         assert!(fp_of(&conn, "/lib/a.wav", fs, 1).is_none());
         assert!(fp_of(&conn, "/lib/a.aiff", fs, 1).is_none());
         let mut want = HashMap::new();
         want.insert("/lib/a.aiff".to_string(), fs);
         assert!(waveforms_load(&conn, &want, 1).unwrap().is_empty());
+    }
+
+    #[test]
+    fn a_replacing_conversion_does_not_overwrite_the_targets_own_grid() {
+        // Converting onto a row that already has a hand-set grid: two sets of
+        // one, and the one already on the target is the one its user placed for
+        // the file that survives.
+        let db = Db::open_in_memory().unwrap();
+        let mut conn = db.0.lock().unwrap();
+        upsert_tracks(
+            &mut conn,
+            "/lib",
+            &[record("/lib/a.wav", None), record("/lib/a.aiff", None)],
+        )
+        .unwrap();
+        set_grid_edit(&conn, "/lib/a.wav", &grid_edit(0.25)).unwrap();
+        set_grid_edit(&conn, "/lib/a.aiff", &grid_edit(0.75)).unwrap();
+
+        assert!(replace_track(&mut conn, "/lib/a.wav", "/lib/a.aiff").unwrap());
+
+        let grids = load_grid_edits(&conn).unwrap();
+        assert_eq!(grids.len(), 1);
+        assert_eq!(grids.get("/lib/a.aiff").map(|g| g.offset_secs), Some(0.75));
+    }
+
+    #[test]
+    fn a_rescan_does_not_touch_a_hand_set_grid() {
+        // The claim the whole storage decision rests on. A rescan rewrites the
+        // entire `tracks` row — tags, tempo, key, the detected grid — and this
+        // one is in a table it cannot reach. A column on `tracks` would be only
+        // as safe as every guard that remembered it.
+        let db = Db::open_in_memory().unwrap();
+        let mut conn = db.0.lock().unwrap();
+        upsert_tracks(&mut conn, "/lib", &[record("/lib/a.aiff", Some(identity(7, 8)))])
+            .unwrap();
+        set_grid_edit(&conn, "/lib/a.aiff", &grid_edit(0.25)).unwrap();
+
+        // What the scan does: a fresh row for the same path, with whatever the
+        // detector found this time.
+        let mut fresh = record("/lib/a.aiff", Some(identity(9, 10)));
+        fresh.track.beat_offset_secs = Some(1.5);
+        upsert_tracks(&mut conn, "/lib", &[fresh]).unwrap();
+        // And the sweep every release performs.
+        invalidate_on_version_change(&conn, "9.9.9").unwrap();
+
+        let grids = load_grid_edits(&conn).unwrap();
+        assert_eq!(grids.get("/lib/a.aiff").map(|g| g.offset_secs), Some(0.25));
+        // While the row still says what the detector found, which is what
+        // "reset to detected" goes back to.
+        assert_eq!(
+            load_tracks(&conn, "/lib").unwrap()[0].beat_offset_secs,
+            Some(1.5)
+        );
+    }
+
+    #[test]
+    fn forgetting_a_track_takes_its_hand_set_grid_with_it() {
+        let db = Db::open_in_memory().unwrap();
+        let mut conn = db.0.lock().unwrap();
+        upsert_tracks(&mut conn, "/lib", &[record("/lib/a.aiff", None)]).unwrap();
+        set_grid_edit(&conn, "/lib/a.aiff", &grid_edit(0.25)).unwrap();
+
+        delete_tracks(&mut conn, &["/lib/a.aiff".to_string()]).unwrap();
+        assert!(load_grid_edits(&conn).unwrap().is_empty());
+    }
+
+    #[test]
+    fn a_v10_database_gains_the_grid_edits_table() {
+        // Additive, like the undo table above: a new table needs nothing beyond
+        // `SCHEMA_SQL` and the version bump, and an older database picks it up
+        // on the next start.
+        let mut conn = Connection::open_in_memory().unwrap();
+        conn.execute_batch(
+            "CREATE TABLE schema_meta (key TEXT PRIMARY KEY, value TEXT NOT NULL);
+             INSERT INTO schema_meta VALUES ('schema_version', '10');",
+        )
+        .unwrap();
+        schema::init(&conn).unwrap();
+
+        upsert_tracks(&mut conn, "/lib", &[record("/lib/a.aiff", None)]).unwrap();
+        set_grid_edit(&conn, "/lib/a.aiff", &grid_edit(0.25)).unwrap();
+        assert_eq!(load_grid_edits(&conn).unwrap().len(), 1);
+    }
+
+    #[test]
+    fn a_grid_survives_being_placed_twice() {
+        let db = Db::open_in_memory().unwrap();
+        let mut conn = db.0.lock().unwrap();
+        upsert_tracks(&mut conn, "/lib", &[record("/lib/a.aiff", None)]).unwrap();
+        set_grid_edit(&conn, "/lib/a.aiff", &grid_edit(0.25)).unwrap();
+        set_grid_edit(
+            &conn,
+            "/lib/a.aiff",
+            &GridEdit {
+                offset_secs: 0.5,
+                downbeat: 3,
+                ..grid_edit(0.5)
+            },
+        )
+        .unwrap();
+
+        let grids = load_grid_edits(&conn).unwrap();
+        assert_eq!(grids.len(), 1);
+        assert_eq!(grids["/lib/a.aiff"].offset_secs, 0.5);
+        assert_eq!(grids["/lib/a.aiff"].downbeat, 3);
+
+        clear_grid_edit(&conn, "/lib/a.aiff").unwrap();
+        assert!(load_grid_edits(&conn).unwrap().is_empty());
     }
 
     #[test]

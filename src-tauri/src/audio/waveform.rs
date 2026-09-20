@@ -73,6 +73,16 @@ pub fn detail_bins(duration_secs: f64) -> usize {
 pub struct Waveform {
     pub peak: Vec<f32>,
     pub rms: Vec<f32>,
+    /// How much audio the bins cover, in seconds — the *decoded* length.
+    ///
+    /// Present only where this came from a decode. A drawing has to map a bin
+    /// back to a moment, and the probed duration is not the same number: a VBR
+    /// MP3 can be a couple of hundred milliseconds out, which on a zoomed view
+    /// stretches the picture against a beat grid and a playhead that both run
+    /// on real time. The bar never noticed because it maps bins to a *fraction*
+    /// of itself and never asks how long the track is.
+    #[serde(default)]
+    pub duration_secs: Option<f64>,
 }
 
 impl Waveform {
@@ -80,6 +90,7 @@ impl Waveform {
         Self {
             peak: Vec::new(),
             rms: Vec::new(),
+            duration_secs: None,
         }
     }
 }
@@ -115,17 +126,24 @@ pub async fn analyze(
     if samples.is_empty() {
         return Err(AppError::Probe("no audio decoded".into()));
     }
+    // The decoded length, not the probed duration: this is the one place that
+    // knows how much audio there actually is. It decides the bin count and it
+    // travels with the bins, because the drawing needs the same number to map
+    // one back to a moment.
+    let decoded_secs = samples.len() as f64 / SAMPLE_RATE as f64;
     let bins = match resolution {
         Resolution::Overview => BINS,
-        // The decoded length, not the probed duration: this is the one place
-        // that knows how much audio there actually is.
-        Resolution::Detail => detail_bins(samples.len() as f64 / SAMPLE_RATE as f64),
+        Resolution::Detail => detail_bins(decoded_secs),
     };
     // Reduction over millions of samples is CPU work, so it goes off the async
     // runtime for the same reason tempo detection does.
-    tauri::async_runtime::spawn_blocking(move || reduce(&samples, bins))
-        .await
-        .map_err(|e| AppError::Probe(format!("Waveform task failed: {e}")))
+    tauri::async_runtime::spawn_blocking(move || {
+        let mut w = reduce(&samples, bins);
+        w.duration_secs = Some(decoded_secs);
+        w
+    })
+    .await
+    .map_err(|e| AppError::Probe(format!("Waveform task failed: {e}")))
 }
 
 /// Reduces samples to `bins` peak/RMS pairs, normalised so the loudest bin's
@@ -171,7 +189,11 @@ pub fn reduce(samples: &[i16], bins: usize) -> Waveform {
             *v = (*v / loudest).min(1.0);
         }
     }
-    Waveform { peak, rms }
+    Waveform {
+        peak,
+        rms,
+        duration_secs: None,
+    }
 }
 
 /// Version of everything that shapes the stored bytes: [`BINS`], the reduction,
@@ -205,7 +227,13 @@ pub fn from_bytes(bytes: &[u8]) -> Waveform {
         peak.push(pair[0] as f32 / 255.0);
         rms.push(pair[1] as f32 / 255.0);
     }
-    Waveform { peak, rms }
+    Waveform {
+        peak,
+        rms,
+        // The blob holds bins and nothing else; a stored waveform is read back
+        // beside a row that already knows how long its track is.
+        duration_secs: None,
+    }
 }
 
 #[cfg(test)]
@@ -372,7 +400,11 @@ mod tests {
 
     #[test]
     fn extremes_survive_the_round_trip() {
-        let w = Waveform { peak: vec![0.0, 1.0], rms: vec![1.0, 0.0] };
+        let w = Waveform {
+            peak: vec![0.0, 1.0],
+            rms: vec![1.0, 0.0],
+            duration_secs: None,
+        };
         let back = from_bytes(&to_bytes(&w));
         assert_eq!(back.peak, vec![0.0, 1.0]);
         assert_eq!(back.rms, vec![1.0, 0.0]);

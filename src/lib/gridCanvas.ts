@@ -60,7 +60,18 @@ export function laneColours(el: HTMLElement): LaneColours {
 export interface LaneFrame {
   /** The whole track's bins — the detail array where there is one. */
   data: Waveform;
+  /**
+   * How long the track is on the clock everything else here runs on: the
+   * playhead, the beats, the window. Where the audio stops being drawn.
+   */
   durationSecs: number;
+  /**
+   * How much time the *bins* cover. The decoded length where the backend sent
+   * one, the probed duration otherwise — and the two are not always the same
+   * number, which is the whole reason this is its own field. Mapping a bin with
+   * the wrong one stretches the picture against a grid that is exact.
+   */
+  binsSpanSecs: number;
   window: LaneWindow;
   /** Where the playhead is, in seconds. */
   nowSecs: number;
@@ -96,7 +107,7 @@ export function drawLane(canvas: HTMLCanvasElement, frame: LaneFrame): void {
   const ctx = canvas.getContext("2d");
   if (!ctx) return;
 
-  const { colours: c, window: w, data, durationSecs, nowSecs } = frame;
+  const { colours: c, window: w, data, durationSecs, binsSpanSecs, nowSecs } = frame;
   const ruler = Math.round(RULER_PX * ratio);
   const waveTop = ruler;
   const waveHeight = Math.max(1, height - ruler);
@@ -110,7 +121,7 @@ export function drawLane(canvas: HTMLCanvasElement, frame: LaneFrame): void {
     const rest = new Path2D();
     const restRms = new Path2D();
     const bins = data.peak.length;
-    const perSec = bins / durationSecs;
+    const perSec = bins / (binsSpanSecs > 0 ? binsSpanSecs : durationSecs);
 
     for (let x = 0; x < width; x++) {
       const from = xToTime(x, w, width);
