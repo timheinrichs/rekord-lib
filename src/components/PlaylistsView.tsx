@@ -552,10 +552,7 @@ function OpenPlaylist({
       }
       if (before === undefined || before === top) return;
 
-      // Guarded: with nothing set the computed value is the string "none",
-      // which the matrix constructor rejects outright.
-      const t = getComputedStyle(el).transform;
-      const shift = t && t !== "none" ? new DOMMatrixReadOnly(t).m42 : 0;
+      const shift = shiftOf(el);
       el.style.transition = "none";
       el.style.transform = `translateY(${before - top + shift}px)`;
       requestAnimationFrame(() => {
@@ -566,10 +563,28 @@ function OpenPlaylist({
 
     wasAt.current = now;
   }, [shown, drag?.path]);
+  /** How far a row is currently slid from its layout position. */
+  const shiftOf = (el: Element) => {
+    // With nothing set the computed value is the string "none", which the
+    // matrix constructor rejects outright.
+    const t = getComputedStyle(el).transform;
+    return t && t !== "none" ? new DOMMatrixReadOnly(t).m42 : 0;
+  };
+
+  /**
+   * Where the rows sit in the layout, in viewport coordinates.
+   *
+   * The slide is taken back out of the measurement. A rect includes
+   * transforms, so without this the pointer would be asking where the rows
+   * *currently are* — which is wherever the animation the pointer itself just
+   * started has got to. Dragging downwards then chose a gap from half-slid
+   * rows, moved them again, and the error compounded until the rows overlapped.
+   */
   const boxes = () =>
-    [...(body.current?.children ?? [])].map((el) =>
-      el.getBoundingClientRect(),
-    );
+    [...(body.current?.children ?? [])].map((el) => {
+      const r = el.getBoundingClientRect();
+      return { top: r.top - shiftOf(el), height: r.height };
+    });
 
   const beginDrag = (
     e: React.PointerEvent<HTMLButtonElement>,
@@ -578,7 +593,10 @@ function OpenPlaylist({
     if (e.button !== 0) return;
     const tr = e.currentTarget.closest("tr");
     if (!tr) return;
-    const box = tr.getBoundingClientRect();
+    // Minus any slide still running, for the same reason `boxes` does it: a row
+    // grabbed mid-animation would hand the copy a position it is leaving.
+    const rect = tr.getBoundingClientRect();
+    const box = { top: rect.top - shiftOf(tr), left: rect.left, width: rect.width };
     // Stops the text selection the gesture would otherwise begin.
     e.preventDefault();
     e.currentTarget.setPointerCapture(e.pointerId);
