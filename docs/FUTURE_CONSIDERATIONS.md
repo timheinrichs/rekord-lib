@@ -31,6 +31,7 @@ item again.
 | Tier | Theme |
 | --- | --- |
 | [A](#a--interoperability) | Interoperability — getting the library out of the app |
+| [B](#b--analysis-quality) | Analysis quality |
 | [D](#d--performance) | Performance |
 | [E](#e--security-and-distribution) | Security and distribution |
 | [F](#f--documentation-and-process) | Documentation and process |
@@ -63,11 +64,21 @@ detection against (see [DSP_BENCHMARK.md](DSP_BENCHMARK.md)).
 
 *Size: M · A2 shipped the writer it would read back*
 
-### A4 · Cue points
+### A4 · Cue points — hot cues and memory cues
 
-**What** — a cue point concept: a position on a track, named, with the app able
-to set and move it, and `export::rekordbox` writing it out as a
-`<POSITION_MARK>` per mark.
+**What** — a mark concept: a position on a track that the app can set, name and
+move, in the two kinds Rekordbox and the players tell apart —
+
+- **hot cues**, the lettered marks a player jumps to on a button press, each
+  with a colour of its own, written as `<POSITION_MARK … Num="0">` through
+  `Num="7"` for A to H;
+- **memory cues**, the unlettered marks the player steps through with its cue
+  buttons, written with `Num="-1"`.
+
+In storage and in the export they are one row and one element separated by a
+single field, and they are still worth naming apart: a DJ sets them for
+different reasons, and a UI that offers "a cue" without saying which kind will
+reliably produce the other one.
 
 **Why** — it is the one thing A2 deliberately left out, and it left the reason
 behind: *"Cue points are not written, though the entry listed them. The app
@@ -76,26 +87,69 @@ where nobody set them."* The export half is therefore already built and already
 proven against real Rekordbox files; what is missing is upstream of it.
 
 The writing itself is one place: `export::rekordbox::track_xml`, which already
-emits the `<TEMPO>` marker and is where a `<POSITION_MARK>` per cue would go.
-That is the small end. The storage is the larger one: cues are their own table
-next to `playlist_items` — a position and a colour per mark, keyed the way that
-table is keyed, by `path` rather than by a track id — and a new table is a
-`SCHEMA_VERSION` step, currently 10. `tracks` is the wrong home: a track has one
-beat grid but any number of marks.
+emits the `<TEMPO>` marker and is where a `<POSITION_MARK>` per mark would go.
+That is the small end. The storage is the larger one: marks are their own table
+next to `playlist_items` — a position, a kind, the hot cue letter where there is
+one, a colour and a name — keyed the way that table is keyed, by `path` rather
+than by a track id, and a new table is a `SCHEMA_VERSION` step, currently 10.
+`tracks` is the wrong home: a track has one beat grid (B8) but any number of
+marks.
 
-Two things this needs beyond storage and UI. The round trip that keeps the writer
-honest reads `<TEMPO>` and nothing else — `scripts/rekordbox-reference.py` has no
-cue element in it — so closing the loop means teaching the reader about marks as
-well. That check is the only one in the export that did not come out of the same
-head as the writer, and a cue feature that skips it is a cue feature nobody can
-verify.
+Three things this needs beyond storage and UI. The round trip that keeps the
+writer honest reads `<TEMPO>` and nothing else — `scripts/rekordbox-reference.py`
+has no mark element in it — so closing the loop means teaching the reader about
+marks as well. That check is the only one in the export that did not come out of
+the same head as the writer, and a cue feature that skips it is a cue feature
+nobody can verify. It is also why the attribute names above are the one part of
+this format we have *not* read off a file Rekordbox wrote: confirm them against
+a real export that has both kinds of mark in it before writing any.
+
+Somewhere to set them, which the track row is not: 112 px for a whole track puts
+neighbouring marks inside the same pixel. The zoomed, playhead-following
+waveform in I2 is the prerequisite, and B8 waits on the same one.
 
 And be clear about where a mark actually arrives. Through A2 it reaches
 Rekordbox, which is the realistic path; onto a CDJ without Rekordbox in between
 it would need ANLZ files, which is H1. Worth saying in the UI rather than
-letting someone assume the drive will carry them.
+letting someone assume the drive will carry them. How *many* arrive is a
+hardware question rather than a format one — the lettered slots a player offers
+differ by generation, and the CDJ-2000nexus in the matrix is not a CDJ-3000 —
+so that belongs in F4 as a measured row, not in the export as an assumption.
 
-*Size: L · completes A2 · full player support depends on H1*
+*Size: L · completes A2 · needs I2's larger waveform to be settable · full
+player support depends on H1*
+
+---
+
+## B — Analysis quality
+
+### B8 · Move the beat grid
+
+**What** — make the stored grid editable: drag its anchor onto the beat that is
+actually there, say which beat is the downbeat, and correct a tempo that is
+right about the period and wrong about the multiple, by hand.
+
+**Why** — B3 shipped the grid as a *detected* value and nothing else.
+`tracks.beat_offset_secs` plus the tempo is a full grid, and A2 writes it out as
+`<TEMPO Inizio="…" Bpm="…" Metro="4/4" Battito="1"/>` — where `Battito="1"`
+asserts that the anchor is the first beat of the bar, which is precisely the
+part B3 did not detect. When the anchor lands on beat three, everything
+downstream inherits it: the player's quantize, a beat jump, and every A4 mark
+snapped to that grid. Today the app has no way to say so and no way to fix it.
+
+A movable grid is also what makes A4 worth snapping: a cue on the beat is only
+on the beat if the beats are where the music is.
+
+**What it costs** — not a schema step; the column exists and the export path
+exists. What is new is a way to *see* the grid and something to drag, and the
+row waveform cannot carry either (see *"The beat grid is stored and exported,
+but not drawn"* in [TODO.md](../TODO.md)). So this shares I2's larger waveform
+with A4, and it needs an edit to survive a rescan — a hand-placed anchor is
+user data and must not be overwritten by the next analysis, the way a pending
+metadata edit is not overwritten by a rescanned tag.
+
+*Size: M · storage and export exist · needs I2's larger waveform · a hand-set
+grid must survive re-analysis*
 
 ---
 

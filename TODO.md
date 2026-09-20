@@ -118,7 +118,10 @@ are under a pixel apart, so "draw the grid" means deciding what to draw first.
 The player bar's larger waveform is where it would actually be legible.
 
 **What would change that** — a zoomed waveform, or a decision that the row
-should show the first beat alone rather than a grid.
+should show the first beat alone rather than a grid. Drawing it is this entry;
+*moving* it — the anchor, the downbeat, a tempo corrected by hand — is `B8` in
+[docs/FUTURE_CONSIDERATIONS.md](docs/FUTURE_CONSIDERATIONS.md), and waits on the
+same larger waveform.
 
 ### I1a · A group head is clickable, but not operable from the keyboard
 
