@@ -17,13 +17,56 @@ use crate::error::{AppError, AppResult};
 /// one thing to reason about.
 const SAMPLE_RATE: u32 = 11025;
 
-/// Bins across the whole track.
+/// Bins across the whole track, for the overview the scan stores.
 ///
 /// A player bar is at most ~1500 px wide, so this is roughly two bins per pixel
 /// — enough that the drawing looks the same on a retina display and does not
 /// change when the window is resized. Not a per-request parameter: making it one
-/// would mean a different result for every window width.
+/// would mean a different result for every window width, and a cache with a
+/// different answer per caller is not a cache.
+///
+/// This is *the stored* count. The on-demand path ([`analyze`]) may be asked for
+/// more, for a view that zooms in far enough to want it — see
+/// [`DETAIL_BINS_PER_SEC`] — and stores nothing.
 pub const BINS: usize = 2400;
+
+/// Bins a second for the detail waveform a zoomed view draws.
+///
+/// 200 is a 5 ms bin. Three numbers say why that is the right order: a beat at
+/// 128 BPM is 469 ms, so a bin is a hundredth of one; the beat detector itself
+/// resolves no finer; and the Rekordbox export writes a grid anchor to three
+/// decimals, i.e. 1 ms, so the picture stops a pixel short of the precision the
+/// format can carry rather than pretending to more.
+pub const DETAIL_BINS_PER_SEC: f64 = 200.0;
+
+/// The most bins a detail waveform is ever reduced to.
+///
+/// Ten minutes at the full rate. A longer track gets a longer bin rather than
+/// more of them, which is the right way for this to degrade: what the view
+/// shows is a *window*, and an hour-long DJ set does not need its far end at
+/// five milliseconds to draw the near one.
+///
+/// The number that actually sets the ceiling is not the memory but the wire. A
+/// [`Waveform`] crosses to the frontend as JSON — [`to_bytes`] is for the SQLite
+/// blob and nothing else — so 120 000 bins is two arrays of that many decimals,
+/// on the order of three megabytes of text to write in Rust and parse on the
+/// webview's main thread. Once per track opened, which is why it is affordable
+/// at all; if that ever stops being true, the answer is to send the packed form
+/// and unpack it in JS, not to raise this.
+pub const MAX_BINS: usize = 120_000;
+
+/// How many bins a track of `duration_secs` should be reduced to for a zoomed
+/// view.
+///
+/// Never fewer than the stored overview: below that the detail array would be
+/// worse than the thing it replaces.
+pub fn detail_bins(duration_secs: f64) -> usize {
+    if !duration_secs.is_finite() || duration_secs <= 0.0 {
+        return BINS;
+    }
+    let wanted = (duration_secs * DETAIL_BINS_PER_SEC).round();
+    (wanted as usize).clamp(BINS, MAX_BINS)
+}
 
 /// One track's overview: `peak` and `rms` per bin, both `0.0..=1.0`.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -41,17 +84,46 @@ impl Waveform {
     }
 }
 
-/// Decodes a whole file to mono PCM and reduces it to [`BINS`] bins.
-pub async fn analyze(app: &AppHandle, path: &str) -> AppResult<Waveform> {
+/// How fine a waveform the caller needs.
+///
+/// A choice between two, rather than a bin count: the count is a function of the
+/// track's length, and the only side that knows that length exactly is this one,
+/// *after* the decode. Letting the frontend name a number would mean mirroring
+/// [`DETAIL_BINS_PER_SEC`] and the cap in TypeScript, computing them against a
+/// probed duration that can be wrong or missing, and taking an unbounded
+/// allocation size from the other side of the boundary. None of that buys
+/// anything: there is one detail resolution and it is as fine as the analysis
+/// itself resolves.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum Resolution {
+    /// The whole track in [`BINS`] bins — what the player bar draws.
+    Overview,
+    /// [`DETAIL_BINS_PER_SEC`] a second — what a zoomed view needs.
+    Detail,
+}
+
+/// Decodes a whole file to mono PCM and reduces it to a waveform.
+pub async fn analyze(
+    app: &AppHandle,
+    path: &str,
+    resolution: Resolution,
+) -> AppResult<Waveform> {
     // `secs = 0` decodes to the end: a waveform of the first two minutes would
     // be worse than none, because the bar would lie about where you are.
     let samples = decode::mono_pcm(app, path, SAMPLE_RATE, 0, 0).await?;
     if samples.is_empty() {
         return Err(AppError::Probe("no audio decoded".into()));
     }
+    let bins = match resolution {
+        Resolution::Overview => BINS,
+        // The decoded length, not the probed duration: this is the one place
+        // that knows how much audio there actually is.
+        Resolution::Detail => detail_bins(samples.len() as f64 / SAMPLE_RATE as f64),
+    };
     // Reduction over millions of samples is CPU work, so it goes off the async
     // runtime for the same reason tempo detection does.
-    tauri::async_runtime::spawn_blocking(move || reduce(&samples, BINS))
+    tauri::async_runtime::spawn_blocking(move || reduce(&samples, bins))
         .await
         .map_err(|e| AppError::Probe(format!("Waveform task failed: {e}")))
 }
@@ -152,6 +224,51 @@ mod tests {
         let w = reduce(&ramp(100_000), 2400);
         assert_eq!(w.peak.len(), 2400);
         assert_eq!(w.rms.len(), 2400);
+    }
+
+    #[test]
+    fn the_detail_rate_resolves_five_milliseconds() {
+        // Pins the documented number to the code: six minutes at 200 bins a
+        // second is 72 000 bins, and one bin is 5 ms.
+        let six_minutes = 360.0;
+        let bins = detail_bins(six_minutes);
+        assert_eq!(bins, 72_000);
+        assert!((six_minutes / bins as f64 - 0.005).abs() < 1e-9);
+    }
+
+    #[test]
+    fn the_resolution_arrives_as_the_word_the_frontend_sends() {
+        // The argument crosses the boundary as a string, and `api.ts` writes
+        // `resolution: "detail"`. A rename on either side has to fail here
+        // rather than at runtime as an unparsable argument.
+        assert_eq!(
+            serde_json::from_str::<Resolution>("\"detail\"").unwrap(),
+            Resolution::Detail
+        );
+        assert_eq!(
+            serde_json::from_str::<Resolution>("\"overview\"").unwrap(),
+            Resolution::Overview
+        );
+        assert!(serde_json::from_str::<Resolution>("\"fine\"").is_err());
+    }
+
+    #[test]
+    fn a_long_track_gets_a_longer_bin_rather_than_more_of_them() {
+        // The cap is the only thing between a frontend mistake and a gigabyte,
+        // so it has to bite before the allocation does.
+        assert_eq!(detail_bins(600.0), MAX_BINS);
+        assert_eq!(detail_bins(3600.0), MAX_BINS);
+    }
+
+    #[test]
+    fn a_track_with_no_known_length_falls_back_to_the_overview() {
+        // The duration comes from a probe that can fail, and zero bins would
+        // draw nothing at all.
+        assert_eq!(detail_bins(0.0), BINS);
+        assert_eq!(detail_bins(-1.0), BINS);
+        assert_eq!(detail_bins(f64::NAN), BINS);
+        // And a track too short to need the detail rate still gets a picture.
+        assert_eq!(detail_bins(3.0), BINS);
     }
 
     #[test]

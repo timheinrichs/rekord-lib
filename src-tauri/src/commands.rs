@@ -959,7 +959,7 @@ pub fn stored_waveforms(
         .collect())
 }
 
-/// The waveform overview of one file, for the player bar.
+/// The waveform of one file, at whatever resolution the caller needs.
 ///
 /// Computed on demand rather than cached on disk: it is only ever needed for the
 /// track that is playing, the frontend keeps the recent ones in memory, and a
@@ -967,9 +967,23 @@ pub fn stored_waveforms(
 /// maintain for a sub-second saving on a replay. The dense per-track data that
 /// *does* need storing is the ANLZ waveform (roadmap H1), which is a different
 /// artifact.
+///
+/// `resolution` defaults to the overview the player bar draws. A zoomed view
+/// asks for `"detail"` and gets [`waveform::DETAIL_BINS_PER_SEC`] a second,
+/// which is still not stored, for the same reasons as above: it belongs to one
+/// open track, and it is thirty times the size.
 #[tauri::command]
-pub async fn waveform(app: AppHandle, path: String) -> AppResult<waveform::Waveform> {
-    waveform::analyze(&app, &path).await
+pub async fn waveform(
+    app: AppHandle,
+    path: String,
+    resolution: Option<waveform::Resolution>,
+) -> AppResult<waveform::Waveform> {
+    waveform::analyze(
+        &app,
+        &path,
+        resolution.unwrap_or(waveform::Resolution::Overview),
+    )
+    .await
 }
 
 /// Recursively collects all files with an audio extension under `dir`.

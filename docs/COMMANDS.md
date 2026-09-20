@@ -42,7 +42,7 @@ this section exists to prevent.
 | Command | Arguments | Returns | Emits |
 | --- | --- | --- | --- |
 | `analyze_files` | `paths`, `analyzeBpm`, `libraryDir?`, `bpmMin?`, `bpmMax?` | `AppResult<TrackAnalysis[]>` | `scan://skipped`, `events://new` |
-| `waveform` | `path` | `AppResult<Waveform>` | — |
+| `waveform` | `path`, `resolution?` (`"overview"` \| `"detail"`) | `AppResult<Waveform>` | — |
 | `stored_waveforms` | `paths` | `AppResult<Record<string, Waveform>>` | — |
 
 `analyze_files` is the blocking path: it probes, evaluates compatibility, reads
@@ -57,6 +57,23 @@ as a targeted run.
 decodes when it has to. `src/lib/api.ts` asks the stored one first, which is
 what keeps a list of rows from starting a decode per visible row. See
 [SCANNING.md](SCANNING.md).
+
+There are two resolutions and only one of them is ever stored. The **overview**
+is 2400 bins for a whole track, which is what the scan caches and what the
+player bar draws — about seven bins a second on a six-minute track, an envelope
+rather than a beat. The **detail** one is 200 bins a second, computed on demand
+and kept nowhere: a zoomed view needs to see individual transients, and storing
+thirty times the data with an invalidation contract to match would buy a
+sub-second saving on a replay.
+
+The argument is a word and not a bin count on purpose. How many bins a track
+needs is a function of its length, and the only side that knows that length
+exactly is the one that just decoded it — so `waveform::analyze` computes it
+from the decoded samples. The alternative would mirror the rate and its cap in
+TypeScript, apply them to a probed duration that can be missing, and let the
+frontend name the size of a backend allocation. `src/lib/api.ts` has one wrapper
+per resolution: `waveform(path)` (stored-first, overview) and
+`detailWaveform(path)` (always decodes).
 
 ## The scan job
 

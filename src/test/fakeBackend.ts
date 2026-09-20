@@ -90,6 +90,16 @@ export interface FakeState {
   playlistContents: Record<number, string[]>;
   /** Thumbnails per path, for the cover cache's invalidation. */
   covers: Record<string, string | null>;
+  /**
+   * Which paths the fake will draw a waveform for.
+   *
+   * A shape rather than data: the real one comes out of a decode, and no test
+   * asserts what a bin holds. `waveform` answers a listed path with as many
+   * bins as the resolution it was asked for implies — which is what lets a
+   * test see that the zoomed view asked for the fine one — and rejects for an
+   * unlisted one, the way the command answers a file it cannot decode.
+   */
+  waveforms: string[];
   /** Non-null makes the app report a broken ffmpeg/ffprobe at startup. */
   sidecarError: string | null;
   /**
@@ -130,6 +140,7 @@ function defaults(): FakeState {
     playlists: [],
     playlistContents: {},
     covers: {},
+    waveforms: [],
     sidecarError: null,
     dbAvailable: true,
     dialogAnswer: null,
@@ -269,7 +280,20 @@ export function installFakeBackend(
     sidecar_error: () => state.sidecarError,
     list_audio_files: () => state.files,
     start_library_watch: () => null,
-    waveform: () => ({ peak: [], rms: [] }),
+    waveform: (args) => {
+      // Shape, not data. A path the fake draws nothing for *rejects*, because
+      // that is what the command does — `waveform.rs` answers a file it cannot
+      // decode with an error, never with an empty waveform — and the caller
+      // has a visible fallback for it that no test could otherwise reach.
+      const path = args.path as string;
+      if (!state.waveforms.includes(path)) throw new Error("no audio decoded");
+      // The real backend decides the count from the decoded length; the fake
+      // only has to answer "more when detail was asked for", which is the
+      // property a caller can be wrong about.
+      const bins = args.resolution === "detail" ? 24_000 : 2400;
+      const ramp = Array.from({ length: bins }, (_, i) => (i + 1) / bins);
+      return { peak: ramp, rms: ramp.map((v) => v / 2) };
+    },
     stored_waveforms: () => ({}),
 
     // --- library and edits ---

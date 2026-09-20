@@ -452,6 +452,22 @@ export async function waveform(path: string): Promise<Waveform> {
   return invoke<Waveform>("waveform", { path });
 }
 
+/**
+ * The waveform of one file at a resolution a zoomed view can read.
+ *
+ * Deliberately **not** `waveform()` with an argument: that one prefers what is
+ * stored, and what is stored is 2400 bins for a whole track by construction. A
+ * view that shows eight seconds across the window would be handed a hundred of
+ * them and be satisfied. This one always decodes, and stores nothing — see the
+ * command's own note on why the dense form has no cache.
+ *
+ * How many bins that is, is the backend's to decide: it is a function of the
+ * track's length, and the decoder is the only side that knows that exactly.
+ */
+export function detailWaveform(path: string): Promise<Waveform> {
+  return invoke<Waveform>("waveform", { path, resolution: "detail" });
+}
+
 export function coverThumbnail(path: string): Promise<string | null> {
   return invoke<string | null>("cover_thumbnail", { path });
 }
