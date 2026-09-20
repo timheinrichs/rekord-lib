@@ -42,3 +42,23 @@ if (!globalThis.matchMedia) {
     dispatchEvent: () => false,
   })) as typeof globalThis.matchMedia;
 }
+
+// jsdom implements no media playback at all: `play()` returns `undefined`
+// where the DOM says a promise, which is what the player chains a `catch`
+// onto, and `pause()` logs "Not implemented" on every flow test that has a
+// player bar on screen. Stubs rather than mocks — the player's own logic still
+// runs, it simply has an element that answers.
+Object.assign(HTMLMediaElement.prototype, {
+  play: () => Promise.resolve(),
+  pause: () => {},
+  load: () => {},
+});
+
+// Nor pointer capture, which the playlists view needs: without it a drag stops
+// the moment the pointer leaves the row it began on, because the moves are
+// then delivered to whatever is underneath.
+Object.assign(Element.prototype, {
+  setPointerCapture: () => {},
+  releasePointerCapture: () => {},
+  hasPointerCapture: () => false,
+});

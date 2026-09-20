@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { createPortal } from "react-dom";
 import AppHeader from "./AppHeader";
-import { TrashIcon } from "./icons";
+import { GripIcon, TrashIcon } from "./icons";
 import CoverThumb from "./CoverThumb";
 import RowWaveform from "./RowWaveform";
 import {
@@ -10,6 +11,7 @@ import {
 } from "../lib/columns";
 import { formatBpm, formatDuration, formatKey } from "../lib/format";
 import { metaOf } from "../lib/grouping";
+import { usePlayer, type PlayerTrack } from "../lib/player";
 import { gapAt, playlistRows } from "../lib/playlists";
 import type { Edits } from "../lib/grouping";
 import type { Playlists } from "../lib/usePlaylists";
@@ -265,7 +267,19 @@ function OpenPlaylist({
   /** How far a press has to travel before it is a drag and not a click. */
   const DRAG_THRESHOLD = 4;
 
-  const [drag, setDrag] = useState<{ path: string; from: number } | null>(null);
+  /**
+   * The row being carried: where the press began (for the threshold), where
+   * inside the row it was grabbed and how wide the row is (so the copy sits
+   * under the pointer where the row was), and where the pointer is now.
+   */
+  const [drag, setDrag] = useState<{
+    path: string;
+    from: number;
+    grabY: number;
+    left: number;
+    width: number;
+    y: number;
+  } | null>(null);
   /**
    * The gap a drop would use: a path to insert before, `null` for the end of
    * the list, `undefined` for no target at all. The last two must stay apart —
@@ -314,7 +328,14 @@ function OpenPlaylist({
         return (
           <td key={c.id} className={pad}>
             {track && (
-              <CoverThumb path={track.path} hasCover={track.metadata.has_cover} />
+              <CoverThumb
+                path={track.path}
+                hasCover={track.metadata.has_cover}
+                onPlay={() => playFrom(track.path)}
+                active={player.current?.path === track.path}
+                playing={player.playing}
+                onToggle={player.toggle}
+              />
             )}
           </td>
         );
@@ -376,23 +397,29 @@ function OpenPlaylist({
         return (
           <td key={c.id} className={pad}>
             <div className="flex items-center justify-end gap-1">
+              {/* The one place a row is picked up, so the grab cursor is on a
+                  handle rather than on everything. It is a button and it is
+                  operable from the keyboard: HTML5 drag has no auto-scroll and
+                  a pointer gesture has no keyboard equivalent at all, so
+                  without the arrow keys here a long playlist could not be
+                  reordered without a mouse. */}
               <button
-                onClick={() => void playlists.step(open.id, row.path, -1)}
-                disabled={row.position === 1}
-                className="flex h-9 w-9 items-center justify-center rounded-md text-fg-subtle enabled:hover:bg-surface enabled:hover:text-fg-accent disabled:text-fg-disabled"
-                title="Move up in the playlist"
-                aria-label={`Move “${row.title}” up`}
+                onPointerDown={(e) => beginDrag(e, row)}
+                onKeyDown={(e) => {
+                  if (e.key === "ArrowUp" && row.position > 1) {
+                    e.preventDefault();
+                    void playlists.step(open.id, row.path, -1);
+                  }
+                  if (e.key === "ArrowDown" && row.position < rows.length) {
+                    e.preventDefault();
+                    void playlists.step(open.id, row.path, 1);
+                  }
+                }}
+                className="flex h-9 w-9 cursor-grab items-center justify-center rounded-md text-fg-subtle hover:bg-surface hover:text-fg-accent"
+                title="Drag to reorder, or use the arrow keys"
+                aria-label={`Reorder “${row.title}”`}
               >
-                ↑
-              </button>
-              <button
-                onClick={() => void playlists.step(open.id, row.path, 1)}
-                disabled={row.position === rows.length}
-                className="flex h-9 w-9 items-center justify-center rounded-md text-fg-subtle enabled:hover:bg-surface enabled:hover:text-fg-accent disabled:text-fg-disabled"
-                title="Move down in the playlist"
-                aria-label={`Move “${row.title}” down`}
-              >
-                ↓
+                <GripIcon />
               </button>
               <button
                 onClick={() => void playlists.removeTracks(open.id, [row.path])}
@@ -413,11 +440,70 @@ function OpenPlaylist({
   /** The stored order, which is what a drop is expressed against. */
   const paths = rows.map((r) => r.path);
 
+  const player = usePlayer();
+
+  /**
+   * The playlist as a queue, in its order — which is the whole point of
+   * playing from here rather than from the library. Entries the library has no
+   * track for drop out; they have nothing to play.
+   */
+  const queue = rows
+    .map((r) => byPath.get(r.path))
+    .filter((t): t is TrackAnalysis => !!t)
+    .map((t): PlayerTrack => {
+      const m = edits[t.id]?.metadata ?? t.metadata;
+      return {
+        id: t.id,
+        path: t.path,
+        title: m.title || t.file_name,
+        artist: m.artist || m.album_artist || "",
+        album: m.album || "",
+      };
+    });
+
+  const playFrom = (path: string) => {
+    const i = queue.findIndex((q) => q.path === path);
+    // `positioned`: in a playlist "track 3 of 12" is a fact about the set the
+    // user made, which is exactly when the player should show it.
+    if (i >= 0) player.play(queue, i, true);
+  };
+
+  const carried = drag ? rows.find((r) => r.path === drag.path) : null;
+
   const body = useRef<HTMLTableSectionElement>(null);
   const boxes = () =>
     [...(body.current?.children ?? [])].map((el) =>
       el.getBoundingClientRect(),
     );
+
+  const beginDrag = (
+    e: React.PointerEvent<HTMLButtonElement>,
+    row: PlaylistRow,
+  ) => {
+    if (e.button !== 0) return;
+    const tr = e.currentTarget.closest("tr");
+    if (!tr) return;
+    const box = tr.getBoundingClientRect();
+    // Stops the text selection the gesture would otherwise begin.
+    e.preventDefault();
+    e.currentTarget.setPointerCapture(e.pointerId);
+    setDrag({
+      path: row.path,
+      from: e.clientY,
+      grabY: e.clientY - box.top,
+      left: box.left,
+      width: box.width,
+      y: e.clientY,
+    });
+  };
+
+  const moveDrag = (y: number) => {
+    if (!drag) return;
+    setDrag({ ...drag, y });
+    // A press that has not travelled is a click, not a drag.
+    if (Math.abs(y - drag.from) < DRAG_THRESHOLD) return;
+    setDropAt(gapAt(paths, boxes(), y));
+  };
 
   const endDrag = (commit: boolean) => {
     const moving = drag;
@@ -518,22 +604,9 @@ function OpenPlaylist({
                 return (
                   <tr
                     key={row.path}
-                    onPointerDown={(e) => {
-                      // The row's own buttons are not a handle: pressing ↑
-                      // must not arm a drag that then swallows the click.
-                      if (e.button !== 0) return;
-                      if ((e.target as HTMLElement).closest("button")) return;
-                      // Stops the text selection this gesture would otherwise
-                      // begin before the first move is seen.
-                      e.preventDefault();
-                      e.currentTarget.setPointerCapture(e.pointerId);
-                      setDrag({ path: row.path, from: e.clientY });
-                    }}
                     onPointerMove={(e) => {
                       if (drag?.path !== row.path) return;
-                      // A press that has not travelled is a click, not a drag.
-                      if (Math.abs(e.clientY - drag.from) < DRAG_THRESHOLD) return;
-                      setDropAt(gapAt(paths, boxes(), e.clientY));
+                      moveDrag(e.clientY);
                     }}
                     onPointerUp={() => endDrag(true)}
                     onPointerCancel={() => endDrag(false)}
@@ -543,7 +616,7 @@ function OpenPlaylist({
                     // and a box-shadow on a row of one is not reliably painted.
                     // A class that may render nothing is worse than a quieter
                     // effect that always does.
-                    className={`group h-16 cursor-grab border-b border-border hover:bg-surface-2 ${
+                    className={`group h-16 border-b border-border hover:bg-surface-2 ${
                       drag?.path === row.path ? "opacity-40" : ""
                     } ${last && !below ? "border-b-0" : ""} ${
                       above ? "border-t-2 border-t-accent-500" : ""
@@ -557,6 +630,49 @@ function OpenPlaylist({
           </table>
         </div>
       )}
+
+      {/*
+        The row, picked up and following the pointer.
+
+        A copy rather than the row itself, and portalled out of the table, for
+        three reasons that all point the same way: a `<tr>` in a
+        `border-collapse: collapse` table does not reliably paint a shadow, so
+        the thing that has to look lifted cannot be the row; anything `fixed`
+        inside the view would anchor to the document rather than the screen,
+        because the view wrappers in `App.tsx` carry a transform; and the copy
+        is a plain element, so it can say "raised" with the tone the design
+        system reserves for exactly that.
+
+        It shows what is being carried rather than a pixel copy of the row —
+        the place, the title, the artist. `pointer-events-none`, or it would
+        take the moves it exists to follow.
+      */}
+      {carried &&
+        drag &&
+        dropAt !== undefined &&
+        createPortal(
+          <div
+            aria-hidden
+            style={{
+              left: drag.left,
+              top: drag.y - drag.grabY,
+              width: drag.width,
+            }}
+            className="pointer-events-none fixed z-[60] flex h-16 items-center gap-3 rounded-lg border border-border-strong bg-surface-2 px-4 shadow-lg shadow-black/40"
+          >
+            <span className="w-6 shrink-0 text-right text-xs tabular-nums text-fg-subtle">
+              {carried.position}
+            </span>
+            <div className="min-w-0 flex-1">
+              <p className="truncate text-sm text-fg">{carried.title}</p>
+              <p className="truncate text-xs text-fg-subtle">
+                {carried.artist || "—"}
+              </p>
+            </div>
+            <GripIcon />
+          </div>,
+          document.body,
+        )}
     </>
   );
 }

@@ -8,7 +8,14 @@
  * the user selected, in the order the table was showing them, and that the view
  * reads the result back rather than believing its own optimistic copy.
  */
-import { cleanup, render, screen, waitFor, within } from "@testing-library/react";
+import {
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+  within,
+} from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import App from "../App";
@@ -171,7 +178,9 @@ describe("playlists", () => {
     expect(await view.findByLabelText("Playlist name")).toHaveValue("Warmup");
     expect(await trackRows(container)).toHaveLength(2);
 
-    await user.click(view.getByLabelText("Move “Beta” up"));
+    // The handle is the one control that reorders, and it takes the arrow keys
+    // so a playlist can be put in order without a pointer.
+    fireEvent.keyDown(view.getByLabelText("Reorder “Beta”"), { key: "ArrowUp" });
 
     await waitFor(() => expect(fake.called("playlist_set")).toBe(true));
     const [set] = fake.argsFor("playlist_set");
@@ -240,6 +249,36 @@ describe("playlists", () => {
     expect(await placeOfA()).toBe("2");
   });
 
+  it("plays a track from the playlist, queueing the playlist", async () => {
+    // The reason to play from here rather than from the library: what follows
+    // a track is what follows it in the set the user made. It crosses into the
+    // player and the asset protocol, so it belongs at this level — a component
+    // test cannot reach `convertFileSrc`.
+    const user = userEvent.setup();
+    fake.state.playlists = [
+      { id: 1, name: "Warmup", created_ms: 1, updated_ms: 1 },
+    ];
+    fake.state.playlistContents = { 1: [B, A] };
+
+    const { container } = render(<App />);
+    const library = await ready(container);
+    await user.click(library.getByRole("button", { name: "Playlists" }));
+
+    const first = (await trackRows(container))[0];
+    await user.click(within(first).getByLabelText("Play"));
+
+    // The player bar appears — found by its seek slider, since the track's
+    // name is on the row as well — and the file it loaded is the one the
+    // playlist has first, whatever the library would have sorted.
+    const bar = (await screen.findByRole("slider", { name: "Seek" })).closest(
+      "div[class*='fixed']",
+    );
+    expect(bar).toBeTruthy();
+    await waitFor(() =>
+      expect(document.querySelector("audio")?.src).toContain("b.aiff"),
+    );
+  });
+
   it("exports the library where the save dialog points", async () => {
     // The one file the app writes outside the library folder, so the path has
     // to come from the user and the count from the backend that wrote it.
@@ -296,7 +335,9 @@ describe("playlists", () => {
 
     // The first row, moved down: the write fails, so the order must come back.
     const first = (await trackRows(container))[0];
-    await user.click(within(first).getByLabelText(/^Move .* down/));
+    fireEvent.keyDown(within(first).getByLabelText(/^Reorder/), {
+      key: "ArrowDown",
+    });
 
     await waitFor(() => expect(fake.called("playlist_set")).toBe(true));
     // Re-read, and the order is the one that was there all along.

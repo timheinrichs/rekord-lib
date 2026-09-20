@@ -108,6 +108,8 @@ own export.
 
 **What the view is for: order.** A 270 px sidebar of playlists with their
 counts, one open beside it, and four verbs — reorder, rename, remove, delete.
+A row plays from its cover, the way a library row does, and the queue is the
+playlist: what follows a track here is what follows it in the set.
 
 A row carries the library's columns, minus four: `select`, because there is
 nothing to select here; `Status`, because whether a file will play is a verdict
@@ -140,10 +142,27 @@ invisible to every test level, because only a person in the real app can find
 it.
 
 So the geometry is worked out in `gapAt` instead of read off a drop target, and
-two details are load-bearing. The press captures the pointer, or the drag stops
-the moment it leaves the row it began on. And "no target yet" stays distinct
+three details are load-bearing. The press captures the pointer, or the drag
+stops the moment it leaves the row it began on. "No target yet" stays distinct
 from "the end of the list" — conflated, the line under the last row paints
-itself the moment a press begins, before the pointer has travelled.
+itself the moment a press begins, before the pointer has travelled. And the
+list is `select-none` while a row is carried, because a pointer drawn across
+table cells selects their text and painted every row the drag crossed.
+
+**A row is picked up by a handle**, not anywhere. That keeps the grab cursor
+off the whole row, and it is what makes the gesture reachable without a
+pointer: the handle is a button, and the arrow keys move the row while it has
+focus. It replaced a pair of ↑ ↓ buttons that did the same job less well —
+there is no keyboard equivalent of a drag, so the two could not simply be
+dropped.
+
+What follows the pointer is a **copy of the row**, portalled out of the table.
+Three things made that the answer rather than styling the row itself: a `<tr>`
+in a `border-collapse: collapse` table does not reliably paint a shadow, so
+the thing that must look lifted cannot be the row; anything `fixed` inside a
+view would anchor to the document because the view wrappers carry a transform;
+and a plain element can use the raised tone, which a row cannot without
+colliding with the hover state. The row that stays behind goes translucent.
 
 **Getting tracks in stays in the library.** "Add to playlist" says what each
 entry would do — `+3`, `+1 of 4`, or `already in` for one that holds the whole
@@ -274,7 +293,11 @@ comes from a native panel the user drove.
 | A playlist row removes, and cannot delete the file | `playlists.e2e.test.tsx` · "takes a track out of the playlist, but not off the disk" |
 | The view shows the whole stored playlist and writes the order it shows | `playlists.e2e.test.tsx` · "shows the whole stored playlist and writes the order it shows" |
 | A drag reaches `move`, including onto the end of the list | `PlaylistsView.test.tsx` · "reorders by pointer, onto a gap and onto the end of the list" |
-| A press that never travelled moves nothing, and the row's buttons are not a handle | `PlaylistsView.test.tsx` · "does not move anything when the press never travelled", "does not arm a drag from the row's own buttons" |
+| A press that never travelled moves nothing, and only the handle picks a row up | `PlaylistsView.test.tsx` · "does not move anything when the press never travelled", "does not arm a drag from the row's other buttons" |
+| The handle reorders from the keyboard, and not past the ends | `PlaylistsView.test.tsx` · "reorders from the keyboard, and not past the ends" |
+| A copy follows the pointer, and only once the press has travelled | `PlaylistsView.test.tsx` · "carries a copy of the row under the pointer" |
+| Nothing is selected while a row is carried | `PlaylistsView.test.tsx` · "marks no text while a row is being carried" |
+| Playing from a row queues the playlist, in its order | `playlists.e2e.test.tsx` · "plays a track from the playlist, queueing the playlist" |
 | Which gap a pointer means, including the one after the last row | `playlists.test.ts` · `gapAt` cases |
 | The line is drawn in that gap, and only once the pointer has travelled | `PlaylistsView.test.tsx` · "draws the line in the gap the move would use, and not before" |
 | The view's columns are the table's minus four, and follow the same hidden set | `columns.test.ts` · `playlistColumns` cases |

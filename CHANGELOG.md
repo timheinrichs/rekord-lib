@@ -37,7 +37,9 @@ contain incompatible changes.
   is about order: a sidebar of playlists, one open beside it, rename, reorder,
   remove, delete. Editing tags, converting and deleting files stay in the
   library, and so does "Add to playlist", which acts on a selection made there.
-  Reordering by dragging a row works for the first time — the table's rows
+  Tracks play from the playlist, and the queue is the playlist — what follows
+  a track is what follows it in the set. Reordering by dragging a row works for
+  the first time — the table's rows
   carried it since 0.9.0 and it never did anything, because the window's file
   drop takes drag and drop before the page sees it. A line shows the gap the
   row will land in, including the one after the last row, which the table had

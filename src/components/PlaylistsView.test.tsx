@@ -1,7 +1,8 @@
 import { fireEvent, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import PlaylistsView from "./PlaylistsView";
+import { PlayerProvider } from "../lib/player";
 import { makeMetadata, makeTrack } from "../test/factories";
 import type { Playlists } from "../lib/usePlaylists";
 import type { Playlist } from "../types";
@@ -56,14 +57,18 @@ function setup(over: Partial<Playlists> = {}) {
       metadata: makeMetadata({ title: "Beta", artist: "Two" }),
     }),
   ];
+  // The real provider rather than a mock: the view queues the playlist it is
+  // showing, and a stub would not be able to disagree with it.
   render(
-    <PlaylistsView
-      playlists={playlists}
-      tracks={tracks}
-      edits={{}}
-      hiddenColumns={[]}
-      active
-    />,
+    <PlayerProvider>
+      <PlaylistsView
+        playlists={playlists}
+        tracks={tracks}
+        edits={{}}
+        hiddenColumns={[]}
+        active
+      />
+    </PlayerProvider>,
   );
   return { user: userEvent.setup(), playlists, ...ops };
 }
@@ -92,17 +97,12 @@ function withGeometry() {
   });
 }
 
-beforeEach(() => {
-  // jsdom implements no pointer capture. It is not optional in the component:
-  // without it a drag stops the moment the pointer leaves the row it started
-  // on, because the moves are then delivered to whatever is underneath.
-  Element.prototype.setPointerCapture = vi.fn();
-  Element.prototype.releasePointerCapture = vi.fn();
-});
+/** The handle a row is picked up by. */
+const handle = (row: HTMLElement) => within(row).getByLabelText(/^Reorder/);
 
-/** Press on a row at `from`, travel to `to`, let go. */
+/** Press the row's handle at `from`, travel to `to`, let go. */
 function drag(row: HTMLElement, from: number, to: number) {
-  fireEvent.pointerDown(row, { button: 0, clientY: from });
+  fireEvent.pointerDown(handle(row), { button: 0, clientY: from });
   fireEvent.pointerMove(row, { clientY: to });
   fireEvent.pointerUp(row, { clientY: to });
 }
@@ -123,18 +123,23 @@ describe("PlaylistsView", () => {
     expect(rows()[0]).toHaveTextContent("Alpha");
   });
 
-  it("disables the moves that would go nowhere", () => {
-    setup();
-    expect(within(rows()[0]).getByLabelText(/up/)).toBeDisabled();
-    expect(within(rows()[1]).getByLabelText(/down/)).toBeDisabled();
-    expect(within(rows()[1]).getByLabelText(/up/)).toBeEnabled();
-  });
+  it("reorders from the keyboard, and not past the ends", () => {
+    // The handle is a button so a long playlist can be reordered without a
+    // pointer at all: a drag gesture has no keyboard equivalent, and HTML5
+    // drag would have had no auto-scroll even if it worked here.
+    const { step } = setup();
 
-  it("moves and removes through the one place playlist state lives", async () => {
-    const { user, step, removeTracks } = setup();
-    await user.click(within(rows()[1]).getByLabelText("Move “Beta” up"));
+    fireEvent.keyDown(handle(rows()[1]), { key: "ArrowUp" });
     expect(step).toHaveBeenCalledExactlyOnceWith(1, `${LIB}/b.aiff`, -1);
 
+    step.mockClear();
+    fireEvent.keyDown(handle(rows()[0]), { key: "ArrowUp" });
+    fireEvent.keyDown(handle(rows()[1]), { key: "ArrowDown" });
+    expect(step).not.toHaveBeenCalled();
+  });
+
+  it("removes through the one place playlist state lives", async () => {
+    const { user, removeTracks } = setup();
     await user.click(
       within(rows()[0]).getByLabelText("Remove “Alpha” from the playlist"),
     );
@@ -235,7 +240,7 @@ describe("PlaylistsView", () => {
     withGeometry();
 
     // Nothing is marked until the pointer has travelled.
-    fireEvent.pointerDown(rows()[1], { button: 0, clientY: 100 });
+    fireEvent.pointerDown(handle(rows()[1]), { button: 0, clientY: 100 });
     expect(rows()[1].className).not.toContain("accent-500");
 
     fireEvent.pointerMove(rows()[1], { clientY: 10 });
@@ -258,7 +263,7 @@ describe("PlaylistsView", () => {
     const body = screen.getByRole("rowgroup", { name: "Tracks in this playlist" });
     expect(body.className).not.toContain("select-none");
 
-    fireEvent.pointerDown(rows()[1], { button: 0, clientY: 100 });
+    fireEvent.pointerDown(handle(rows()[1]), { button: 0, clientY: 100 });
     expect(body.className).toContain("select-none");
 
     // And it is selectable again afterwards, so a title can still be copied.
@@ -271,19 +276,39 @@ describe("PlaylistsView", () => {
     withGeometry();
     expect(rows()[1].className).not.toContain("opacity-");
 
-    fireEvent.pointerDown(rows()[1], { button: 0, clientY: 100 });
+    fireEvent.pointerDown(handle(rows()[1]), { button: 0, clientY: 100 });
     expect(rows()[1].className).toContain("opacity-40");
     // Only the one being carried.
     expect(rows()[0].className).not.toContain("opacity-");
   });
 
-  it("does not arm a drag from the row's own buttons", async () => {
-    // Pressing ↑ must not start a gesture that then swallows the click.
-    const { user, move, step } = setup();
+  it("does not arm a drag from the row's other buttons", async () => {
+    // Only the handle picks a row up; pressing − must not start a gesture that
+    // then swallows the click.
+    const { user, move, removeTracks } = setup();
     withGeometry();
-    await user.click(within(rows()[1]).getByLabelText("Move “Beta” up"));
-    expect(step).toHaveBeenCalledOnce();
+    await user.click(
+      within(rows()[1]).getByLabelText("Remove “Beta” from the playlist"),
+    );
+    expect(removeTracks).toHaveBeenCalledOnce();
     expect(move).not.toHaveBeenCalled();
+  });
+
+  it("carries a copy of the row under the pointer", async () => {
+    // A `<tr>` in a collapsed table cannot paint a shadow, so the thing that
+    // looks lifted is a copy outside the table — and it must not appear until
+    // the press has actually travelled.
+    setup();
+    withGeometry();
+    fireEvent.pointerDown(handle(rows()[1]), { button: 0, clientY: 100 });
+    expect(screen.queryByText("Beta", { selector: "p" })).toBeInTheDocument();
+
+    fireEvent.pointerMove(rows()[1], { clientY: 10 });
+    // Two now: the row, and the copy being carried.
+    expect(screen.getAllByText("Beta")).toHaveLength(2);
+
+    fireEvent.pointerUp(rows()[1], { clientY: 10 });
+    expect(screen.getAllByText("Beta")).toHaveLength(1);
   });
 
   it("says what an empty playlist is for", async () => {
