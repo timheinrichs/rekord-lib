@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
-  dropBefore,
+  gapAt,
   addToPlaylist,
   movePlaylistItem,
   movePlaylistItems,
@@ -208,27 +208,36 @@ describe("playlistRows", () => {
   });
 });
 
-describe("dropBefore", () => {
+describe("gapAt", () => {
   const paths = ["a", "b", "c"];
-  const box = { top: 100, height: 64 };
+  // Three 64 px rows, stacked from 100.
+  const boxes = [0, 1, 2].map((i) => ({ top: 100 + i * 64, height: 64 }));
 
-  it("takes the gap above the row when the pointer is in its upper half", () => {
-    expect(dropBefore(paths, 1, 110, box)).toBe("b");
+  it("takes the gap above a row when the pointer is in its upper half", () => {
+    expect(gapAt(paths, boxes, 170)).toBe("b");
   });
 
   it("takes the gap below it when the pointer is in its lower half", () => {
-    expect(dropBefore(paths, 1, 150, box)).toBe("c");
+    expect(gapAt(paths, boxes, 210)).toBe("c");
   });
 
-  it("answers the end of the list below the last row", () => {
+  it("answers the end of the list below the last row's midpoint", () => {
     // `null` is what `movePlaylistItems` already takes for "append", and it is
-    // the gap a drop target on the row itself can never express — which is why
-    // the table needed a separate box under the list to reach it.
-    expect(dropBefore(paths, 2, 150, box)).toBeNull();
+    // the gap a drop target *on* a row can never express, because a row can
+    // only mean "before this one".
+    expect(gapAt(paths, boxes, 280)).toBeNull();
   });
 
-  it("puts the midpoint in the upper half, so the two halves never overlap", () => {
-    expect(dropBefore(paths, 1, 132, box)).toBe("b");
-    expect(dropBefore(paths, 1, 133, box)).toBe("c");
+  it("answers the end of the list past every row", () => {
+    expect(gapAt(paths, boxes, 9999)).toBeNull();
+  });
+
+  it("puts a midpoint in the upper half, so the two halves never overlap", () => {
+    expect(gapAt(paths, boxes, 132)).toBe("a");
+    expect(gapAt(paths, boxes, 133)).toBe("b");
+  });
+
+  it("answers the first gap above the whole list", () => {
+    expect(gapAt(paths, boxes, 0)).toBe("a");
   });
 });

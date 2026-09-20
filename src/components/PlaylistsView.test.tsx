@@ -1,12 +1,6 @@
-import {
-  createEvent,
-  fireEvent,
-  render,
-  screen,
-  within,
-} from "@testing-library/react";
+import { fireEvent, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import PlaylistsView from "./PlaylistsView";
 import { makeMetadata, makeTrack } from "../test/factories";
 import type { Playlists } from "../lib/usePlaylists";
@@ -79,7 +73,11 @@ const rows = () =>
     screen.getByRole("rowgroup", { name: "Tracks in this playlist" }),
   ).getAllByRole("row");
 
-/** jsdom has no layout, so the rows are given one: 64 px tall, stacked. */
+/**
+ * jsdom has no layout, so the rows are given one: 64 px tall, stacked from
+ * zero. So row 0 spans 0–64 with its midpoint at 32, row 1 spans 64–128, and
+ * anything past 128 is the end of the list.
+ */
 function withGeometry() {
   rows().forEach((r, i) => {
     r.getBoundingClientRect = () =>
@@ -94,22 +92,19 @@ function withGeometry() {
   });
 }
 
-/**
- * A drag event that carries a pointer position.
- *
- * jsdom implements no `DragEvent`, so Testing Library falls back to a plain
- * event and the mouse coordinates in the init are dropped — which is exactly
- * the field the component reads to decide which gap is meant.
- */
-function dragAt(
-  kind: "dragOver" | "drop",
-  el: HTMLElement,
-  clientY: number,
-  dataTransfer: unknown,
-) {
-  const ev = createEvent[kind](el, { dataTransfer });
-  Object.defineProperty(ev, "clientY", { value: clientY });
-  fireEvent(el, ev);
+beforeEach(() => {
+  // jsdom implements no pointer capture. It is not optional in the component:
+  // without it a drag stops the moment the pointer leaves the row it started
+  // on, because the moves are then delivered to whatever is underneath.
+  Element.prototype.setPointerCapture = vi.fn();
+  Element.prototype.releasePointerCapture = vi.fn();
+});
+
+/** Press on a row at `from`, travel to `to`, let go. */
+function drag(row: HTMLElement, from: number, to: number) {
+  fireEvent.pointerDown(row, { button: 0, clientY: from });
+  fireEvent.pointerMove(row, { clientY: to });
+  fireEvent.pointerUp(row, { clientY: to });
 }
 
 describe("PlaylistsView", () => {
@@ -200,24 +195,17 @@ describe("PlaylistsView", () => {
     expect(screen.getByRole("button", { name: "Delete playlist" })).toBeVisible();
   });
 
-  it("reorders by drag, onto a gap and onto the end of the list", async () => {
-    // The table could only ever drop a row *in front of* another, so appending
-    // by drag was impossible there and only the ↓ button could do it. Here the
-    // half of the row the pointer is in decides which gap is meant, so the one
-    // after the last row is reachable too.
+  it("reorders by pointer, onto a gap and onto the end of the list", async () => {
+    // Pointer events, not HTML5 drag and drop: the window enables Tauri's own
+    // file drop so the library can be filled by dragging files in, and that
+    // takes drag and drop at the webview level — `dragstart` fires inside the
+    // page and no `dragover` or `drop` ever arrives. The table's row drag was
+    // dead from the day it shipped for exactly that reason.
     const { move } = setup();
     withGeometry();
 
-    // Neither field is optional in WebKit: a drag that carries nothing is
-    // aborted before any `dragover` is delivered.
-    const transfer = { setData: vi.fn(), effectAllowed: "", dropEffect: "" };
-
-    fireEvent.dragStart(rows()[1], { dataTransfer: transfer });
-    expect(transfer.setData).toHaveBeenCalledWith("text/plain", `${LIB}/b.aiff`);
-
     // Upper half of the first row: the gap above it.
-    dragAt("dragOver", rows()[0], 10, transfer);
-    dragAt("drop", rows()[0], 10, transfer);
+    drag(rows()[1], 100, 10);
     expect(move).toHaveBeenCalledExactlyOnceWith(
       1,
       [`${LIB}/b.aiff`],
@@ -226,34 +214,48 @@ describe("PlaylistsView", () => {
 
     move.mockClear();
     withGeometry();
-    fireEvent.dragStart(rows()[0], { dataTransfer: transfer });
-    // Lower half of the last row: the end of the list, which `move` takes as
-    // `null`.
-    dragAt("dragOver", rows()[1], 120, transfer);
-    dragAt("drop", rows()[1], 120, transfer);
+    // Past the last row: the end of the list, which `move` takes as `null`.
+    drag(rows()[0], 10, 400);
     expect(move).toHaveBeenCalledExactlyOnceWith(1, [`${LIB}/a.aiff`], null);
   });
 
-  it("draws the line in the gap the drop would use, and not before", async () => {
+  it("does not move anything when the press never travelled", async () => {
+    // A click on a row is not a drag. Without the threshold, pressing anywhere
+    // and letting go would write the order back over itself.
+    const { move } = setup();
+    withGeometry();
+    drag(rows()[1], 100, 102);
+    expect(move).not.toHaveBeenCalled();
+  });
+
+  it("draws the line in the gap the move would use, and not before", async () => {
     // The indicator is the whole feedback: without it a drag is a guess about
     // where the row will land.
     setup();
     withGeometry();
-    const transfer = { setData: vi.fn(), effectAllowed: "", dropEffect: "" };
 
-    // Nothing is marked until the pointer says where.
-    fireEvent.dragStart(rows()[1], { dataTransfer: transfer });
+    // Nothing is marked until the pointer has travelled.
+    fireEvent.pointerDown(rows()[1], { button: 0, clientY: 100 });
     expect(rows()[1].className).not.toContain("accent-500");
 
-    dragAt("dragOver", rows()[0], 10, transfer);
+    fireEvent.pointerMove(rows()[1], { clientY: 10 });
     expect(rows()[0].className).toContain("border-t-accent-500");
 
-    dragAt("dragOver", rows()[1], 120, transfer);
+    fireEvent.pointerMove(rows()[1], { clientY: 400 });
     expect(rows()[1].className).toContain("border-b-accent-500");
 
-    // And a drag that ends without a drop leaves nothing painted.
-    fireEvent.dragEnd(rows()[1]);
+    // A cancelled gesture leaves nothing painted and moves nothing.
+    fireEvent.pointerCancel(rows()[1]);
     expect(rows()[1].className).not.toContain("accent-500");
+  });
+
+  it("does not arm a drag from the row's own buttons", async () => {
+    // Pressing ↑ must not start a gesture that then swallows the click.
+    const { user, move, step } = setup();
+    withGeometry();
+    await user.click(within(rows()[1]).getByLabelText("Move “Beta” up"));
+    expect(step).toHaveBeenCalledOnce();
+    expect(move).not.toHaveBeenCalled();
   });
 
   it("says what an empty playlist is for", async () => {

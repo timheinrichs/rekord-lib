@@ -170,25 +170,42 @@ export interface PlaylistRow {
   outsideLibrary: boolean;
 }
 
+/** Just enough of a `DOMRect` to say where a row is. */
+export interface RowBox {
+  top: number;
+  height: number;
+}
+
 /**
- * Which gap a drag is pointing at, as a path to insert before — or `null` for
+ * Which gap a pointer at `y` is in, as a path to insert before — or `null` for
  * the end of the list, which is what `movePlaylistItems` already takes.
  *
- * The pointer decides by which half of the row it is in, so every gap between
- * two rows is reachable and so is the one after the last. A drop target that is
- * the row itself can only ever mean "before this one", which leaves the end of
- * a playlist unreachable by drag — the table had that problem and answered it
- * with a separate box below the list.
+ * Reordering is done with pointer events rather than HTML5 drag and drop,
+ * which is not a style choice: the window enables Tauri's own file drop so the
+ * library can be filled by dragging files in, and that handler takes drag and
+ * drop at the webview level — `dragstart` still fires inside the page, but no
+ * `dragover` and no `drop` are ever delivered. So the geometry has to be worked
+ * out here rather than read off a drop target.
+ *
+ * Which half of a row the pointer is in decides which of its two gaps is meant,
+ * so every gap between two rows is reachable and so is the one after the last —
+ * the gap a drop target *on* a row can never express, because a row can only
+ * mean "before this one".
  */
-export function dropBefore(
+export function gapAt(
   paths: readonly string[],
-  index: number,
+  boxes: readonly RowBox[],
   y: number,
-  box: { top: number; height: number },
 ): string | null {
-  const lower = y > box.top + box.height / 2;
-  if (!lower) return paths[index] ?? null;
-  return paths[index + 1] ?? null;
+  for (let i = 0; i < boxes.length; i++) {
+    const box = boxes[i];
+    if (y >= box.top + box.height) continue;
+    return y > box.top + box.height / 2
+      ? (paths[i + 1] ?? null)
+      : (paths[i] ?? null);
+  }
+  // Past the last row: the end of the list.
+  return null;
 }
 
 /**

@@ -130,12 +130,20 @@ button was the only way to reach the end of a list. Here the half of a row the
 pointer is in decides which gap is meant (`dropBefore`), so every gap is
 reachable including the one after the last row, and a line is drawn in it.
 
-Two things a drag needs that are easy to leave out, both learned the hard way:
-the `dragstart` has to put something in the `dataTransfer` — **WebKit aborts a
-drag that carries nothing**, and this app ships on WebKit, so the row lifted and
-no `dragover` was ever delivered — and "no target yet" has to stay distinct from
-"the end of the list", or the line under the last row paints itself the moment a
-drag begins.
+**Reordering is done with pointer events, not HTML5 drag and drop**, and that
+is not a preference. The window enables Tauri's own file drop so the library can
+be filled by dragging files in (`onDragDropEvent`), and that handler takes drag
+and drop at the *webview* level: `dragstart` still fires inside the page, and no
+`dragover` and no `drop` are ever delivered to it. The table's playlist rows
+carried HTML5 handlers from 0.9.0 and were therefore never draggable at all —
+invisible to every test level, because only a person in the real app can find
+it.
+
+So the geometry is worked out in `gapAt` instead of read off a drop target, and
+two details are load-bearing. The press captures the pointer, or the drag stops
+the moment it leaves the row it began on. And "no target yet" stays distinct
+from "the end of the list" — conflated, the line under the last row paints
+itself the moment a press begins, before the pointer has travelled.
 
 **Getting tracks in stays in the library.** "Add to playlist" says what each
 entry would do — `+3`, `+1 of 4`, or `already in` for one that holds the whole
@@ -265,9 +273,10 @@ comes from a native panel the user drove.
 | A track can be in two playlists, with its own place in each | `playlists.e2e.test.tsx` · "keeps a track in two playlists, each with its own place" |
 | A playlist row removes, and cannot delete the file | `playlists.e2e.test.tsx` · "takes a track out of the playlist, but not off the disk" |
 | The view shows the whole stored playlist and writes the order it shows | `playlists.e2e.test.tsx` · "shows the whole stored playlist and writes the order it shows" |
-| A drag reaches `move`, including onto the end of the list | `PlaylistsView.test.tsx` · "reorders by drag, onto a gap and onto the end of the list" |
-| Which gap a pointer means, including the one after the last row | `playlists.test.ts` · `dropBefore` cases |
-| The line is drawn in that gap, and only once the pointer has said where | `PlaylistsView.test.tsx` · "draws the line in the gap the drop would use, and not before" |
+| A drag reaches `move`, including onto the end of the list | `PlaylistsView.test.tsx` · "reorders by pointer, onto a gap and onto the end of the list" |
+| A press that never travelled moves nothing, and the row's buttons are not a handle | `PlaylistsView.test.tsx` · "does not move anything when the press never travelled", "does not arm a drag from the row's own buttons" |
+| Which gap a pointer means, including the one after the last row | `playlists.test.ts` · `gapAt` cases |
+| The line is drawn in that gap, and only once the pointer has travelled | `PlaylistsView.test.tsx` · "draws the line in the gap the move would use, and not before" |
 | The view's columns are the table's minus four, and follow the same hidden set | `columns.test.ts` · `playlistColumns` cases |
 | Switching playlists drops an armed delete | `PlaylistsView.test.tsx` · "drops an armed delete when another playlist is opened" |
 | The picker says `+N`, `+N of M` and `already in`, and refuses the last | `AddToPlaylistDialog.test.tsx` · "says what each playlist would gain…"; `playlists.e2e.test.tsx` · "will not offer a playlist the selection is already in" |

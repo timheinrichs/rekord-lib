@@ -10,7 +10,7 @@ import {
 } from "../lib/columns";
 import { formatBpm, formatDuration, formatKey } from "../lib/format";
 import { metaOf } from "../lib/grouping";
-import { dropBefore, playlistRows } from "../lib/playlists";
+import { gapAt, playlistRows } from "../lib/playlists";
 import type { Edits } from "../lib/grouping";
 import type { Playlists } from "../lib/usePlaylists";
 import type { Playlist, TrackAnalysis } from "../types";
@@ -262,7 +262,10 @@ function OpenPlaylist({
 }) {
   const [name, setName] = useState(open.name);
   const [confirming, setConfirming] = useState(false);
-  const [drag, setDrag] = useState<string[] | null>(null);
+  /** How far a press has to travel before it is a drag and not a click. */
+  const DRAG_THRESHOLD = 4;
+
+  const [drag, setDrag] = useState<{ path: string; from: number } | null>(null);
   /**
    * The gap a drop would use: a path to insert before, `null` for the end of
    * the list, `undefined` for no target at all. The last two must stay apart —
@@ -410,12 +413,21 @@ function OpenPlaylist({
   /** The stored order, which is what a drop is expressed against. */
   const paths = rows.map((r) => r.path);
 
-  const commitDrop = (before: string | null) => {
+  const body = useRef<HTMLTableSectionElement>(null);
+  const boxes = () =>
+    [...(body.current?.children ?? [])].map((el) =>
+      el.getBoundingClientRect(),
+    );
+
+  const endDrag = (commit: boolean) => {
     const moving = drag;
+    const at = dropAt;
     setDrag(null);
     setDropAt(undefined);
-    if (!moving) return;
-    void playlists.move(open.id, moving, before);
+    // `undefined` means the press never travelled, so there is nothing to do —
+    // as distinct from `null`, which is a deliberate drop at the end.
+    if (!commit || !moving || at === undefined) return;
+    void playlists.move(open.id, [moving.path], at);
   };
 
   return (
@@ -487,7 +499,7 @@ function OpenPlaylist({
                 ))}
               </tr>
             </thead>
-            <tbody aria-label="Tracks in this playlist">
+            <tbody ref={body} aria-label="Tracks in this playlist">
               {rows.map((row, i) => {
                 const last = i === rows.length - 1;
                 // The line sits in the gap the drop would use: above this row,
@@ -497,39 +509,27 @@ function OpenPlaylist({
                 return (
                   <tr
                     key={row.path}
-                    draggable
-                    onDragStart={(e) => {
-                      // WebKit refuses a drag that carries nothing: without
-                      // this the drag starts and then no `dragover` or `drop`
-                      // is ever delivered, so the row lifts and nothing else
-                      // happens. This app ships on WebKit.
-                      e.dataTransfer.setData("text/plain", row.path);
-                      e.dataTransfer.effectAllowed = "move";
-                      setDrag([row.path]);
+                    onPointerDown={(e) => {
+                      // The row's own buttons are not a handle: pressing ↑
+                      // must not arm a drag that then swallows the click.
+                      if (e.button !== 0) return;
+                      if ((e.target as HTMLElement).closest("button")) return;
+                      e.currentTarget.setPointerCapture(e.pointerId);
+                      setDrag({ path: row.path, from: e.clientY });
                     }}
-                    onDragOver={(e) => {
-                      e.preventDefault();
-                      e.dataTransfer.dropEffect = "move";
-                      const box = e.currentTarget.getBoundingClientRect();
-                      setDropAt(dropBefore(paths, i, e.clientY, box));
+                    onPointerMove={(e) => {
+                      if (drag?.path !== row.path) return;
+                      // A press that has not travelled is a click, not a drag.
+                      if (Math.abs(e.clientY - drag.from) < DRAG_THRESHOLD) return;
+                      setDropAt(gapAt(paths, boxes(), e.clientY));
                     }}
-                    onDrop={(e) => {
-                      e.preventDefault();
-                      const box = e.currentTarget.getBoundingClientRect();
-                      commitDrop(dropBefore(paths, i, e.clientY, box));
-                    }}
-                    onDragEnd={() => {
-                      // Escape and a drop outside both end a drag without a
-                      // drop; clearing only on drop is how the accent line got
-                      // left painted under a row.
-                      setDrag(null);
-                      setDropAt(undefined);
-                    }}
-                    className={`group h-16 border-b border-border hover:bg-surface-2 ${
-                      last && !below ? "border-b-0" : ""
-                    } ${above ? "border-t-2 border-t-accent-500" : ""} ${
-                      below ? "border-b-2 border-b-accent-500" : ""
-                    }`}
+                    onPointerUp={() => endDrag(true)}
+                    onPointerCancel={() => endDrag(false)}
+                    className={`group h-16 cursor-grab border-b border-border hover:bg-surface-2 ${
+                      drag?.path === row.path ? "opacity-50" : ""
+                    } ${last && !below ? "border-b-0" : ""} ${
+                      above ? "border-t-2 border-t-accent-500" : ""
+                    } ${below ? "border-b-2 border-b-accent-500" : ""}`}
                   >
                     {cols.map((c) => cell(c, row))}
                   </tr>
