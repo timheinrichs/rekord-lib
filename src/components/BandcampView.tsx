@@ -4,7 +4,8 @@ import HeaderNav from "./HeaderNav";
 import { GridIcon, ListIcon } from "./icons";
 import { CollectionSkeleton } from "./Skeleton";
 import type { BulkProgress, DownloadEntry } from "../lib/useBandcamp";
-import type { BandcampAccount, BandcampItem, EventLevel } from "../types";
+import type { BandcampAccount, BandcampItem } from "../types";
+import type { BadgeLevel } from "../lib/events";
 import type { Severity } from "../lib/changelog";
 
 interface Props {
@@ -29,7 +30,7 @@ interface Props {
   updateAvailable?: boolean;
   updateSeverity?: Severity | null;
   /** Loudest unread level in the event log (see lib/events). */
-  eventBadge?: EventLevel | null;
+  eventBadge?: BadgeLevel | null;
   onOpenEventLog: () => void;
   onTitleClick?: () => void;
 }

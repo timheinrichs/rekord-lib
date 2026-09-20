@@ -257,10 +257,13 @@ straight from the logo, plus three status hues that are strictly semantic.
 
 ### Status — the verdict palette
 
-- **Verdict Green** (`success-500`, #22B27A): compatible, ready, done.
+- **Verdict Green** (`success-500`, #22B27A): compatible, ready, done — and an
+  action that finished, all of it.
 - **Convert Amber** (`warning-500`, #F5A623): conversion needed, metadata
-  incomplete, FLAC/ALAC restricted to NXS2/CDJ-3000 — anything still to do.
-- **Refuse Red** (`danger-500`, #E5484D): incompatible, E-8305 risk, delete.
+  incomplete, FLAC/ALAC restricted to NXS2/CDJ-3000 — anything still to do, and
+  an action that finished only partly.
+- **Refuse Red** (`danger-500`, #E5484D): incompatible, E-8305 risk, delete —
+  and an action that failed.
 - **Info Blue** (`info-500`, #3B82F6): defined in the tokens; the UI currently
   reaches for `accent-300` for informational markers instead.
 
@@ -289,11 +292,28 @@ and `--focus` exist and why a bare `text-warning-500` is a defect.
 `src/styles/contrast.test.ts` does the arithmetic over both theme blocks, so the
 claim is checked rather than asserted.
 
-**The Semantic Colour Rule.** Green, amber and red only ever describe
-compatibility state. A status colour used because it looks good is a defect —
-there is no decorative green in this app. The corollary: a build label that is
-merely a heads-up ("Beta") takes the accent, not amber, because it is not a
-compatibility warning.
+**The Semantic Colour Rule.** Green, amber and red only ever describe a
+**verdict** — how a file stands, or how an action turned out. A status colour
+used because it looks good is a defect; there is no decorative green in this
+app. The corollary: a build label that is merely a heads-up ("Beta") takes the
+accent, not amber, because it is announcing itself rather than judging
+anything.
+
+Verdicts come in two kinds, and 0.10.0 added the second. A **file** is
+compatible, needs converting, or will not play — that is the track row's status
+column and the oldest use of these three hues. An **action** finished, finished
+partly, or failed — that is a transient message (`Toasts`), and it takes the
+same three because it is the same kind of statement about a different subject.
+The palette was briefly mixed on this point: the messages shipped with amber
+for a partial run and red for a failure but the accent for a clean one, which
+made the one good outcome the exception rather than the top of a scale.
+
+What this does **not** license is a green that means "nice": a completed action
+is green because it is a verdict on a run, not because the run deserves
+congratulating. Nothing in this app celebrates. And the two kinds stay apart on
+screen — a verdict about a file is an icon in its row, a verdict about an
+action is a sentence in a message — so a green that means "this plays on a CDJ"
+is never next to a green that means "that worked".
 
 **The One Accent Rule.** Violet is the only brand colour. No second accent, no
 gradient, no glow — including as a skeleton shimmer, which is why placeholders

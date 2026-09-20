@@ -65,10 +65,12 @@ export function onEventLogged(
  * the trade the transient message bought, and if the messages ever stop being
  * shown this rule has to be reconsidered with them.
  */
+export type BadgeLevel = Extract<EventLevel, "warn" | "error">;
+
 export function badgeLevel(
   events: AppEvent[],
   seenId: number,
-): EventLevel | null {
+): BadgeLevel | null {
   const unread = events.filter((e) => e.id > seenId);
   if (unread.some((e) => e.level === "error")) return "error";
   if (unread.some((e) => e.level === "warn")) return "warn";

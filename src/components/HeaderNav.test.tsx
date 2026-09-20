@@ -2,12 +2,12 @@ import { describe, expect, it } from "vitest";
 import { render, screen } from "@testing-library/react";
 import HeaderNav from "./HeaderNav";
 import type { Severity } from "../lib/changelog";
-import type { EventLevel } from "../types";
+import type { BadgeLevel } from "../lib/events";
 
 function renderNav(over: {
   updateAvailable?: boolean;
   updateSeverity?: Severity | null;
-  eventBadge?: EventLevel | null;
+  eventBadge?: BadgeLevel | null;
 }) {
   return render(
     <HeaderNav
@@ -95,12 +95,10 @@ describe("HeaderNav · the event log badge", () => {
     expect(dot(container)).toBeNull();
   });
 
-  it("gives an ordinary message the accent, not silence", () => {
-    // An export writes a file outside the library and had no way of saying so
-    // while `info` was ignored.
-    const { container } = renderNav({ eventBadge: "info" });
-    expect(dot(container)).toHaveClass("bg-accent-500");
-  });
+  // There is no case for an ordinary message here any more, and the type says
+  // so: since 0.10.0 an action's own answer is shown when it happens, so
+  // `badgeLevel` cannot return `info` and the dot has two colours rather than
+  // three. The reasoning, and what it costs, is in `badgeLevel`'s docstring.
 
   it("keeps warning and error in their own colours", () => {
     // The dot has room for one answer; the colour is how it says which.

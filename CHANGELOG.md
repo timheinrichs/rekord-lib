@@ -14,7 +14,9 @@ contain incompatible changes.
   deleting, converting, writing tags, exporting and undoing now say what they
   did, top right, for four seconds. Each message is an event log row on its way
   past — the same sentence, written once in the backend — so what you are shown
-  and what is kept can never disagree. What the log collects per file stays in
+  and what is kept can never disagree. Green when the run finished, amber when
+  only part of it did, red when it failed: the same three hues the app uses to
+  judge a file, judging a run instead. What the log collects per file stays in
   the log: a scan over two hundred unreadable files still fills it and lights
   the badge, and draws nothing.
 - **A playlist picker with room in it.** "Add to playlist" is a dialog rather

@@ -54,14 +54,32 @@ describe("Toasts", () => {
     expect(region.firstElementChild).toHaveClass("pointer-events-none");
   });
 
-  it("colours an ordinary result with the accent, not with green", () => {
-    // Green in this app means the file will play on a CDJ. A finished action
-    // is a heads-up, and the badge in the header already calls it accent — the
-    // two are the same log row and must not disagree in hue.
-    render(<Toasts toasts={[toast()]} onExpire={() => {}} />);
-    const body = screen.getByText("Moved 3 tracks to the trash");
-    expect(body.className).toContain("text-fg-accent");
-    expect(body.className).not.toContain("success");
+  it("gives the three levels the three status hues, as a scale", () => {
+    // The point is that they are one scale rather than three decisions: a run
+    // that finished, one that finished partly, one that failed. The accent sat
+    // in the green slot for four hours and made the good outcome the odd one
+    // out, under an amber and a red that were already saying the same kind of
+    // thing.
+    const cases = [
+      ["info", "success"],
+      ["warn", "warning"],
+      ["error", "danger"],
+    ] as const;
+    for (const [level, hue] of cases) {
+      const { unmount } = render(
+        <Toasts
+          toasts={[toast({ level, message: `a ${level} run` })]}
+          onExpire={() => {}}
+        />,
+      );
+      const body = screen.getByText(`a ${level} run`);
+      // The Tinted-Ring Rule's triple, and the theme-dependent token for the
+      // text — a bare ramp hue on a tint is the defect the Two-Theme Rule names.
+      expect(body.className).toContain(`bg-${hue}-500/15`);
+      expect(body.className).toContain(`ring-${hue}-500/30`);
+      expect(body.className).toMatch(/text-fg-(success|warning|danger)/);
+      unmount();
+    }
   });
 
   it("keeps each message on its own clock", () => {

@@ -6,12 +6,17 @@ import type { EventLevel } from "../types";
 /**
  * Status colour per level, in the tinted-ring form.
  *
- * `info` takes the accent, not green. The badge in the header already colours
- * an ordinary message that way, and a toast is the same log row the badge is
- * counting — colouring them differently would be the two halves of one
- * notification disagreeing in hue. It also follows the Semantic Colour Rule's
- * own corollary: green in this app means the file will play on a CDJ, and
- * "moved 3 tracks to the trash" is a heads-up, not a compatibility verdict.
+ * The three levels are a scale and take the three status hues: a run that
+ * finished is green, one that finished partly is amber, one that failed is
+ * red. This is the Semantic Colour Rule applied to the second kind of verdict
+ * it covers — a statement about how an action turned out rather than about how
+ * a file stands. It shipped for four hours with the accent in the green slot,
+ * on the argument that green belongs to compatibility alone, which made the
+ * one good outcome the exception rather than the top of a scale while amber and
+ * red sat under it saying exactly what they say here.
+ *
+ * It is not a green that means "nice". Nothing in this app celebrates; the
+ * colour is a verdict on a run, and the verdict happens to be good.
  *
  * Deliberately different from `EventLogModal`'s map, where `info` is
  * `text-fg-subtle`. That one colours a *column of levels*, and subtle is right
@@ -19,7 +24,7 @@ import type { EventLevel } from "../types";
  * be seen.
  */
 const LEVEL_CLASS: Record<EventLevel, string> = {
-  info: "bg-accent-500/15 text-fg-accent ring-accent-500/30",
+  info: "bg-success-500/15 text-fg-success ring-success-500/30",
   warn: "bg-warning-500/15 text-fg-warning ring-warning-500/30",
   error: "bg-danger-500/15 text-fg-danger ring-danger-500/30",
 };
