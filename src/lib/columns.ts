@@ -90,6 +90,30 @@ export function visibleColumns(hidden: readonly ColumnId[]): ColumnDef[] {
   return COLUMNS.filter((c) => c.fixed || !off.has(c.id));
 }
 
+/**
+ * What the playlists view leaves out of the library's columns.
+ *
+ * `select` has nothing to select — that view is about order, not about acting
+ * on many rows at once. `status` is a verdict about whether a file will play,
+ * which belongs where files are worked on. `downloaded` and `format` are facts
+ * about the file rather than about its place in a set.
+ *
+ * The rest is taken from `COLUMNS` rather than written out again, so a column
+ * added to the table turns up here too instead of being forgotten in one of two
+ * lists — which is the drift this module exists to prevent.
+ */
+const NOT_IN_PLAYLISTS = new Set<ColumnId>([
+  "select",
+  "status",
+  "downloaded",
+  "format",
+]);
+
+/** The columns the playlists view renders, honouring the same hidden set. */
+export function playlistColumns(hidden: readonly ColumnId[]): ColumnDef[] {
+  return visibleColumns(hidden).filter((c) => !NOT_IN_PLAYLISTS.has(c.id));
+}
+
 /** The columns a user may switch off, in display order — for the menu. */
 export function hideableColumns(): ColumnDef[] {
   return COLUMNS.filter((c) => !c.fixed);

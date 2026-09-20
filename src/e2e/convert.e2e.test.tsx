@@ -201,8 +201,10 @@ describe("conversion", () => {
     await user.click(await view.findByRole("button", { name: /Warmup/ }));
 
     // In the playlist under its new path, at the position it held.
-    const moved = view
-      .getAllByRole("listitem")
+    const moved = within(
+      await view.findByRole("rowgroup", { name: "Tracks in this playlist" }),
+    )
+      .getAllByRole("row")
       .find((r) => within(r).queryByTitle(converted));
     expect(moved).toBeTruthy();
     expect(moved!.textContent).toContain("1");

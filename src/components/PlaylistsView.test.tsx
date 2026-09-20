@@ -56,14 +56,22 @@ function setup(over: Partial<Playlists> = {}) {
       metadata: makeMetadata({ title: "Beta", artist: "Two" }),
     }),
   ];
-  render(<PlaylistsView playlists={playlists} tracks={tracks} edits={{}} />);
+  render(
+    <PlaylistsView
+      playlists={playlists}
+      tracks={tracks}
+      edits={{}}
+      hiddenColumns={[]}
+      active
+    />,
+  );
   return { user: userEvent.setup(), playlists, ...ops };
 }
 
 const rows = () =>
   within(
-    screen.getByRole("list", { name: "Tracks in this playlist" }),
-  ).getAllByRole("listitem");
+    screen.getByRole("rowgroup", { name: "Tracks in this playlist" }),
+  ).getAllByRole("row");
 
 describe("PlaylistsView", () => {
   it("lists the playlists with their counts, and opens the first", () => {
@@ -169,11 +177,17 @@ describe("PlaylistsView", () => {
 
     move.mockClear();
     fireEvent.dragStart(rows()[0]);
-    const tail = within(
-      screen.getByRole("list", { name: "Tracks in this playlist" }),
-    ).getAllByRole("listitem", { hidden: true });
-    fireEvent.dragOver(tail[tail.length - 1]);
-    fireEvent.drop(tail[tail.length - 1]);
+    // The zone only exists while a drag is in flight, and it is deliberately
+    // `aria-hidden` — a drop target is a pointer affordance, and nobody who
+    // cannot drag can use it. So it is found by where it is: the last child of
+    // the panel, after the table.
+    const panel = screen
+      .getByRole("rowgroup", { name: "Tracks in this playlist" })
+      .closest("table")!.parentElement!;
+    const tail = panel.lastElementChild!;
+    expect(tail.className).toContain("border-dashed");
+    fireEvent.dragOver(tail);
+    fireEvent.drop(tail);
     // `null` is the end of the list, which is what `movePlaylistItems` takes.
     expect(move).toHaveBeenCalledExactlyOnceWith(1, [`${LIB}/a.aiff`], null);
   });

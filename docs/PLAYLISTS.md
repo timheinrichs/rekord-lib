@@ -106,8 +106,19 @@ own export.
   it here — *"a bucket that appears only sometimes is one nobody learns to look
   in"* — which was right about a grouping and does not carry.
 
-**What the view is for: order.** A sidebar of playlists with their counts, one
-open beside it, and four verbs — reorder, rename, remove, delete. There is no
+**What the view is for: order.** A 270 px sidebar of playlists with their
+counts, one open beside it, and four verbs — reorder, rename, remove, delete.
+
+A row carries the library's columns, minus four: `select`, because there is
+nothing to select here; `Status`, because whether a file will play is a verdict
+about the file and belongs where files are worked on; and `Added` and `Format`,
+which are facts about the file rather than about its place in a set. The set is
+**derived** from `COLUMNS` (`playlistColumns`) rather than written out a second
+time, so a column added to the table turns up here too — and it honours the same
+hidden-columns setting, because one switch should not mean two answers. The
+position takes the chevron's column, which is where it sat as a grouping, and
+the header names the columns without offering to sort them: the order is the
+content, and a sort here would destroy the thing the view is for. There is no
 selection and no bulk action: editing tags, converting and deleting files are
 the library's job, where the filter and the columns are, and a second selection
 model beside that one would be more chrome than this removed. It is also why a
@@ -245,8 +256,9 @@ comes from a native panel the user drove.
 | Every stored entry is listed, numbered by the playlist | `playlists.test.ts` · `playlistRows` cases; `PlaylistsView.test.tsx` · "shows the stored order, numbered" |
 | A track can be in two playlists, with its own place in each | `playlists.e2e.test.tsx` · "keeps a track in two playlists, each with its own place" |
 | A playlist row removes, and cannot delete the file | `playlists.e2e.test.tsx` · "takes a track out of the playlist, but not off the disk" |
-| The view shows the whole stored playlist and writes the order it shows | `playlists.e2e.test.tsx` · "edits a playlist in the dialog, and writes the order it shows" |
+| The view shows the whole stored playlist and writes the order it shows | `playlists.e2e.test.tsx` · "shows the whole stored playlist and writes the order it shows" |
 | A drag reaches `move`, including onto the end of the list | `PlaylistsView.test.tsx` · "reorders by drag, including onto the end of the list" |
+| The view's columns are the table's minus four, and follow the same hidden set | `columns.test.ts` · `playlistColumns` cases |
 | Switching playlists drops an armed delete | `PlaylistsView.test.tsx` · "drops an armed delete when another playlist is opened" |
 | The picker says `+N`, `+N of M` and `already in`, and refuses the last | `AddToPlaylistDialog.test.tsx` · "says what each playlist would gain…"; `playlists.e2e.test.tsx` · "will not offer a playlist the selection is already in" |
 | It commits once and leaves, and Escape cancels the field before the dialog | `AddToPlaylistDialog.test.tsx` · "commits once and leaves", "gives Escape to the field before the dialog" |

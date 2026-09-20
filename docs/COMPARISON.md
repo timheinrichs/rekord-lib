@@ -44,7 +44,7 @@ Stated first, because it is the fastest way to find out this is the wrong tool.
 ## What we do, that a tag editor does not
 
 - **Playlists, and a Rekordbox collection to take them out in.** Playlists live
-  in the app as an explicit order — the fifth grouping in the library table —
+  in the app as an explicit order, in a view of their own beside the library —
   and "Export for Rekordbox" writes a `rekordbox.xml` holding the whole library,
   every playlist, and per track the tempo, the key and a beat grid marker —
   including the metadata corrections still pending in the editor, so what the

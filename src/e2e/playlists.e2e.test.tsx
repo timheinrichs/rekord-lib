@@ -47,13 +47,15 @@ afterEach(() => {
 });
 
 /**
- * The open playlist's rows. Scoped to the list that holds them, because the
- * sidebar beside it is a list of playlists and would otherwise be counted in.
+ * The open playlist's rows. Scoped to the body that holds them, because the
+ * sidebar beside it is a list of playlists and the table has a header row.
  */
 async function trackRows(container: HTMLElement) {
   const view = playlistsView(container);
-  const list = await view.findByRole("list", { name: "Tracks in this playlist" });
-  return within(list).getAllByRole("listitem");
+  const body = await view.findByRole("rowgroup", {
+    name: "Tracks in this playlist",
+  });
+  return within(body).getAllByRole("row");
 }
 
 /**
@@ -149,7 +151,7 @@ describe("playlists", () => {
     expect(beta!.textContent).toContain("1");
   });
 
-  it("edits a playlist in the dialog, and writes the order it shows", async () => {
+  it("shows the whole stored playlist and writes the order it shows", async () => {
     // What has to hold is the wiring: the whole stored playlist is on screen —
     // the table could only ever show what the filter left over, which is why
     // this used to need a dialog — and a step writes the new order through

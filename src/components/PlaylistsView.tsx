@@ -1,6 +1,15 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import AppHeader from "./AppHeader";
 import { TrashIcon } from "./icons";
+import CoverThumb from "./CoverThumb";
+import RowWaveform from "./RowWaveform";
+import {
+  playlistColumns,
+  type ColumnDef,
+  type ColumnId,
+} from "../lib/columns";
+import { formatBpm, formatDuration, formatKey } from "../lib/format";
+import { metaOf } from "../lib/grouping";
 import { playlistRows } from "../lib/playlists";
 import type { Edits } from "../lib/grouping";
 import type { Playlists } from "../lib/usePlaylists";
@@ -13,6 +22,14 @@ interface Props {
   tracks: TrackAnalysis[];
   /** Pending, unwritten edits — read here, never written. */
   edits: Edits;
+  /** The columns the user has switched off, shared with the library table. */
+  hiddenColumns: readonly ColumnId[];
+  /**
+   * Whether this is the view on screen. Every view stays mounted so a scan
+   * survives navigation, which means a hidden one still re-renders on every
+   * batch — and this one reads the whole library to name its rows.
+   */
+  active: boolean;
   /** Shared header navigation. */
   nav?: ReactNode;
   onTitleClick?: () => void;
@@ -39,6 +56,8 @@ export default function PlaylistsView({
   playlists,
   tracks,
   edits,
+  hiddenColumns,
+  active,
   nav,
   onTitleClick,
 }: Props) {
@@ -46,27 +65,36 @@ export default function PlaylistsView({
   const [creating, setCreating] = useState(false);
   const [draft, setDraft] = useState("");
 
-  // Looked up rather than held: the open playlist can be deleted here or
-  // dropped by a reload, and a stale object would keep rendering a name that
-  // no longer exists.
-  const open = playlists.all.find((p) => p.id === openId) ?? null;
+  // Derived, never held: the open playlist can be deleted here or dropped by a
+  // reload, and a stale object would keep rendering a name that no longer
+  // exists. Falling back to the first is also what makes "playlists exist but
+  // none is picked" unreachable — and it is derived during render rather than
+  // chosen in an effect, because an effect paints the empty state over a full
+  // list for one frame first.
+  const open =
+    playlists.all.find((p) => p.id === openId) ?? playlists.all[0] ?? null;
 
-  // Something is always open when there is anything to open, so "playlists
-  // exist but none is picked" never reaches the screen. On a delete this lands
-  // on whatever took the same index, clamped.
-  useEffect(() => {
-    if (open || playlists.all.length === 0) return;
-    const at = Math.min(
-      playlists.all.length - 1,
-      Math.max(0, playlists.all.findIndex((p) => p.id === openId)),
-    );
-    setOpenId(playlists.all[at].id);
-  }, [open, openId, playlists.all]);
+  const cols = useMemo(() => playlistColumns(hiddenColumns), [hiddenColumns]);
+
+  /**
+   * The library by path, which every column but the position and the title
+   * needs.
+   *
+   * Gated on `active`, and that is not an optimisation for its own sake: every
+   * view stays mounted, `tracks` changes about four times a second during a
+   * scan, and without the gate a hidden screen would rebuild a map of the whole
+   * library on each batch. The memo this replaced was gated too — by the dialog
+   * being open — and losing that silently is how the cost would have arrived.
+   */
+  const byPath = useMemo(
+    () => (active ? new Map(tracks.map((t) => [t.path, t])) : new Map()),
+    [active, tracks],
+  );
 
   const rows = useMemo(() => {
-    if (!open) return [];
+    if (!open || !active) return [];
     const known = new Map(
-      tracks.map((t) => {
+      [...byPath.values()].map((t) => {
         const m = edits[t.id]?.metadata ?? t.metadata;
         return [
           t.path,
@@ -75,7 +103,7 @@ export default function PlaylistsView({
       }),
     );
     return playlistRows(playlists.contents[open.id] ?? [], known);
-  }, [open, playlists.contents, tracks, edits]);
+  }, [open, active, playlists.contents, byPath, edits]);
 
   const startCreate = () => {
     setDraft(playlists.suggestName("New playlist"));
@@ -102,10 +130,11 @@ export default function PlaylistsView({
             than fit. A pane with its own scrollbar would be the app's first,
             and would leave the back-to-top button pointing at the wrong
             thing. */}
-        {/* As wide as what is in it and no wider — the button sets the floor,
-            a long playlist name pushes against the cap and then truncates. The
-            list beside it takes the rest of the window. */}
-        <aside className="sticky top-16 flex h-[calc(100vh-4rem)] w-fit max-w-64 shrink-0 flex-col gap-2 border-r border-border pr-4 pt-6">
+        {/* A fixed 270 px, and everything in it the full width of that: a
+            column that resized itself around the longest playlist name moved
+            the track list every time one was renamed. The list beside it takes
+            the rest of the window. */}
+        <aside className="sticky top-16 flex h-[calc(100vh-4rem)] w-[270px] shrink-0 flex-col gap-2 border-r border-border pr-4 pt-6">
           <p className="px-3 text-xs text-fg-subtle">
             {playlists.all.length === 1
               ? "1 playlist"
@@ -121,6 +150,11 @@ export default function PlaylistsView({
                 if (e.key === "Enter") commitCreate();
                 if (e.key === "Escape") setCreating(false);
               }}
+              // Clicking away abandons it rather than creating something
+              // nobody asked for: the field opens pre-filled with a suggested
+              // name, so a blur that committed would make "New playlist" out
+              // of a mis-aimed click.
+              onBlur={() => setCreating(false)}
               className="h-9 w-full min-w-0 rounded-md border border-accent-500 bg-surface-2 px-2 text-sm"
               aria-label="New playlist name"
             />
@@ -166,7 +200,15 @@ export default function PlaylistsView({
             // Keyed by the playlist: switching must drop a half-typed rename,
             // an armed delete and any drag. A reorder does not change the id,
             // so a drag in flight is never remounted under itself.
-            <OpenPlaylist key={open.id} playlists={playlists} open={open} rows={rows} />
+            <OpenPlaylist
+              key={open.id}
+              playlists={playlists}
+              open={open}
+              rows={rows}
+              cols={cols}
+              byPath={byPath}
+              edits={edits}
+            />
           ) : (
             <div className="flex flex-col items-center gap-3 rounded-xl border border-dashed border-border bg-surface py-20 text-center text-fg-subtle">
               <p className="text-lg text-fg-muted">No playlists yet</p>
@@ -206,10 +248,17 @@ function OpenPlaylist({
   playlists,
   open,
   rows,
+  cols,
+  byPath,
+  edits,
 }: {
   playlists: Playlists;
   open: Playlist;
   rows: PlaylistRow[];
+  cols: ColumnDef[];
+  /** The library's tracks by path, for the columns a stored path cannot fill. */
+  byPath: Map<string, TrackAnalysis>;
+  edits: Edits;
 }) {
   const [name, setName] = useState(open.name);
   const [confirming, setConfirming] = useState(false);
@@ -228,6 +277,128 @@ function OpenPlaylist({
     // through the reload as a new `open.name`.
     setName(open.name);
     if (next && next !== open.name) void playlists.rename(open.id, next);
+  };
+
+  /**
+   * The actions column is `w-16` in the library, where the row actions live in
+   * a patch that fades in over the cells. Here the three buttons are always
+   * there, so the column has to be as wide as they are.
+   */
+  const widthOf = (c: ColumnDef) => (c.id === "actions" ? "w-32" : (c.width ?? ""));
+
+  const cell = (c: ColumnDef, row: PlaylistRow) => {
+    const track = byPath.get(row.path);
+    const pad = c.tight ? "px-1 py-0" : "px-4 py-0";
+    switch (c.id) {
+      case "expand":
+        // Where the chevron sits in the library. A playlist row has nothing to
+        // expand and the number is what the row *is*.
+        return (
+          <td
+            key={c.id}
+            className={`${pad} text-right text-xs tabular-nums text-fg-subtle`}
+          >
+            {row.position}
+          </td>
+        );
+      case "cover":
+        return (
+          <td key={c.id} className={pad}>
+            {track && (
+              <CoverThumb path={track.path} hasCover={track.metadata.has_cover} />
+            )}
+          </td>
+        );
+      case "waveform":
+        return (
+          <td key={c.id} className={pad}>
+            {track && <RowWaveform path={track.path} />}
+          </td>
+        );
+      case "title":
+        return (
+          <td key={c.id} className={pad}>
+            <p
+              className={`truncate text-sm ${row.outsideLibrary ? "text-fg-subtle" : "text-fg"}`}
+              title={row.path}
+            >
+              {row.title}
+            </p>
+            {/* The file is intact — it belongs to another library folder — so
+                this says where it is, not that it is gone. */}
+            {row.outsideLibrary && (
+              <p className="truncate text-xs text-fg-subtle">
+                In another library folder
+              </p>
+            )}
+          </td>
+        );
+      case "artist":
+        return (
+          <td key={c.id} className={`truncate ${pad} text-fg-muted`}>
+            {row.artist || "—"}
+          </td>
+        );
+      case "album":
+        return (
+          <td key={c.id} className={`truncate ${pad} text-fg-muted`}>
+            {track ? metaOf(track, edits).album || "—" : ""}
+          </td>
+        );
+      case "length":
+        return (
+          <td key={c.id} className={`whitespace-nowrap ${pad} text-fg-muted`}>
+            {track ? formatDuration(track.audio.duration_secs) : ""}
+          </td>
+        );
+      case "bpm":
+        return (
+          <td key={c.id} className={`whitespace-nowrap ${pad} text-fg-muted`}>
+            {track ? formatBpm(metaOf(track, edits).bpm) : ""}
+          </td>
+        );
+      case "key":
+        return (
+          <td key={c.id} className={`whitespace-nowrap ${pad} text-fg-muted`}>
+            {track ? formatKey(track.key) : ""}
+          </td>
+        );
+      case "actions":
+        return (
+          <td key={c.id} className={pad}>
+            <div className="flex items-center justify-end gap-1">
+              <button
+                onClick={() => void playlists.step(open.id, row.path, -1)}
+                disabled={row.position === 1}
+                className="flex h-9 w-9 items-center justify-center rounded-md text-fg-subtle enabled:hover:bg-surface enabled:hover:text-fg-accent disabled:text-fg-disabled"
+                title="Move up in the playlist"
+                aria-label={`Move “${row.title}” up`}
+              >
+                ↑
+              </button>
+              <button
+                onClick={() => void playlists.step(open.id, row.path, 1)}
+                disabled={row.position === rows.length}
+                className="flex h-9 w-9 items-center justify-center rounded-md text-fg-subtle enabled:hover:bg-surface enabled:hover:text-fg-accent disabled:text-fg-disabled"
+                title="Move down in the playlist"
+                aria-label={`Move “${row.title}” down`}
+              >
+                ↓
+              </button>
+              <button
+                onClick={() => void playlists.removeTracks(open.id, [row.path])}
+                className="flex h-9 w-9 items-center justify-center rounded-md text-fg-subtle hover:bg-surface hover:text-fg-danger"
+                title="Remove from this playlist (the file stays)"
+                aria-label={`Remove “${row.title}” from the playlist`}
+              >
+                −
+              </button>
+            </div>
+          </td>
+        );
+      default:
+        return <td key={c.id} className={pad} />;
+    }
   };
 
   const commitDrop = (before: string | null) => {
@@ -288,90 +459,63 @@ function OpenPlaylist({
           &ldquo;Add to playlist&rdquo;.
         </p>
       ) : (
-        <ol
-          aria-label="Tracks in this playlist"
-          className="overflow-hidden rounded-xl border border-border bg-surface"
-        >
-          {rows.map((row) => (
-            <li
-              key={row.path}
-              draggable
-              onDragStart={() => setDrag([row.path])}
-              onDragOver={(e) => {
-                e.preventDefault();
-                setDropAt({ before: row.path });
-              }}
-              onDrop={(e) => {
-                e.preventDefault();
-                commitDrop(row.path);
-              }}
-              onDragEnd={() => {
-                // Escape and a drop outside both end a drag without a drop;
-                // clearing only on drop is how the accent line got left
-                // painted under a row.
-                setDrag(null);
-                setDropAt(null);
-              }}
-              className={`group flex h-16 items-center gap-3 border-b border-border px-4 last:border-0 hover:bg-surface-2 ${
-                dropAt?.before === row.path
-                  ? "border-t-2 border-t-accent-500"
-                  : ""
-              }`}
-            >
-              <span className="w-6 shrink-0 text-right text-xs tabular-nums text-fg-subtle">
-                {row.position}
-              </span>
-              <div className="min-w-0 flex-1">
-                <p
-                  className={`truncate text-sm ${row.outsideLibrary ? "text-fg-subtle" : "text-fg"}`}
-                  title={row.path}
+        <div className="overflow-hidden rounded-xl border border-border bg-surface">
+          <table className="w-full table-fixed">
+            <thead>
+              <tr className="h-10 border-b border-border text-left text-xs text-fg-subtle">
+                {cols.map((c) => (
+                  <th
+                    key={c.id}
+                    className={`${widthOf(c)} ${c.tight ? "px-1" : "px-4"} font-normal ${
+                      c.id === "expand" ? "text-right" : ""
+                    }`}
+                  >
+                    {/* Named, never sortable: the order is the content, and a
+                        header that invited a sort here would be offering to
+                        destroy the thing the view is for. */}
+                    {c.id === "expand" ? "#" : c.label}
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody aria-label="Tracks in this playlist">
+              {rows.map((row) => (
+                <tr
+                  key={row.path}
+                  draggable
+                  onDragStart={() => setDrag([row.path])}
+                  onDragOver={(e) => {
+                    e.preventDefault();
+                    setDropAt({ before: row.path });
+                  }}
+                  onDrop={(e) => {
+                    e.preventDefault();
+                    commitDrop(row.path);
+                  }}
+                  onDragEnd={() => {
+                    // Escape and a drop outside both end a drag without a drop;
+                    // clearing only on drop is how the accent line got left
+                    // painted under a row.
+                    setDrag(null);
+                    setDropAt(null);
+                  }}
+                  className={`group h-16 border-b border-border last:border-0 hover:bg-surface-2 ${
+                    dropAt?.before === row.path
+                      ? "border-t-2 border-t-accent-500"
+                      : ""
+                  }`}
                 >
-                  {row.title}
-                </p>
-                <p className="truncate text-xs text-fg-subtle">
-                  {/* The file is intact — it belongs to another library folder
-                      — so this says where it is, not that it is gone. */}
-                  {row.outsideLibrary
-                    ? "In another library folder"
-                    : row.artist || "—"}
-                </p>
-              </div>
-              <div className="flex shrink-0 items-center gap-1">
-                <button
-                  onClick={() => void playlists.step(open.id, row.path, -1)}
-                  disabled={row.position === 1}
-                  className="flex h-9 w-9 items-center justify-center rounded-md text-fg-subtle enabled:hover:bg-surface enabled:hover:text-fg-accent disabled:text-fg-disabled"
-                  title="Move up in the playlist"
-                  aria-label={`Move “${row.title}” up`}
-                >
-                  ↑
-                </button>
-                <button
-                  onClick={() => void playlists.step(open.id, row.path, 1)}
-                  disabled={row.position === rows.length}
-                  className="flex h-9 w-9 items-center justify-center rounded-md text-fg-subtle enabled:hover:bg-surface enabled:hover:text-fg-accent disabled:text-fg-disabled"
-                  title="Move down in the playlist"
-                  aria-label={`Move “${row.title}” down`}
-                >
-                  ↓
-                </button>
-                <button
-                  onClick={() => void playlists.removeTracks(open.id, [row.path])}
-                  className="flex h-9 w-9 items-center justify-center rounded-md text-fg-subtle hover:bg-surface hover:text-fg-danger"
-                  title="Remove from this playlist (the file stays)"
-                  aria-label={`Remove “${row.title}” from the playlist`}
-                >
-                  −
-                </button>
-              </div>
-            </li>
-          ))}
+                  {cols.map((c) => cell(c, row))}
+                </tr>
+              ))}
+            </tbody>
+          </table>
           {/* The end of the list, which the table had no way to offer: there a
               row could only be dropped *in front of* another, so appending was
-              the ↓ button's job alone. Only while a drag is in flight, or
-              every playlist ends in a dashed box. */}
+              the ↓ button's job alone. Only while a drag is in flight, or every
+              playlist ends in a dashed box. */}
           {drag && (
-            <li
+            <div
               aria-hidden
               onDragOver={(e) => {
                 e.preventDefault();
@@ -388,7 +532,7 @@ function OpenPlaylist({
               }`}
             />
           )}
-        </ol>
+        </div>
       )}
     </>
   );

@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  playlistColumns,
   COLUMNS,
   columnLabel,
   hideableColumns,
@@ -131,5 +132,49 @@ describe("columnLabel", () => {
     // Otherwise the menu would show a checkbox with nothing beside it.
     expect(columnLabel({ id: "cover", label: "" })).toBe("Cover");
     expect(columnLabel({ id: "waveform", label: "" })).toBe("Waveform");
+  });
+});
+
+describe("playlistColumns", () => {
+  it("leaves out the four the playlists view has no answer for", () => {
+    const ids = playlistColumns([]).map((c) => c.id);
+    // `select` has nothing to select, `status` is a verdict about a file
+    // rather than about its place in a set, and `Added` and `Format` are facts
+    // about the file for the same reason.
+    expect(ids).not.toContain("select");
+    expect(ids).not.toContain("status");
+    expect(ids).not.toContain("downloaded");
+    expect(ids).not.toContain("format");
+  });
+
+  it("keeps the rest, in the table's order", () => {
+    const ids = playlistColumns([]).map((c) => c.id);
+    expect(ids).toEqual(["expand", "cover", "waveform", "title", "artist", "album", "length", "bpm", "key", "actions"]);
+  });
+
+  it("honours the same hidden set the table does", () => {
+    // One switch, both screens: hiding Album in the library must not leave it
+    // showing in the playlists view.
+    expect(playlistColumns(["album"]).map((c) => c.id)).not.toContain("album");
+  });
+
+  it("keeps the position and the actions whatever a stale setting says", () => {
+    // They are `fixed` in `COLUMNS` and stay so here: without them a playlist
+    // has no order to read and no way to change it.
+    const ids = playlistColumns(["expand", "actions", "title"]).map((c) => c.id);
+    expect(ids).toContain("expand");
+    expect(ids).toContain("actions");
+    expect(ids).toContain("title");
+  });
+
+  it("is derived from COLUMNS, so a new column cannot be forgotten here", () => {
+    // The guard on the whole idea: every id it returns is one the table has,
+    // in the table's order.
+    const table = COLUMNS.map((c) => c.id);
+    const ids = playlistColumns([]).map((c) => c.id);
+    expect(ids.every((id) => table.includes(id))).toBe(true);
+    expect([...ids].sort()).toEqual(
+      table.filter((id) => ids.includes(id)).sort(),
+    );
   });
 });

@@ -32,6 +32,7 @@ import {
 } from "./lib/toasts";
 import { useBandcamp } from "./lib/useBandcamp";
 import { usePlaylists } from "./lib/usePlaylists";
+import type { ColumnId } from "./lib/columns";
 import type { Edits } from "./lib/grouping";
 import type { MainView } from "./lib/views";
 import {
@@ -354,9 +355,12 @@ export default function App() {
             }
           >
             <PlaylistsView
+              onTitleClick={() => setView("library")}
               playlists={playlists}
               tracks={libraryTracks}
               edits={libraryEdits}
+              hiddenColumns={(settings.hidden_columns ?? []) as ColumnId[]}
+              active={view === "playlists"}
               nav={renderNav()}
             />
           </div>
@@ -368,6 +372,7 @@ export default function App() {
             }
           >
             <BandcampView
+              onTitleClick={() => setView("library")}
               account={account}
               libraryDir={settings.library_dir}
               collection={bc.collection}
