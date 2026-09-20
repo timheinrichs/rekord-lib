@@ -105,6 +105,26 @@ not, and it comes back exactly once. Rewriting dismissal keys inside
 **What would change that** — a group id that is not a path. See
 [docs/DUPLICATES.md](docs/DUPLICATES.md).
 
+### B8a · The tempo cannot be halved or doubled from the track surface
+
+**What** — the one tempo error a detector makes systematically is the octave,
+and it is the one a listener spots instantly. The surface says when a grid has
+drifted from a hand-typed tempo, and it cannot offer the fix: `64.00` / `256.00`
+buttons that write the corrected tempo and re-fold the anchor against it.
+
+**Why not** — a tempo is a *metadata* edit, and that machinery belongs to
+`LibraryView`: it owns the `edits` state, writes it with `saveEdit` and reports
+it upward through `onEditsChange`. There is no way in. Writing from the surface
+would leave the library table showing the old value until something reloaded it,
+which is the kind of disagreement `usePlaylists` exists to prevent. The
+arithmetic is already here and tested — `scaledTempo` in `src/lib/beatGrid.ts`
+— so this is the plumbing and not the feature.
+
+**What would change that** — an applied edit reachable from outside the library
+view: either the edits move up beside the tracks in `App.tsx`, the way the
+playlists did in 0.10.0, or `LibraryView` takes a callback that applies one.
+The second is smaller and the first is probably right.
+
 ### The beat grid is drawn, but only on the track surface
 
 **What** — the grid is drawn now, on the zoomed waveform of the track surface.

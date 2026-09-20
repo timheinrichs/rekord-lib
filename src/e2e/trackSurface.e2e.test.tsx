@@ -9,7 +9,7 @@
  * another. A component test of `TrackView` can prove it renders; it cannot
  * prove the app ever gets there, and it cannot see `resolution` misspelled.
  */
-import { cleanup, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import App from "../App";
@@ -143,6 +143,71 @@ describe("the track surface", () => {
         trackView(container).getByText(/the closer look is unavailable/i),
       ).toBeInTheDocument(),
     );
+  });
+
+  it("writes an anchor the backend will take, and reads it back", async () => {
+    // The level that catches a renamed command or a mistyped argument: nothing
+    // that mocks `lib/api` runs the wrapper, so `grid_edit_set` with `edit` vs
+    // `gridEdit` would compile, typecheck and ship.
+    const { container } = render(<App />);
+    await openFromRow(container);
+    const view = trackView(container);
+
+    await userEvent.click(
+      await view.findByRole("button", { name: /set the anchor to the playhead/i }),
+    );
+
+    await waitFor(() => expect(fake.called("grid_edit_set")).toBe(true));
+    const [args] = fake.argsFor("grid_edit_set");
+    expect(args.path).toBe(A);
+    const edit = args.edit as {
+      offset_secs: number;
+      bpm: number;
+      downbeat: number;
+    };
+    // Folded into the first period, the way the detector folds its own phase:
+    // every beat of a grid is the same grid.
+    expect(edit.offset_secs).toBeGreaterThanOrEqual(0);
+    expect(edit.offset_secs).toBeLessThan(60 / 128);
+    expect(edit.bpm).toBe(128);
+    expect(edit.downbeat).toBe(1);
+
+    // And the surface now says the grid is one somebody set, not one that was
+    // found — which is what makes "reset to detected" reachable.
+    await waitFor(() =>
+      expect(view.getByText("Set by hand")).toBeInTheDocument(),
+    );
+  });
+
+  it("declares which beat of the bar the anchor is", async () => {
+    const { container } = render(<App />);
+    await openFromRow(container);
+    const view = trackView(container);
+
+    const bars = await view.findByRole("radiogroup", {
+      name: /which beat of the bar/i,
+    });
+    await userEvent.click(within(bars).getByRole("radio", { name: "3" }));
+
+    await waitFor(() => expect(fake.called("grid_edit_set")).toBe(true));
+    const [args] = fake.argsFor("grid_edit_set");
+    expect((args.edit as { downbeat: number }).downbeat).toBe(3);
+  });
+
+  it("puts a hand-set grid back on request", async () => {
+    fake.state.gridEdits = {
+      [A]: { offset_secs: 0.1, bpm: 128, downbeat: 2, edited_ms: 1 },
+    };
+    const { container } = render(<App />);
+    await openFromRow(container);
+    const view = trackView(container);
+
+    await userEvent.click(
+      await view.findByRole("button", { name: /reset to detected/i }),
+    );
+
+    await waitFor(() => expect(fake.called("grid_edit_clear")).toBe(true));
+    expect(fake.argsFor("grid_edit_clear")[0].paths).toEqual([A]);
   });
 
   it("says so rather than claiming a picture it does not have", async () => {

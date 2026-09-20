@@ -1,4 +1,4 @@
-import { act, render } from "@testing-library/react";
+import { act, fireEvent, render } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
@@ -116,6 +116,66 @@ describe("GridLane", () => {
     expect(frames).not.toHaveBeenCalled();
     act(() => api.play([TRACK], 0));
     expect(frames).toHaveBeenCalled();
+  });
+
+  it("takes its drag listeners with it when it goes", () => {
+    // Closing the player unmounts this surface, and the pointer may still be
+    // down: four listeners left on `window` would commit the next pointerup
+    // anywhere in the app into a component that no longer exists.
+    const onGridDrop = vi.fn();
+    const { getByRole, unmount } = renderLane({
+      mode: "grid",
+      onGridDrag: () => {},
+      onGridDrop,
+    });
+    const lane = getByRole("slider");
+    lane.getBoundingClientRect = () =>
+      ({ left: 0, width: 800, top: 0, height: 160 }) as DOMRect;
+    fireEvent.pointerDown(lane, { button: 0, clientX: 100 });
+
+    unmount();
+    fireEvent.pointerUp(window);
+    expect(onGridDrop).not.toHaveBeenCalled();
+  });
+
+  it("starts a drag on the primary button and no other", () => {
+    // A right-click would otherwise begin a drag the context menu never ends,
+    // and its pointerup would commit one.
+    const onGridDrag = vi.fn();
+    const { getByRole } = renderLane({ mode: "grid", onGridDrag });
+    const lane = getByRole("slider");
+    lane.getBoundingClientRect = () =>
+      ({ left: 0, width: 800, top: 0, height: 160 }) as DOMRect;
+
+    fireEvent.pointerDown(lane, { button: 2, clientX: 100 });
+    fireEvent.pointerMove(window, { clientX: 200 });
+    expect(onGridDrag).not.toHaveBeenCalled();
+
+    fireEvent.pointerDown(lane, { button: 0, clientX: 100 });
+    fireEvent.pointerMove(window, { clientX: 200 });
+    expect(onGridDrag).toHaveBeenCalled();
+  });
+
+  it("puts the grid back when the drag is abandoned", () => {
+    const onGridCancel = vi.fn();
+    const onGridDrop = vi.fn();
+    const { getByRole } = renderLane({
+      mode: "grid",
+      onGridDrag: () => {},
+      onGridDrop,
+      onGridCancel,
+    });
+    const lane = getByRole("slider");
+    lane.getBoundingClientRect = () =>
+      ({ left: 0, width: 800, top: 0, height: 160 }) as DOMRect;
+
+    fireEvent.pointerDown(lane, { button: 0, clientX: 100 });
+    fireEvent.keyDown(window, { key: "Escape" });
+    expect(onGridCancel).toHaveBeenCalled();
+
+    // And the pointerup that follows commits nothing: the drag is over.
+    fireEvent.pointerUp(window);
+    expect(onGridDrop).not.toHaveBeenCalled();
   });
 
   it("runs no frame loop at all when the machine has asked for less motion", () => {

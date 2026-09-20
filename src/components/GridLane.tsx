@@ -33,6 +33,18 @@ interface Props {
   /** Seek to a moment in the track. */
   onSeek: (secs: number) => void;
   /**
+   * What a pointer on the lane does. A visible mode rather than a modifier:
+   * a modifier is undiscoverable, and it would mean a scrub could nudge
+   * somebody's grid by accident.
+   */
+  mode?: "seek" | "grid";
+  /** How far the grid has been dragged so far, live, while a drag is running. */
+  onGridDrag?: (deltaSecs: number) => void;
+  /** The drag is over and the offset it ended on is the one to keep. */
+  onGridDrop?: () => void;
+  /** Escape, or a pointer the browser took away. Put the grid back. */
+  onGridCancel?: () => void;
+  /**
    * Whether the lane is actually on screen.
    *
    * The surface stays mounted while the settings are over it — that is what
@@ -89,7 +101,12 @@ function ScrollingLane(props: Props) {
 function SteppedLane(props: Props) {
   const { time } = usePlayerProgress();
   const { canvas, paint } = useLane(props, pagedWindow);
-  useEffect(() => paint(time), [paint, time]);
+  // Gated for the same reason the frame loop is, four times a second instead of
+  // sixty: a canvas behind `display: none` is zero pixels wide and every one of
+  // these is work against nothing.
+  useEffect(() => {
+    if (props.visible !== false) paint(time);
+  }, [props.visible, paint, time]);
   return canvas;
 }
 
@@ -110,7 +127,17 @@ function coloursFor(
  * and one `paint` that takes a position and draws it.
  */
 function useLane(
-  { data, durationSecs, grid, spanSecs, onSeek }: Props,
+  {
+    data,
+    durationSecs,
+    grid,
+    spanSecs,
+    onSeek,
+    mode = "seek",
+    onGridDrag,
+    onGridDrop,
+    onGridCancel,
+  }: Props,
   windowAt: (nowSecs: number, spanSecs: number) => LaneWindow,
 ) {
   const { currentTime } = usePlayer();
@@ -127,6 +154,14 @@ function useLane(
    * a string comparison rather than a layout question.
    */
   const palette = useRef<{ theme?: string; colours: LaneColours } | null>(null);
+  /**
+   * The running drag's teardown, so unmounting mid-drag takes its four window
+   * listeners with it. Closing the player while the pointer is down unmounts
+   * this surface, and a listener that outlived it would commit the next
+   * `pointerup` anywhere in the app into a component that is gone.
+   */
+  const running = useRef<((commit: boolean) => void) | null>(null);
+  useEffect(() => () => running.current?.(false), []);
 
   const paint = useCallback(
     (nowSecs: number) => {
@@ -168,21 +203,70 @@ function useLane(
     return () => ro.disconnect();
   }, [paint, currentTime]);
 
-  const seekAt = (clientX: number) => {
+  const timeAt = (clientX: number): number | null => {
     const el = ref.current;
-    if (!el) return;
+    if (!el) return null;
     const box = el.getBoundingClientRect();
-    if (!box.width) return;
-    const secs = timeAtX(clientX - box.left, shown.current, box.width);
+    if (!box.width) return null;
+    return timeAtX(clientX - box.left, shown.current, box.width);
+  };
+
+  const seekAt = (clientX: number) => {
+    const secs = timeAt(clientX);
+    if (secs == null) return;
     onSeek(Math.min(Math.max(secs, 0), durationSecs));
+  };
+
+  /**
+   * Dragging the grid.
+   *
+   * Listened for on the *window* rather than on the canvas, which is the lesson
+   * the playlist reorder already paid for: a pointer that leaves the element —
+   * and at the edge of a lane it will — stops delivering moves to it, and the
+   * drag ends wherever the element happened to be. Escape abandons, because a
+   * grid put back is cheaper than a grid you have to find again.
+   */
+  const startDrag = (e: React.PointerEvent<HTMLCanvasElement>) => {
+    // The primary button only. A right-click would otherwise start a drag that
+    // the context menu never ends, and its `pointerup` would commit one.
+    if (e.button !== 0 || mode !== "grid" || !onGridDrag) return;
+    const from = timeAt(e.clientX);
+    if (from == null) return;
+    e.preventDefault();
+    const move = (ev: PointerEvent) => {
+      const to = timeAt(ev.clientX);
+      if (to != null) onGridDrag(to - from);
+    };
+    const stop = (commit: boolean) => {
+      window.removeEventListener("pointermove", move);
+      window.removeEventListener("pointerup", up);
+      window.removeEventListener("pointercancel", cancel);
+      window.removeEventListener("keydown", key);
+      running.current = null;
+      if (commit) onGridDrop?.();
+      else onGridCancel?.();
+    };
+    const up = () => stop(true);
+    const cancel = () => stop(false);
+    const key = (ev: KeyboardEvent) => {
+      if (ev.key === "Escape") stop(false);
+    };
+    window.addEventListener("pointermove", move);
+    window.addEventListener("pointerup", up);
+    window.addEventListener("pointercancel", cancel);
+    window.addEventListener("keydown", key);
+    running.current = stop;
   };
 
   const canvas = (
     <canvas
       ref={ref}
-      onClick={(e) => seekAt(e.clientX)}
+      onPointerDown={startDrag}
+      onClick={(e) => mode !== "grid" && seekAt(e.clientX)}
       style={{ height: LANE_HEIGHT }}
-      className="w-full cursor-pointer rounded-md bg-surface-2"
+      className={`w-full rounded-md bg-surface-2 ${
+        mode === "grid" ? "cursor-grab active:cursor-grabbing" : "cursor-pointer"
+      }`}
       role="slider"
       // Distinct from the player bar's, which is on screen at the same time and
       // seeks the same track: that one is the whole of it, this one is a window

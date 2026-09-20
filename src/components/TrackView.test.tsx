@@ -9,10 +9,14 @@ import TrackView from "./TrackView";
 
 vi.mock("@tauri-apps/api/core", () => ({
   convertFileSrc: (p: string) => `asset://${p}`,
+  // The hand-set grids come through `lib/library`, which invokes directly.
+  // Nothing here has one, so the load answers empty and the writes are counted
+  // rather than performed — a flow test is where the arguments are checked.
+  invoke: vi.fn(async () => ({})),
 }));
 // The waveforms are the surface's other half and have their own tests; here the
 // lane only has to mount.
-vi.mock("../lib/api", () => ({ waveform: vi.fn(async () => ({ peak: [], rms: [] })) }));
+vi.mock("../lib/api", () => ({ storedWaveforms: vi.fn(async () => ({})) }));
 vi.mock("../lib/detailWaveforms", () => ({
   detailFor: vi.fn(async () => ({ peak: [], rms: [] })),
 }));
