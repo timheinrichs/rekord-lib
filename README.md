@@ -44,9 +44,10 @@ track of, without uploading anything anywhere.
   Discogs — no account needed; an optional Discogs token (kept in the macOS
   Keychain) only raises the rate limit — required-field checks, and bulk edit
   across a selection.
-- **Playlists** as an explicit order, and **"Export for Rekordbox"** — a
-  `rekordbox.xml` with the whole library, the playlists, and each track's tempo,
-  key and beat grid, imported in one step.
+- **Playlists** in their own view — a sidebar of sets, one open beside it,
+  reordered by carrying a row to its place, played from the row — and
+  **"Export for Rekordbox"**: a `rekordbox.xml` with the whole library, the
+  playlists, and each track's tempo, key and beat grid, imported in one step.
 - **Covers** — embedded artwork as thumbnails, falling back to a `cover.jpg`
   next to the audio, which conversion then embeds.
 - **Duplicate detection** across formats and filenames, by length, acoustic
