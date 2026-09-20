@@ -150,10 +150,14 @@ screen**, not the stored one, because the pointer can only mean something about
 the rows it is actually over. The write is expressed against the stored list
 once, at the end, by asking which path now follows the one that moved.
 
-Two details are load-bearing. The press captures the pointer, or the drag stops
-the moment it leaves the row it began on. And the list is `select-none` while a
-row is carried, because a pointer drawn across table cells selects their text
-and painted every row the drag crossed.
+Two details are load-bearing. **The gesture is heard on the window, never
+captured on the handle** — a capture sits inside the row, React moves that
+row's node when the order changes, and moving it releases the capture. Worse,
+it does so in one direction only: reconciliation moves the nodes that fall out
+of order, which is the carried row going down and its neighbour going up, so a
+captured drag worked upwards and stopped after one step downwards. And the list
+is `select-none` while a row is carried, because a pointer drawn across table
+cells selects their text and painted every row the drag crossed.
 
 **A row is picked up by a handle**, not anywhere. That keeps the grab cursor
 off the whole row, and it is what makes the gesture reachable without a
@@ -167,6 +171,10 @@ the place the row will land is open and numbered; and **the row itself follows
 the pointer**, as a raised copy portalled out of the table. Without the copy the
 gesture has no weight — the row simply teleports — and without the reorder
 beneath it there is nothing to aim at.
+
+The copy draws the row's own cells — the same `cell()` over the same columns,
+with the widths in a `colgroup` because a single-row table has no header to take
+them from — so what is in hand is the row and not a summary of it.
 
 A copy rather than the row, for three reasons that point the same way: a `<tr>`
 in a `border-collapse: collapse` table does not reliably paint a shadow, so the
@@ -313,6 +321,9 @@ comes from a native panel the user drove.
 | The view shows the whole stored playlist and writes the order it shows | `playlists.e2e.test.tsx` · "shows the whole stored playlist and writes the order it shows" |
 | The row moves as it is carried, and what is written is what was shown | `PlaylistsView.test.tsx` · "moves the row itself as the pointer travels, and writes what is shown", "carries a row to the end of the list" |
 | A copy follows the pointer, and not before the press has travelled | `PlaylistsView.test.tsx` · "carries a copy of the row under the pointer" |
+| A row can be carried several places, in either direction | `PlaylistsView.test.tsx` · "carries a row down past more than one neighbour", "carries a row up past more than one neighbour" |
+| The gesture survives the row it began on being moved in the DOM | `PlaylistsView.test.tsx` · "keeps hearing the pointer after the row it began on has moved" |
+| Escape abandons a drag and leaves the order alone | `PlaylistsView.test.tsx` · "abandons the drag on Escape, leaving the order alone" |
 | An abandoned drag leaves the stored order alone | `PlaylistsView.test.tsx` · "puts the row back when the gesture is cancelled" |
 | A press that never travelled moves nothing, and only the handle picks a row up | `PlaylistsView.test.tsx` · "does not move anything when the press never travelled", "does not arm a drag from the row's other buttons" |
 | The handle reorders from the keyboard, and not past the ends | `PlaylistsView.test.tsx` · "reorders from the keyboard, and not past the ends" |

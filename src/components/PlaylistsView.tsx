@@ -619,13 +619,19 @@ function OpenPlaylist({
     if (e.button !== 0) return;
     const tr = e.currentTarget.closest("tr");
     if (!tr) return;
+    // Deliberately no `setPointerCapture`. The capture would sit on the handle
+    // inside the row, and React moves that row's node when the order changes —
+    // which releases the capture. Worse, it only does so in one direction:
+    // reconciliation moves the nodes that fall out of order, which is the
+    // carried row when it travels down and its neighbour when it travels up.
+    // So dragging up worked and dragging down stopped after one step. The
+    // window hears the rest of the gesture instead; it cannot be moved.
     // Minus any slide still running, for the same reason `boxes` does it: a row
     // grabbed mid-animation would hand the copy a position it is leaving.
     const rect = tr.getBoundingClientRect();
     const box = { top: rect.top - shiftOf(tr), left: rect.left, width: rect.width };
     // Stops the text selection the gesture would otherwise begin.
     e.preventDefault();
-    e.currentTarget.setPointerCapture(e.pointerId);
     setDrag({
       path: row.path,
       from: e.clientY,
@@ -645,6 +651,30 @@ function OpenPlaylist({
     setPreview(reorderAt(shown, drag.path, gapIndexAt(boxes(), y)));
   };
 
+  // The live handlers, so the window subscription below is made once per drag
+  // rather than once per render.
+  const latest = useRef({ move: (_y: number) => {}, end: (_c: boolean) => {} });
+
+  useEffect(() => {
+    if (!drag) return;
+    const onMove = (e: PointerEvent) => latest.current.move(e.clientY);
+    const onUp = () => latest.current.end(true);
+    const onCancel = () => latest.current.end(false);
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") latest.current.end(false);
+    };
+    window.addEventListener("pointermove", onMove);
+    window.addEventListener("pointerup", onUp);
+    window.addEventListener("pointercancel", onCancel);
+    window.addEventListener("keydown", onKey);
+    return () => {
+      window.removeEventListener("pointermove", onMove);
+      window.removeEventListener("pointerup", onUp);
+      window.removeEventListener("pointercancel", onCancel);
+      window.removeEventListener("keydown", onKey);
+    };
+  }, [drag !== null]);
+
   const endDrag = (commit: boolean) => {
     const moving = drag;
     const order = preview;
@@ -658,6 +688,8 @@ function OpenPlaylist({
     const i = order.indexOf(moving.path);
     void playlists.move(open.id, [moving.path], order[i + 1] ?? null);
   };
+
+  latest.current = { move: moveDrag, end: endDrag };
 
   return (
     <>
@@ -743,12 +775,6 @@ function OpenPlaylist({
                 return (
                   <tr
                     key={row.path}
-                    onPointerMove={(e) => {
-                      if (drag?.path !== row.path) return;
-                      moveDrag(e.clientY);
-                    }}
-                    onPointerUp={() => endDrag(true)}
-                    onPointerCancel={() => endDrag(false)}
                     // The row being carried is translucent and already where
                     // it would land: the list reorders under the pointer, so
                     // there is nothing to indicate and nothing to imagine.
@@ -797,18 +823,22 @@ function OpenPlaylist({
               top: drag.y - drag.grabY,
               width: drag.width,
             }}
-            className="pointer-events-none fixed z-[60] flex h-16 items-center gap-3 rounded-lg border border-border-strong bg-surface-2 px-4 shadow-lg shadow-black/40"
+            className="pointer-events-none fixed z-[60] overflow-hidden rounded-lg border border-border-strong bg-surface-2 shadow-lg shadow-black/40"
           >
-            <span className="w-6 shrink-0 text-right text-xs tabular-nums text-fg-subtle">
-              {carried.position}
-            </span>
-            <div className="min-w-0 flex-1">
-              <p className="truncate text-sm text-fg">{carried.title}</p>
-              <p className="truncate text-xs text-fg-subtle">
-                {carried.artist || "—"}
-              </p>
-            </div>
-            <GripIcon />
+            {/* The same cells the row draws, so the thing in hand is the row
+                and not a summary of it. `table-fixed` needs the widths, and on
+                a single-row table they have to come from a `colgroup` — there
+                is no header here to take them from. */}
+            <table className="w-full table-fixed">
+              <colgroup>
+                {cols.map((c) => (
+                  <col key={c.id} className={widthOf(c)} />
+                ))}
+              </colgroup>
+              <tbody>
+                <tr className="h-16">{cols.map((c) => cell(c, carried))}</tr>
+              </tbody>
+            </table>
           </div>,
           document.body,
         )}

@@ -387,6 +387,46 @@ describe("PlaylistsView", () => {
     expect(playlists.contents[1]).toBeDefined();
   });
 
+  it("keeps hearing the pointer after the row it began on has moved", () => {
+    // The gesture is heard on the window, not captured on the handle, and that
+    // is not a preference. React moves the nodes that fall out of order when a
+    // list reorders — the carried row when it travels down, its neighbour when
+    // it travels up — and moving the node the capture sits in releases it. So
+    // a captured drag worked upwards and stopped after one step downwards.
+    //
+    // Fired on the body, which is nowhere near the row: with a capture that
+    // would reach nothing.
+    const { move } = setupFour();
+    withLiveGeometry();
+    const titles = () =>
+      rows().map((r) => within(r).getAllByText(/T[1-4]/)[0].textContent);
+
+    fireEvent.pointerDown(handle(rows()[0]), { button: 0, clientY: 32 });
+    fireEvent.pointerMove(document.body, { clientY: 100 });
+    expect(titles()).toEqual(["T2", "T1", "T3", "T4"]);
+
+    fireEvent.pointerMove(document.body, { clientY: 170 });
+    expect(titles()).toEqual(["T2", "T3", "T1", "T4"]);
+
+    fireEvent.pointerUp(document.body, { clientY: 170 });
+    expect(move).toHaveBeenCalledOnce();
+  });
+
+  it("abandons the drag on Escape, leaving the order alone", () => {
+    const { move } = setupFour();
+    withLiveGeometry();
+    const titles = () =>
+      rows().map((r) => within(r).getAllByText(/T[1-4]/)[0].textContent);
+
+    fireEvent.pointerDown(handle(rows()[0]), { button: 0, clientY: 32 });
+    fireEvent.pointerMove(document.body, { clientY: 170 });
+    expect(titles()).toEqual(["T2", "T3", "T1", "T4"]);
+
+    fireEvent.keyDown(window, { key: "Escape" });
+    expect(titles()).toEqual(["T1", "T2", "T3", "T4"]);
+    expect(move).not.toHaveBeenCalled();
+  });
+
   it("carries a row up past more than one neighbour", () => {
     const { move } = setupFour();
     withLiveGeometry();
