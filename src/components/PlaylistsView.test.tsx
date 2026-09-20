@@ -5,7 +5,7 @@ import PlaylistsView from "./PlaylistsView";
 import { PlayerProvider } from "../lib/player";
 import { makeMetadata, makeTrack } from "../test/factories";
 import type { Playlists } from "../lib/usePlaylists";
-import type { Playlist } from "../types";
+import type { Playlist, TrackAnalysis } from "../types";
 
 /**
  * The playlists view, as a component: props in, `usePlaylists` calls out.
@@ -24,7 +24,7 @@ function playlist(id: number, name: string, track_count = 0): Playlist {
   return { id, name, created_ms: id, updated_ms: id, track_count };
 }
 
-function setup(over: Partial<Playlists> = {}) {
+function setup(over: Partial<Playlists> = {}, library?: TrackAnalysis[]) {
   const ops = {
     create: vi.fn(async () => 9),
     rename: vi.fn(async () => {}),
@@ -43,7 +43,7 @@ function setup(over: Partial<Playlists> = {}) {
     ...ops,
     ...over,
   };
-  const tracks = [
+  const tracks = library ?? [
     makeTrack({
       path: `${LIB}/a.aiff`,
       id: `${LIB}/a.aiff`,
@@ -73,15 +73,58 @@ function setup(over: Partial<Playlists> = {}) {
   return { user: userEvent.setup(), playlists, ...ops };
 }
 
+/** Four tracks in a playlist, which is what a multi-row drag needs. */
+function setupFour() {
+  const paths = [1, 2, 3, 4].map((n) => `${LIB}/${n}.aiff`);
+  return setup(
+    { all: [playlist(1, "Set", 4)], contents: { 1: paths } },
+    paths.map((p, i) =>
+      makeTrack({
+        path: p,
+        id: p,
+        file_name: `${i + 1}.aiff`,
+        metadata: makeMetadata({ title: `T${i + 1}`, artist: "A" }),
+      }),
+    ),
+  );
+}
+
 const rows = () =>
   within(
     screen.getByRole("rowgroup", { name: "Tracks in this playlist" }),
   ).getAllByRole("row");
 
 /**
- * jsdom has no layout, so the rows are given one: 64 px tall, stacked from
- * zero. So row 0 spans 0–64 with its midpoint at 32, row 1 spans 64–128, and
- * anything past 128 is the end of the list.
+ * jsdom has no layout, so the rows are given one that **follows the DOM**: each
+ * row is 64 px tall and sits at its current index, computed when it is asked.
+ *
+ * Live rather than a snapshot, because the list reorders under the pointer —
+ * a fixed set of boxes would answer for an order that no longer exists, which
+ * is the one thing a drag across several rows depends on getting right.
+ */
+function withLiveGeometry() {
+  const at = (r: HTMLElement) =>
+    [...(r.parentElement?.children ?? [])].indexOf(r) * 64;
+  rows().forEach((r) => {
+    r.getBoundingClientRect = () =>
+      ({
+        top: at(r),
+        height: 64,
+        bottom: at(r) + 64,
+        left: 0,
+        right: 0,
+        width: 0,
+      }) as DOMRect;
+    Object.defineProperty(r, "offsetTop", {
+      get: () => at(r),
+      configurable: true,
+    });
+  });
+}
+
+/**
+ * The same, but frozen at the order it was called in — enough for the tests
+ * that never reorder.
  */
 function withGeometry() {
   rows().forEach((r, i) => {
@@ -313,5 +356,58 @@ describe("PlaylistsView", () => {
     // "No playlists yet" over an unread database is a lie.
     setup({ all: [], contents: {}, loaded: false });
     expect(screen.queryByText("No playlists yet")).not.toBeInTheDocument();
+  });
+
+  it("carries a row down past more than one neighbour", () => {
+    // One row down worked and two did not, which is the case a snapshot of the
+    // geometry cannot show: after the first swap the pointer is inside the
+    // carried row, and the next gap is decided by rows that have all moved.
+    const { move, playlists } = setupFour();
+    withLiveGeometry();
+    const titles = () =>
+      rows().map((r) => within(r).getAllByText(/T[1-4]/)[0].textContent);
+
+    expect(titles()).toEqual(["T1", "T2", "T3", "T4"]);
+
+    fireEvent.pointerDown(handle(rows()[0]), { button: 0, clientY: 32 });
+    // Past T2's midpoint: one down.
+    fireEvent.pointerMove(rows()[0], { clientY: 100 });
+    expect(titles()).toEqual(["T2", "T1", "T3", "T4"]);
+
+    // Past T3's midpoint, which is now at 160: two down.
+    fireEvent.pointerMove(rows()[1], { clientY: 170 });
+    expect(titles()).toEqual(["T2", "T3", "T1", "T4"]);
+
+    // And a third, to the end.
+    fireEvent.pointerMove(rows()[2], { clientY: 240 });
+    expect(titles()).toEqual(["T2", "T3", "T4", "T1"]);
+
+    fireEvent.pointerUp(rows()[3], { clientY: 240 });
+    expect(move).toHaveBeenCalledExactlyOnceWith(1, [`${LIB}/1.aiff`], null);
+    expect(playlists.contents[1]).toBeDefined();
+  });
+
+  it("carries a row up past more than one neighbour", () => {
+    const { move } = setupFour();
+    withLiveGeometry();
+    const titles = () =>
+      rows().map((r) => within(r).getAllByText(/T[1-4]/)[0].textContent);
+
+    fireEvent.pointerDown(handle(rows()[3]), { button: 0, clientY: 224 });
+    fireEvent.pointerMove(rows()[3], { clientY: 150 });
+    expect(titles()).toEqual(["T1", "T2", "T4", "T3"]);
+
+    fireEvent.pointerMove(rows()[2], { clientY: 80 });
+    expect(titles()).toEqual(["T1", "T4", "T2", "T3"]);
+
+    fireEvent.pointerMove(rows()[1], { clientY: 10 });
+    expect(titles()).toEqual(["T4", "T1", "T2", "T3"]);
+
+    fireEvent.pointerUp(rows()[0], { clientY: 10 });
+    expect(move).toHaveBeenCalledExactlyOnceWith(
+      1,
+      [`${LIB}/4.aiff`],
+      `${LIB}/1.aiff`,
+    );
   });
 });

@@ -548,6 +548,7 @@ function OpenPlaylist({
       if (still || path === drag?.path) {
         el.style.transition = "";
         el.style.transform = "";
+        el.style.backgroundColor = "";
         return;
       }
       if (before === undefined || before === top) return;
@@ -555,20 +556,45 @@ function OpenPlaylist({
       const shift = shiftOf(el);
       el.style.transition = "none";
       el.style.transform = `translateY(${before - top + shift}px)`;
+      // A sliding row travels across the ones it passes, and a table row has no
+      // background of its own — the panel shows through it — so without this
+      // the two rows are simply drawn on top of each other and both are
+      // legible. It is the panel's own tone, so nothing looks raised: the row
+      // is only made opaque for as long as it is in transit.
+      el.style.backgroundColor = "var(--surface)";
       requestAnimationFrame(() => {
         el.style.transition = `transform ${REORDER_MS}ms ease-out`;
         el.style.transform = "";
       });
+      el.addEventListener(
+        "transitionend",
+        () => {
+          el.style.transition = "";
+          el.style.transform = "";
+          el.style.backgroundColor = "";
+        },
+        { once: true },
+      );
     });
 
     wasAt.current = now;
   }, [shown, drag?.path]);
-  /** How far a row is currently slid from its layout position. */
+  /**
+   * How far a row is currently slid from its layout position.
+   *
+   * Parsed rather than handed to `DOMMatrix`: that constructor rejects the
+   * string "none" outright, and jsdom does not implement it at all — so the
+   * one helper every measurement goes through would throw in every test, which
+   * is exactly how a drag stopped working without a single test noticing.
+   */
   const shiftOf = (el: Element) => {
-    // With nothing set the computed value is the string "none", which the
-    // matrix constructor rejects outright.
     const t = getComputedStyle(el).transform;
-    return t && t !== "none" ? new DOMMatrixReadOnly(t).m42 : 0;
+    if (!t || t === "none") return 0;
+    // `matrix(a, b, c, d, tx, ty)`, or `matrix3d` with sixteen numbers where
+    // the vertical translation is the fourteenth.
+    const n = t.match(/-?[\d.]+/g);
+    if (!n) return 0;
+    return Number(n.length === 6 ? n[5] : n[13]) || 0;
   };
 
   /**
