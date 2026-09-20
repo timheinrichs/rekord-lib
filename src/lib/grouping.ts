@@ -2,7 +2,7 @@ import type { DuplicateGroup, TrackAnalysis, TrackEdit } from "../types";
 
 /** Column the top-level list (collapsed albums + single tracks) is sorted by. */
 /** How the library list is grouped. */
-export type Grouping = "flat" | "album" | "folder" | "label" | "playlist";
+export type Grouping = "flat" | "album" | "folder" | "label";
 
 /**
  * The grouping switch, in display order.
@@ -11,16 +11,16 @@ export type Grouping = "flat" | "album" | "folder" | "label" | "playlist";
  * it is both the cheapest thing to look at and the one that always shows every
  * track as its own row. The three groupings after it fold rows away, which is a
  * choice the user makes rather than the state the app opens in.
+ *
+ * There is no fifth. Playlists were one until 0.10.0 and never fitted: these
+ * four are derived from the tags of the same rows, a playlist is authored data
+ * with its own table, its own commands and now its own view.
  */
 export const GROUPINGS: readonly (readonly [Grouping, string])[] = [
   ["flat", "Flat"],
   ["album", "Album"],
   ["label", "Label"],
   ["folder", "Folder"],
-  // Last, and unlike the three before it this one does not fold the library
-  // into a different shape — it shows an order the user made, plus everything
-  // that is not in one yet.
-  ["playlist", "Playlists"],
 ];
 
 export const DEFAULT_GROUPING: Grouping = "flat";

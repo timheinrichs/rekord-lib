@@ -7,6 +7,7 @@ import HeaderNav from "./components/HeaderNav";
 import EventLogModal from "./components/EventLogModal";
 import UpdateModal from "./components/UpdateModal";
 import PlayerBar from "./components/PlayerBar";
+import PlaylistsView from "./components/PlaylistsView";
 import Toasts from "./components/Toasts";
 import { ArrowUpIcon } from "./components/icons";
 import { useScrolled } from "./lib/useScrolled";
@@ -31,6 +32,7 @@ import {
 } from "./lib/toasts";
 import { useBandcamp } from "./lib/useBandcamp";
 import { usePlaylists } from "./lib/usePlaylists";
+import type { Edits } from "./lib/grouping";
 import type { MainView } from "./lib/views";
 import {
   DEFAULT_SETTINGS,
@@ -99,6 +101,9 @@ export default function App() {
   const [update, setUpdate] = useState<UpdateInfo | null>(null);
   const [ready, setReady] = useState(false);
   const [libraryTracks, setLibraryTracks] = useState<TrackAnalysis[]>([]);
+  // The pending edits, mirrored up beside the tracks: the playlists view shows
+  // titles and has to show the same ones the library does.
+  const [libraryEdits, setLibraryEdits] = useState<Edits>({});
   // Start-up state behind the splash. LibraryView reports the later phases,
   // since only it knows when the cache has been read.
   const [boot, setBoot] = useState<BootState>({ phase: "starting" });
@@ -285,9 +290,12 @@ export default function App() {
   // replayed on the wrapper rather than by remounting.
   const surface = settingsOpen ? "settings" : view;
   const libraryFade = useReplayAnimation<HTMLDivElement>(surface);
+  const playlistsFade = useReplayAnimation<HTMLDivElement>(surface);
   const bandcampFade = useReplayAnimation<HTMLDivElement>(surface);
 
-  const nav = (
+  // A function, not an element: a React element has one parent, so handing the
+  // same `nav` to two mounted views would leave one of them without it.
+  const renderNav = () => (
     <HeaderNav
       view={view}
       onNavigate={setView}
@@ -330,11 +338,26 @@ export default function App() {
               onSettingsChange={updateSettings}
               originById={originById}
               onTracksChange={setLibraryTracks}
+              onEditsChange={setLibraryEdits}
               onBootPhase={handleBootPhase}
               onFilesDeleted={bc.forgetDownloads}
-              nav={nav}
+              nav={renderNav()}
               onOpenSettings={() => setSettingsOpen(true)}
               onLibraryDirChange={(dir) => updateSettings({ library_dir: dir })}
+            />
+          </div>
+
+          <div
+            ref={playlistsFade}
+            className={
+              view !== "playlists" || settingsOpen ? "hidden" : "animate-fade-in"
+            }
+          >
+            <PlaylistsView
+              playlists={playlists}
+              tracks={libraryTracks}
+              edits={libraryEdits}
+              nav={renderNav()}
             />
           </div>
 

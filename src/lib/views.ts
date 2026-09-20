@@ -12,11 +12,13 @@
  * which is what `appDom` narrows on. Keeping both from one table is what makes
  * renaming a view a single edit.
  */
-export type MainView = "library" | "bandcamp";
+export type MainView = "library" | "playlists" | "bandcamp";
 
 /** In display order. */
 export const VIEWS: readonly (readonly [MainView, string])[] = [
   ["library", "Library"],
+  // Next to the library because a playlist is made out of what is in it.
+  ["playlists", "Playlists"],
   ["bandcamp", "Bandcamp"],
 ];
 

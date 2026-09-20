@@ -80,12 +80,10 @@ import { STAGE_ANALYZING } from "../types";
 import MetadataEditor from "./MetadataEditor";
 import BulkMetadataEditor, { type BulkPatch } from "./BulkMetadataEditor";
 import CoverThumb, { forgetCoverThumbs } from "./CoverThumb";
-import PlaylistMenu from "./PlaylistMenu";
-import PlaylistEditor from "./PlaylistEditor";
 import AddToPlaylistDialog from "./AddToPlaylistDialog";
 import { usePlayer, type PlayerTrack } from "../lib/player";
 import type { Playlists } from "../lib/usePlaylists";
-import { buildPlaylistGroups, playlistRows, wouldAdd } from "../lib/playlists";
+import { wouldAdd } from "../lib/playlists";
 import { exportRekordbox } from "../lib/api";
 import MarqueeText from "./MarqueeText";
 import DuplicatesModal from "./DuplicatesModal";
@@ -179,6 +177,12 @@ interface Props {
   originById: Record<string, string>;
   /** Mirrors the scanned tracks up to the app (for Bandcamp sync). */
   onTracksChange?: (tracks: TrackAnalysis[]) => void;
+  /**
+   * Mirrors the pending edits up too, so the playlists view shows a title the
+   * way this one does. Without it a track edited but not yet written reads as
+   * its old self on one screen and its new self on the other.
+   */
+  onEditsChange?: (edits: Record<string, TrackEdit>) => void;
   /** Reports start-up progress to the splash (see lib/boot). */
   onBootPhase?: (phase: BootPhase, progress?: ScanProgress | null) => void;
   /** Notifies the app of deleted files (to prune the Bandcamp download ledger). */
@@ -216,6 +220,7 @@ export default function LibraryView({
   onSettingsChange,
   originById,
   onTracksChange,
+  onEditsChange,
   onBootPhase,
   onFilesDeleted,
   nav,
@@ -716,34 +721,19 @@ export default function LibraryView({
   // each batch as it produces it, and edits are written per change — so there
   // is nothing here to throttle, and nothing to lose on a quit.
 
-  // Mirror the scanned tracks up to the app (used by the Bandcamp sync).
+  // Mirror the scanned tracks up to the app (used by the Bandcamp sync), and
+  // the pending edits with them (used by the playlists view's titles).
   useEffect(() => {
     onTracksChange?.(tracks);
   }, [tracks, onTracksChange]);
 
-  // The playlist open in the editor, by id — the playlist itself is looked up
-  // rather than copied, so a rename inside the dialog shows in its own header.
-  const [editingPlaylist, setEditingPlaylist] = useState<number | null>(null);
-  // The picker, beside it: two overlays over the same table, one open at a
-  // time, both writing through the same `usePlaylists`.
+  useEffect(() => {
+    onEditsChange?.(edits);
+  }, [edits, onEditsChange]);
+
+  // The picker: the one playlist surface that belongs to the library, because
+  // what it acts on is a selection made in this table.
   const [pickingPlaylist, setPickingPlaylist] = useState(false);
-  const editedPlaylist =
-    playlists.all.find((p) => p.id === editingPlaylist) ?? null;
-  // Every stored entry, in order, whether or not the table can draw it — with
-  // the pending edit's metadata, which is what the rest of the list shows too.
-  const editedPlaylistRows = useMemo(() => {
-    if (!editedPlaylist) return [];
-    const known = new Map(
-      tracks.map((t) => {
-        const m = edits[t.id]?.metadata ?? t.metadata;
-        return [
-          t.path,
-          { title: m.title || t.file_name, artist: m.artist || "" },
-        ] as const;
-      }),
-    );
-    return playlistRows(playlists.contents[editedPlaylist.id] ?? [], known);
-  }, [editedPlaylist, playlists.contents, tracks, edits]);
 
   // Run conversion jobs.
   // - "library": source already lives in the library -> output to the same
@@ -1007,26 +997,6 @@ export default function LibraryView({
     [grouping, visibleTracks, libraryDir],
   );
 
-  /** What is being dragged, and the row it is currently hovering in front of. */
-  const [playlistDrag, setPlaylistDrag] = useState<{
-    id: number;
-    paths: string[];
-  } | null>(null);
-  const [dragOver, setDragOver] = useState<{ id: number; before: string } | null>(
-    null,
-  );
-
-  // Dragging a row that is part of the selection moves the whole selection;
-  // dragging an unselected row moves just that one, which is what every list
-  // that does this behaves like.
-  const playlistGroups = useMemo(
-    () =>
-      grouping === "playlist"
-        ? buildPlaylistGroups(playlists.all, playlists.contents, visibleTracks)
-        : null,
-    [grouping, playlists.all, playlists.contents, visibleTracks],
-  );
-
   // Label tree of the visible tracks (label -> album -> tracks).
   const labelRoot = useMemo(
     () =>
@@ -1038,7 +1008,6 @@ export default function LibraryView({
 
   // Flat render order (including collapsed) for the shift selection.
   const renderOrder = useMemo(() => {
-    if (playlistGroups) return playlistGroups.flatMap((g) => g.tracks);
     if (folderRoot) return folderTrackList(folderRoot);
     if (labelRoot) return labelTrackList(labelRoot);
     if (!albumItems) return sortedFlat ?? visibleTracks;
@@ -1048,7 +1017,7 @@ export default function LibraryView({
       else arr.push(it.track);
     }
     return arr;
-  }, [playlistGroups, folderRoot, labelRoot, albumItems, sortedFlat, visibleTracks]);
+  }, [folderRoot, labelRoot, albumItems, sortedFlat, visibleTracks]);
 
   /**
    * The selected tracks' paths, in the order the table shows them — a playlist
@@ -1105,25 +1074,6 @@ export default function LibraryView({
     }
     return out;
   }, [playlists.all, playlists.contents, selectedPaths]);
-
-  const startPlaylistDrag = useCallback(
-    (id: number, track: TrackAnalysis) => {
-      const paths = selected.has(track.id) ? selectedPaths() : [track.path];
-      setPlaylistDrag({ id, paths });
-    },
-    [selected, selectedPaths],
-  );
-
-  const dropPlaylistDrag = useCallback(
-    async (before: string | null) => {
-      const drag = playlistDrag;
-      setPlaylistDrag(null);
-      setDragOver(null);
-      if (!drag) return;
-      await playlists.move(drag.id, drag.paths, before);
-    },
-    [playlistDrag, playlists],
-  );
 
   // Audio player: build a queue entry from an (edit-aware) track.
   const player = usePlayer();
@@ -2180,8 +2130,6 @@ export default function LibraryView({
                   prog: ConvertProgress | undefined,
                   result: ConvertResult | undefined,
                   fromBandcamp: boolean,
-                  /** Where the row sits in a playlist, when it is in one. */
-                  inPlaylist?: { id: number; position: number; of: number },
                 ): ReactNode => {
                   // `py-0`: the row's own `h-16` sets the height now, for every
                   // row in every grouping. Padding used to do it, and it could
@@ -2228,19 +2176,11 @@ export default function LibraryView({
                         </td>
                       );
                     case "expand":
-                      // A track has nothing to expand, so the cell exists to
-                      // keep the columns aligned with the group rows above it —
-                      // which makes it exactly the space a playlist position
-                      // belongs in. In a playlist that number is what the row
-                      // *is*, and it sits where the chevron would.
-                      return (
-                        <td
-                          key={c.id}
-                          className="px-1 text-right text-xs tabular-nums text-fg-subtle"
-                        >
-                          {inPlaylist?.position ?? ""}
-                        </td>
-                      );
+                      // A track has nothing to expand, so the cell exists only
+                      // to keep the columns aligned with the group rows above
+                      // it. It carried a playlist position until 0.10.0, when
+                      // playlists became a view of their own.
+                      return <td key={c.id} className="px-1" />;
                     case "cover":
                       return (
                         <td key={c.id} className={pad}>
@@ -2385,41 +2325,6 @@ export default function LibraryView({
                           onClick={(e) => e.stopPropagation()}
                         >
 <div className="pointer-events-none absolute inset-y-0 right-4 flex items-center gap-2 rounded-lg bg-surface-2 pl-3 opacity-0 transition-opacity group-hover:pointer-events-auto group-hover:opacity-100">
-                        {inPlaylist && (
-                          <>
-                            {/* The same move as the drag, by another road: a
-                                drag is unusable once the target is off screen,
-                                which on a 200-track set is most of the time. */}
-                            <button
-                              onClick={() => void playlists.step(inPlaylist.id, t.path, -1)}
-                              disabled={inPlaylist.position === 1}
-                              className="flex h-8 w-8 items-center justify-center rounded-md text-fg-subtle enabled:hover:bg-surface enabled:hover:text-fg-accent disabled:text-fg-disabled"
-                              title="Move up in the playlist"
-                              aria-label="Move up"
-                            >
-                              ↑
-                            </button>
-                            <button
-                              onClick={() => void playlists.step(inPlaylist.id, t.path, 1)}
-                              disabled={inPlaylist.position === inPlaylist.of}
-                              className="flex h-8 w-8 items-center justify-center rounded-md text-fg-subtle enabled:hover:bg-surface enabled:hover:text-fg-accent disabled:text-fg-disabled"
-                              title="Move down in the playlist"
-                              aria-label="Move down"
-                            >
-                              ↓
-                            </button>
-                            <button
-                              onClick={() =>
-                                void playlists.removeTracks(inPlaylist.id, [t.path])
-                              }
-                              className="flex h-8 w-8 items-center justify-center rounded-md text-fg-subtle hover:bg-surface hover:text-fg-danger"
-                              title="Remove from this playlist (the file stays)"
-                              aria-label="Remove from playlist"
-                            >
-                              −
-                            </button>
-                          </>
-                        )}
                         {!t.compat.compatible && (
                           <button
                             onClick={() => convertOne(t)}
@@ -2439,28 +2344,20 @@ export default function LibraryView({
                         >
                           <EditIcon />
                         </button>
-                        {/* Not in a playlist row. There, "−" already means
-                            remove, and a second, near-identical destructive
-                            button one step further right means trash the file —
-                            a difference of one icon between taking a track out
-                            of a set and taking it off the disk. The library
-                            views are where a file gets deleted. */}
-                        {!inPlaylist && (
-                          <button
-                            onClick={() =>
-                              void confirmAndDelete(
-                                [t.path],
-                                `Move “${md.title || t.file_name}” to the trash?`,
-                              )
-                            }
-                            disabled={converting}
-                            className="flex h-8 w-8 items-center justify-center rounded-md text-fg-subtle enabled:hover:bg-surface enabled:hover:text-fg-danger disabled:text-fg-disabled"
-                            title="Delete (move to trash)"
-                            aria-label="Delete track"
-                          >
-                            <TrashIcon />
-                          </button>
-                        )}
+                        <button
+                          onClick={() =>
+                            void confirmAndDelete(
+                              [t.path],
+                              `Move “${md.title || t.file_name}” to the trash?`,
+                            )
+                          }
+                          disabled={converting}
+                          className="flex h-8 w-8 items-center justify-center rounded-md text-fg-subtle enabled:hover:bg-surface enabled:hover:text-fg-danger disabled:text-fg-disabled"
+                          title="Delete (move to trash)"
+                          aria-label="Delete track"
+                        >
+                          <TrashIcon />
+                        </button>
                       </div>
                         </td>
                       );
@@ -2471,12 +2368,6 @@ export default function LibraryView({
                   t: TrackAnalysis,
                   index: number,
                   depth = 0,
-                  /**
-                   * Set only in the playlists grouping. It carries the place the
-                   * row holds and makes it draggable — nowhere else is a row's
-                   * order the user's to change, so nowhere else is it draggable.
-                   */
-                  inPlaylist?: { id: number; position: number; of: number },
                   /**
                    * Whether the row sits inside an expanded group, and so in
                    * the well with its head. Defaults from the indent, because
@@ -2491,56 +2382,13 @@ export default function LibraryView({
                 const fromBandcamp = !!originById[t.id];
                 // Show confirmed edits in the list immediately.
                 const md = edits[t.id]?.metadata ?? t.metadata;
-                const dropHere =
-                  inPlaylist &&
-                  dragOver?.id === inPlaylist.id &&
-                  dragOver.before === t.path;
                 return (
                   <tr
-                    // The same track may be in two playlists, and with both
-                    // expanded it is two sibling rows. A bare `t.id` makes them
-                    // one key, which React reconciles into one row — the drag
-                    // handlers and the position cell then belong to whichever
-                    // group won.
-                    key={inPlaylist ? `${inPlaylist.id}:${t.id}` : t.id}
+                    key={t.id}
                     onClick={() => setEditingId(t.id)}
-                    draggable={!!inPlaylist}
-                    onDragStart={
-                      inPlaylist
-                        ? () => startPlaylistDrag(inPlaylist.id, t)
-                        : undefined
-                    }
-                    onDragOver={
-                      inPlaylist
-                        ? (e) => {
-                            e.preventDefault();
-                            setDragOver({ id: inPlaylist.id, before: t.path });
-                          }
-                        : undefined
-                    }
-                    onDrop={
-                      inPlaylist
-                        ? (e) => {
-                            e.preventDefault();
-                            void dropPlaylistDrag(t.path);
-                          }
-                        : undefined
-                    }
-                    // A drag does not always end in a drop: Escape cancels it,
-                    // and so does letting go anywhere else. Only the drop used
-                    // to clear this, which left the accent line painted under a
-                    // row and the lifted selection still held.
-                    onDragEnd={
-                      inPlaylist
-                        ? () => {
-                            setDragOver(null);
-                            setPlaylistDrag(null);
-                          }
-                        : undefined
-                    }
                     className={`group h-16 cursor-pointer border-b border-border hover:bg-surface-2 ${
                       inGroup ? "bg-bg" : ""
-                    } ${dropHere ? "border-t-2 border-t-accent-500" : ""}`}
+                    }`}
                   >
                     {cols.map((c) =>
                       trackCell(
@@ -2552,7 +2400,6 @@ export default function LibraryView({
                         prog,
                         result,
                         fromBandcamp,
-                        inPlaylist,
                       ),
                     )}
                   </tr>
@@ -2906,57 +2753,7 @@ export default function LibraryView({
                   });
                 };
 
-                if (playlistGroups) {
-                  const idxRef = { i: 0 };
-                  for (const group of playlistGroups) {
-                    const key = `playlist-${group.id}`;
-                    const expanded = expandedLabels.has(key);
-                    renderGroupHeader({
-                      id: key,
-                      title: group.playlist
-                        ? group.name
-                        : "Unsorted — not in any playlist",
-                      depth: 0,
-                      tracks: group.tracks,
-                      expanded,
-                      onToggle: () => toggleLabel(key),
-                      actions: group.playlist ? (
-                        <PlaylistMenu
-                          playlist={group.playlist}
-                          onRename={(name) =>
-                            void playlists.rename(group.id, name)
-                          }
-                          onDelete={() => void playlists.remove(group.id)}
-                          onEdit={() => setEditingPlaylist(group.id)}
-                        />
-                      ) : undefined,
-                    });
-                    if (!expanded) {
-                      idxRef.i += group.tracks.length;
-                      continue;
-                    }
-                    group.tracks.forEach((t, i) => {
-                      rows.push(
-                        renderTrackRow(
-                          t,
-                          idxRef.i++,
-                          1,
-                          group.playlist
-                            ? {
-                                id: group.id,
-                                // From the stored playlist, not from `i`: with
-                                // a filter on, the row's place among what is
-                                // visible is not its place in the list the
-                                // buttons move it within.
-                                position: group.positions[t.path] ?? i + 1,
-                                of: group.of,
-                              }
-                            : undefined,
-                        ),
-                      );
-                    });
-                  }
-                } else if (labelRoot) {
+                if (labelRoot) {
                   const idxRef = { i: 0 };
                   for (const node of labelRoot) renderLabelNode(node, idxRef);
                 } else if (folderRoot) {
@@ -3006,7 +2803,7 @@ export default function LibraryView({
                       gTracks.forEach((t) => {
                         // depth 0, but inside a group all the same: the album
                         // grouping aligns its tracks with their head.
-                        rows.push(renderTrackRow(t, idx, 0, undefined, true));
+                        rows.push(renderTrackRow(t, idx, 0, true));
                         idx++;
                       });
                     } else {
@@ -3086,22 +2883,6 @@ export default function LibraryView({
           }}
           suggestName={playlists.suggestName}
           onClose={() => setPickingPlaylist(false)}
-        />
-      )}
-
-      {editedPlaylist && (
-        <PlaylistEditor
-          playlist={editedPlaylist}
-          rows={editedPlaylistRows}
-          onRename={(name) => void playlists.rename(editedPlaylist.id, name)}
-          onStep={(path, step) =>
-            void playlists.step(editedPlaylist.id, path, step)
-          }
-          onRemove={(path) =>
-            void playlists.removeTracks(editedPlaylist.id, [path])
-          }
-          onDelete={() => void playlists.remove(editedPlaylist.id)}
-          onClose={() => setEditingPlaylist(null)}
         />
       )}
 

@@ -55,6 +55,11 @@ export function libraryView(container: HTMLElement) {
   return within(wrapper(container, "library"));
 }
 
+/** The playlists view, whether shown or hidden. */
+export function playlistsView(container: HTMLElement) {
+  return within(wrapper(container, "playlists"));
+}
+
 /** The Bandcamp view, whether shown or hidden. */
 export function bandcampView(container: HTMLElement) {
   return within(wrapper(container, "bandcamp"));

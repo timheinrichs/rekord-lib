@@ -2,9 +2,10 @@
  * The well, in every grouping that has one.
  *
  * I1 is a visual rule, and a visual rule is exactly the kind that ships for one
- * grouping and is forgotten for the other three — the table folds rows five
+ * grouping and is forgotten for the other two — the table folds rows four
  * different ways and each way renders its heads from its own branch. So this
- * drives the real app through all four and asks the same two questions of each:
+ * drives the real app through the three that fold and asks the same two
+ * questions of each:
  * does the open head say so in the accessibility tree, and are the rows it
  * contains in the well with it.
  *
@@ -28,8 +29,8 @@ const B = `${LIBRARY}/House/Deep/b.aiff`;
 let fake: FakeBackend;
 
 beforeEach(() => {
-  // One fixture serves all four: two tracks that share an album and a label,
-  // two folders deep, and a playlist holding both.
+  // One fixture serves all three: two tracks that share an album and a label,
+  // two folders deep.
   const track = (path: string, file: string, title: string) =>
     makeTrack({
       path,
@@ -44,8 +45,6 @@ beforeEach(() => {
   fake = installFakeBackend({
     files: [A, B],
     tracks: [track(A, "a.aiff", "Alpha"), track(B, "b.aiff", "Beta")],
-    playlists: [{ id: 1, name: "Warmup", created_ms: 0, updated_ms: 0 }],
-    playlistContents: { 1: [A, B] },
     store: { settings: { library_dir: LIBRARY } },
   });
 });
@@ -77,7 +76,6 @@ describe("an expanded group, in every grouping", () => {
     ["Album", "Deep Cuts"],
     ["Label", "Ostgut"],
     ["Folder", "House"],
-    ["Playlists", "Warmup"],
   ])("%s: opening a group puts it and its rows in the well", async (switchTo) => {
     const user = userEvent.setup();
     const { container } = render(<App />);

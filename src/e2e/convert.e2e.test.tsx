@@ -12,11 +12,11 @@
  * otherwise successful result, and a view that only handles a rejected promise
  * shows a failed conversion as a finished one.
  */
-import { cleanup, render, screen, waitFor, within } from "@testing-library/react";
+import { cleanup, render, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import App from "../App";
-import { libraryView } from "../test/appDom";
+import { libraryView, playlistsView } from "../test/appDom";
 import { makeAudio, makeCompat, makeMetadata, makeTrack } from "../test/factories";
 import { installFakeBackend, type FakeBackend } from "../test/fakeBackend";
 import type { ConvertOptions } from "../types";
@@ -168,8 +168,13 @@ describe("conversion", () => {
     // cascades away with it, while the output arrives under a new path as a new
     // row — so converting a whole set used to empty the set it was run on. The
     // backend now carries the row over; what this pins is the half that lives
-    // here, which is that the view re-reads the playlists instead of showing
-    // the track as gone until the next start.
+    // here, which is that the playlists are re-read instead of showing the
+    // track as gone until the next start.
+    //
+    // Since 0.10.0 it pins something sharper as well: the conversion runs in
+    // the library view and the result is read in the playlists view, and the
+    // only thing that can carry it across is the single `usePlaylists` in
+    // `App`. This is where a second copy of that state would show up.
     const user = userEvent.setup();
     fake.state.playlists = [
       { id: 1, name: "Warmup", created_ms: 1, updated_ms: 1 },
@@ -192,12 +197,13 @@ describe("conversion", () => {
     await user.click(
       libraryView(container).getByRole("button", { name: "Playlists" }),
     );
-    await user.click((await screen.findAllByText("Warmup"))[0]);
+    const view = playlistsView(container);
+    await user.click(await view.findByRole("button", { name: /Warmup/ }));
 
-    // In the playlist under its new path, at the position it held — not in
-    // "Unsorted", which is where a track with no membership ends up.
-    const rows = libraryView(container).getAllByRole("row");
-    const moved = rows.find((r) => within(r).queryByTitle(converted));
+    // In the playlist under its new path, at the position it held.
+    const moved = view
+      .getAllByRole("listitem")
+      .find((r) => within(r).queryByTitle(converted));
     expect(moved).toBeTruthy();
     expect(moved!.textContent).toContain("1");
   });

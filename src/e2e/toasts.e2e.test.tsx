@@ -17,7 +17,7 @@ import { cleanup, render, screen, waitFor, within } from "@testing-library/react
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import App from "../App";
-import { libraryView } from "../test/appDom";
+import { libraryView, overlay } from "../test/appDom";
 import { makeMetadata, makeTrack } from "../test/factories";
 import { installFakeBackend, type FakeBackend } from "../test/fakeBackend";
 
@@ -72,7 +72,7 @@ describe("an action that changed something says so", () => {
 
     await user.click(view.getAllByRole("checkbox")[0]);
     await user.click(screen.getByRole("button", { name: /Add to playlist/ }));
-    await user.click(await screen.findByRole("button", { name: /Warmup/ }));
+    await user.click(await overlay().findByRole("button", { name: /Warmup/ }));
 
     // The sentence is written once, in Rust, and travels with the log row —
     // the frontend composes nothing, which is what stops the two from ever
@@ -90,7 +90,7 @@ describe("an action that changed something says so", () => {
 
     await user.click(view.getAllByRole("checkbox")[0]);
     await user.click(screen.getByRole("button", { name: /Add to playlist/ }));
-    await user.click(await screen.findByRole("button", { name: /Warmup/ }));
+    await user.click(await overlay().findByRole("button", { name: /Warmup/ }));
     await messages().findByText("Added 2 tracks to Warmup");
 
     await user.click(view.getByRole("button", { name: "Event log" }));

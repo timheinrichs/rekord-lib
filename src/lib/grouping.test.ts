@@ -341,14 +341,15 @@ describe("BPM sorting", () => {
 
 describe("GROUPINGS", () => {
   it("is in the order the switch shows, Flat first", () => {
+    // Four, and this assertion is now the thing that keeps a fifth out:
+    // playlists were one until 0.10.0 and never fitted, because these four are
+    // derived from the tags of the same rows while a playlist is authored data
+    // with a table, commands and a view of its own.
     expect(GROUPINGS.map(([key]) => key)).toEqual([
       "flat",
       "album",
       "label",
       "folder",
-      // Last: the other three fold the library into a different shape, this
-      // one shows an order the user made.
-      "playlist",
     ]);
   });
 

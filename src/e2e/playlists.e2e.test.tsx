@@ -12,7 +12,7 @@ import { cleanup, render, screen, waitFor, within } from "@testing-library/react
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import App from "../App";
-import { libraryView, overlay } from "../test/appDom";
+import { libraryView, overlay, playlistsView } from "../test/appDom";
 import { makeMetadata, makeTrack } from "../test/factories";
 import { installFakeBackend, type FakeBackend } from "../test/fakeBackend";
 
@@ -45,6 +45,16 @@ afterEach(() => {
   cleanup();
   fake.restore();
 });
+
+/**
+ * The open playlist's rows. Scoped to the list that holds them, because the
+ * sidebar beside it is a list of playlists and would otherwise be counted in.
+ */
+async function trackRows(container: HTMLElement) {
+  const view = playlistsView(container);
+  const list = await view.findByRole("list", { name: "Tracks in this playlist" });
+  return within(list).getAllByRole("listitem");
+}
 
 /**
  * The library view, once the splash is gone and the rows are in. Every test
@@ -117,40 +127,33 @@ describe("playlists", () => {
     expect(partial.textContent).toContain("+1 of 2");
   });
 
-  it("shows the playlist as a group, with a position per row", async () => {
+  it("shows a playlist in its own order, with a position per row", async () => {
     const user = userEvent.setup();
     fake.state.playlists = [
       { id: 1, name: "Warmup", created_ms: 1, updated_ms: 1 },
     ];
-    // Deliberately not the table's order: a playlist shows its own.
+    // Deliberately not the library's order: a playlist shows its own.
     fake.state.playlistContents = { 1: [B, A] };
 
     const { container } = render(<App />);
-    const view = await ready(container);
+    const library = await ready(container);
 
-    await user.click(view.getByRole("button", { name: "Playlists" }));
-    // `getAllByText`: MarqueeText renders a hidden measuring copy next to the
-    // real one, so every name in this table matches twice.
-    await waitFor(() => expect(view.getAllByText("Warmup").length).toBeGreaterThan(0));
+    await user.click(library.getByRole("button", { name: "Playlists" }));
 
-    // Everything not in a playlist has somewhere to be, even when empty.
-    expect(view.getAllByText(/Unsorted/).length).toBeGreaterThan(0);
-
-    // Groups open on click, like every other grouping in this table.
-    await user.click(view.getAllByText("Warmup")[0]);
-
-    const rows = view.getAllByRole("row");
+    // The first playlist opens by itself: "playlists exist but none is picked"
+    // is a state with nothing to say, so it never reaches the screen.
+    const rows = await trackRows(container);
     const beta = rows.find((r) => within(r).queryByTitle(B));
     expect(beta).toBeTruthy();
-    // First in the playlist, whatever the table would have sorted it as.
+    // First in the playlist, whatever the library would have sorted it as.
     expect(beta!.textContent).toContain("1");
   });
 
   it("edits a playlist in the dialog, and writes the order it shows", async () => {
-    // The dialog is a second view onto the same operations the row actions use,
-    // so what has to hold is the wiring: the menu opens it, the whole stored
-    // playlist is in it — the table can only show what the filter left over —
-    // and a step writes the new order through `playlist_set`.
+    // What has to hold is the wiring: the whole stored playlist is on screen —
+    // the table could only ever show what the filter left over, which is why
+    // this used to need a dialog — and a step writes the new order through
+    // `playlist_set`.
     const user = userEvent.setup();
     fake.state.playlists = [
       { id: 1, name: "Warmup", created_ms: 1, updated_ms: 1 },
@@ -158,21 +161,15 @@ describe("playlists", () => {
     fake.state.playlistContents = { 1: [A, B] };
 
     const { container } = render(<App />);
-    const view = await ready(container);
+    const library = await ready(container);
 
-    await user.click(view.getByRole("button", { name: "Playlists" }));
-    await waitFor(() =>
-      expect(view.getAllByText("Warmup").length).toBeGreaterThan(0),
-    );
-    await user.click(view.getByLabelText("Playlist actions"));
-    await user.click(screen.getByRole("button", { name: "Edit…" }));
+    await user.click(library.getByRole("button", { name: "Playlists" }));
+    const view = playlistsView(container);
 
-    // Both entries, not just the ones a filter would have left: the dialog
-    // shows the playlist, not the table.
-    expect(overlay().getByLabelText("Playlist name")).toHaveValue("Warmup");
-    expect(screen.getAllByRole("listitem")).toHaveLength(2);
+    expect(await view.findByLabelText("Playlist name")).toHaveValue("Warmup");
+    expect(await trackRows(container)).toHaveLength(2);
 
-    await user.click(screen.getByLabelText("Move “Beta” up"));
+    await user.click(view.getByLabelText("Move “Beta” up"));
 
     await waitFor(() => expect(fake.called("playlist_set")).toBe(true));
     const [set] = fake.argsFor("playlist_set");
@@ -180,10 +177,11 @@ describe("playlists", () => {
   });
 
   it("takes a track out of the playlist, but not off the disk", async () => {
-    // Two destructive buttons a few pixels apart, telling "remove from this
-    // playlist" from "move the file to the trash" by their icon alone. A
-    // playlist row offers the first one only; deleting a file is what the
-    // library views are for.
+    // Two destructive buttons a few pixels apart would tell "remove from this
+    // playlist" from "move the file to the trash" by their icon alone. The
+    // playlists view offers the first one only; deleting a file is what the
+    // library is for, and the separation is now a matter of which screen you
+    // are on rather than of which row.
     const user = userEvent.setup();
     fake.state.playlists = [
       { id: 1, name: "Warmup", created_ms: 1, updated_ms: 1 },
@@ -191,34 +189,28 @@ describe("playlists", () => {
     fake.state.playlistContents = { 1: [A] };
 
     const { container } = render(<App />);
-    const view = await ready(container);
+    const library = await ready(container);
 
-    await user.click(view.getByRole("button", { name: "Playlists" }));
-    await waitFor(() =>
-      expect(view.getAllByText("Warmup").length).toBeGreaterThan(0),
-    );
-    await user.click(view.getAllByText("Warmup")[0]);
+    await user.click(library.getByRole("button", { name: "Playlists" }));
 
-    const row = view
-      .getAllByRole("row")
-      .find((r) => within(r).queryByTitle(A) && within(r).queryByLabelText("Remove from playlist"));
-    expect(row).toBeTruthy();
-    expect(within(row!).queryByLabelText("Delete track")).toBeNull();
+    const row = (await trackRows(container))[0];
+    expect(within(row).queryByLabelText("Delete track")).toBeNull();
 
     // And the one that is there does what it says: the playlist changes, the
     // file is not touched.
-    await user.click(within(row!).getByLabelText("Remove from playlist"));
+    await user.click(within(row).getByLabelText(/^Remove/));
     await waitFor(() => expect(fake.called("playlist_set")).toBe(true));
     expect(fake.called("delete_files")).toBe(false);
   });
 
-  it("draws a track that is in two playlists as two rows", async () => {
-    // One flat array of rows feeds one tbody, so both groups push a row for the
-    // same track. Keyed by the track alone they are the same key: React warns
-    // and reconciles them into a single row, and the position cell and the drag
-    // handlers then belong to whichever group happened to win.
+  it("keeps a track in two playlists, each with its own place", async () => {
+    // Membership is many-to-many and the position belongs to the pair, not to
+    // the track. This used to be one screen showing the same track twice, which
+    // made it a React key hazard as well — one flat array of rows fed one
+    // tbody, and keyed by the track alone the two rows reconciled into one. A
+    // view shows one playlist at a time, so that half cannot happen any more
+    // and the claim underneath it is checked directly.
     const user = userEvent.setup();
-    const warn = vi.spyOn(console, "error").mockImplementation(() => {});
     fake.state.playlists = [
       { id: 1, name: "Warmup", created_ms: 1, updated_ms: 1 },
       { id: 2, name: "Peak", created_ms: 2, updated_ms: 2 },
@@ -226,24 +218,24 @@ describe("playlists", () => {
     fake.state.playlistContents = { 1: [A], 2: [B, A] };
 
     const { container } = render(<App />);
-    const view = await ready(container);
-    await user.click(view.getByRole("button", { name: "Playlists" }));
-    await waitFor(() =>
-      expect(view.getAllByText("Warmup").length).toBeGreaterThan(0),
-    );
-    await user.click(view.getAllByText("Warmup")[0]);
-    await user.click(view.getAllByText("Peak")[0]);
+    const library = await ready(container);
+    await user.click(library.getByRole("button", { name: "Playlists" }));
+    const view = playlistsView(container);
 
-    const rows = view.getAllByRole("row").filter((r) => within(r).queryByTitle(A));
-    expect(rows).toHaveLength(2);
-    // Each row carries its own group's number: first in one, second in the other.
-    const numbers = rows.map((r) => r.textContent?.trim().charAt(0));
-    expect(new Set(numbers)).toEqual(new Set(["1", "2"]));
-    expect(
-      warn.mock.calls.some((c) => String(c[0]).includes("same key")),
-      "React complained about duplicate keys",
-    ).toBe(false);
-    warn.mockRestore();
+    const placeOfA = async () => {
+      const rows = await trackRows(container);
+      const row = rows.find((r) => within(r).queryByTitle(A));
+      expect(row).toBeTruthy();
+      return row!.textContent?.trim().charAt(0);
+    };
+
+    await user.click(
+      await view.findByRole("button", { name: /Warmup/ }),
+    );
+    expect(await placeOfA()).toBe("1");
+
+    await user.click(view.getByRole("button", { name: /Peak/ }));
+    expect(await placeOfA()).toBe("2");
   });
 
   it("exports the library where the save dialog points", async () => {
@@ -297,18 +289,19 @@ describe("playlists", () => {
     fake.fail("playlist_set", "database is locked");
 
     const { container } = render(<App />);
-    const view = await ready(container);
-    await user.click(view.getByRole("button", { name: "Playlists" }));
-    await waitFor(() => expect(view.getAllByText("Set").length).toBeGreaterThan(0));
-    await user.click(view.getAllByText("Set")[0]);
+    const library = await ready(container);
+    await user.click(library.getByRole("button", { name: "Playlists" }));
 
-    await user.click((await view.findAllByRole("button", { name: "Move down" }))[0]);
+    // The first row, moved down: the write fails, so the order must come back.
+    const first = (await trackRows(container))[0];
+    await user.click(within(first).getByLabelText(/^Move .* down/));
 
     await waitFor(() => expect(fake.called("playlist_set")).toBe(true));
     // Re-read, and the order is the one that was there all along.
-    await waitFor(() => {
-      const rows = view.getAllByRole("row").filter((r) => within(r).queryByTitle(A));
-      expect(rows[0].textContent?.trim().charAt(0)).toBe("1");
+    await waitFor(async () => {
+      const rows = await trackRows(container);
+      const row = rows.find((r) => within(r).queryByTitle(A));
+      expect(row?.textContent?.trim().charAt(0)).toBe("1");
     });
     expect(unhandled).not.toHaveBeenCalled();
     window.removeEventListener("unhandledrejection", unhandled);
@@ -320,19 +313,20 @@ describe("playlists", () => {
     fake.state.playlistContents = { 1: [A] };
 
     const { container } = render(<App />);
-    const view = await ready(container);
-    await user.click(view.getByRole("button", { name: "Playlists" }));
+    const library = await ready(container);
+    await user.click(library.getByRole("button", { name: "Playlists" }));
+    const view = playlistsView(container);
 
-    await user.click(await view.findByRole("button", { name: "Playlist actions" }));
-    await user.click(screen.getByRole("button", { name: "Rename" }));
-    const field = screen.getByLabelText("Playlist name");
+    const field = await view.findByLabelText("Playlist name");
     await user.clear(field);
     await user.type(field, "First{Enter}");
 
     await waitFor(() => expect(fake.called("playlist_rename")).toBe(true));
     expect(fake.argsFor("playlist_rename")[0]).toEqual({ id: 1, name: "First" });
-    // Re-read, not assumed: the head shows what the backend now holds.
-    await waitFor(() => expect(view.getAllByText("First").length).toBeGreaterThan(0));
+    // Re-read, not assumed: the sidebar shows what the backend now holds.
+    await waitFor(() =>
+      expect(view.getByRole("button", { name: /First/ })).toBeInTheDocument(),
+    );
   });
 
   it("deletes a playlist only after asking, and keeps the tracks", async () => {
@@ -341,20 +335,23 @@ describe("playlists", () => {
     fake.state.playlistContents = { 1: [A] };
 
     const { container } = render(<App />);
-    const view = await ready(container);
-    await user.click(view.getByRole("button", { name: "Playlists" }));
+    const library = await ready(container);
+    await user.click(library.getByRole("button", { name: "Playlists" }));
+    const view = playlistsView(container);
 
-    await user.click(await view.findByRole("button", { name: "Playlist actions" }));
-    await user.click(screen.getByRole("button", { name: "Delete" }));
+    await user.click(await view.findByRole("button", { name: "Delete playlist" }));
     // One click is not enough — the second names what is about to go.
     expect(fake.called("playlist_delete")).toBe(false);
-    await user.click(screen.getByRole("button", { name: /Delete “Gone”/ }));
+    await user.click(view.getByRole("button", { name: /Delete “Gone”/ }));
 
     await waitFor(() => expect(fake.called("playlist_delete")).toBe(true));
     // Nothing was deleted from disk, and the track is still in the library —
-    // seen from Flat, because the group it used to sit in is gone.
+    // asked of the library itself, which is where a track lives whether or not
+    // any playlist does.
     expect(fake.called("delete_files")).toBe(false);
-    await user.click(view.getByRole("button", { name: "Flat" }));
-    await waitFor(() => expect(view.getByTitle(A)).toBeInTheDocument());
+    await user.click(view.getByRole("button", { name: "Library" }));
+    await waitFor(() =>
+      expect(libraryView(container).getByTitle(A)).toBeInTheDocument(),
+    );
   });
 });
