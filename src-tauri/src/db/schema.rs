@@ -17,6 +17,7 @@ use super::DbResult;
 /// start. Only changes that transform or drop existing data need a step in
 /// [`super::migrate`].
 ///
+/// - 12: `cue_points`
 /// - 11: `grid_edits`
 /// - 10: `tracks.grid_absent_at`
 /// - 9: `tracks.beat_offset_secs`, `tracks.beat_confidence`; `playlists`,
@@ -29,7 +30,7 @@ use super::DbResult;
 /// - 3: `undo_entries`
 /// - 2: `dismissed_groups`
 /// - 1: initial
-pub const SCHEMA_VERSION: i64 = 11;
+pub const SCHEMA_VERSION: i64 = 12;
 
 /// Key under which the schema version lives in `schema_meta`.
 pub const KEY_SCHEMA_VERSION: &str = "schema_version";
@@ -231,6 +232,50 @@ CREATE TABLE IF NOT EXISTS grid_edits (
     CHECK (downbeat BETWEEN 1 AND 4),
     CHECK (bpm > 0)
 );
+
+-- Marks on a track: a position, and one field that says which kind.
+--
+-- Its own table rather than columns on `tracks`, for the reason `grid_edits` is
+-- its own table and one more: a track has one beat grid but any number of
+-- marks. Like that one it is user data a rescan must not be able to reach, and
+-- it is keyed the same way.
+--
+-- `num` is the single field the two kinds differ by, and it is spelled the way
+-- the Rekordbox export spells it so nothing has to be translated on the way
+-- out: -1 is a memory cue, 0..7 are the hot cues A..H. `(path, num)` cannot be
+-- the primary key, because every memory cue is -1 and there may be any number
+-- of them — hence `ordinal`, which is dense and in time order within one track,
+-- the same idea as `playlist_items.position`. The write replaces the whole list
+-- for a track.
+--
+-- The position is absolute seconds and not a beat index. Three reasons:
+-- `<POSITION_MARK Start>` wants seconds, the waveform draws seconds, and a
+-- track with no beat grid still has to be able to carry a mark. Whether a mark
+-- sits *on* the grid is derived on read, never stored.
+CREATE TABLE IF NOT EXISTS cue_points (
+    path          TEXT    NOT NULL REFERENCES tracks(path) ON DELETE CASCADE,
+    ordinal       INTEGER NOT NULL,
+    num           INTEGER NOT NULL,
+    position_secs REAL    NOT NULL,
+    -- Always a string, never NULL: Rekordbox writes `Name=""` for an unnamed
+    -- mark, and a NULL here would only be a second way to say the same thing.
+    name          TEXT    NOT NULL DEFAULT '',
+    -- 0xRRGGBB, or NULL where the mark has no colour — every memory cue, and a
+    -- hot cue nobody has coloured. One integer rather than three columns: the
+    -- export splits it, the UI joins it, and a palette change then costs no
+    -- schema step. This is the one colour in the app that is not a token; see
+    -- the Borrowed-Colour Exception in `DESIGN.md`.
+    colour        INTEGER,
+    created_ms    INTEGER NOT NULL,
+    PRIMARY KEY (path, ordinal),
+    CHECK (num BETWEEN -1 AND 7),
+    CHECK (position_secs >= 0)
+);
+
+-- One mark per hot cue letter, per track. Partial, because `num = -1` is the
+-- memory cue and there may be any number of those.
+CREATE UNIQUE INDEX IF NOT EXISTS cue_points_hot_slot
+    ON cue_points(path, num) WHERE num >= 0;
 
 CREATE TABLE IF NOT EXISTS duplicate_groups (
     id      TEXT PRIMARY KEY,

@@ -17,8 +17,8 @@ use crate::metadata::read::read_metadata;
 use crate::metadata::{artwork, suggest, write};
 use crate::models::{
     BandcampAccount, BandcampDownloadResult, BandcampItem, ConvertJob, ConvertOptions,
-    ConvertResult, CoverInput, DeleteResult, DupCandidate, DuplicateGroup, EventLevel, EventLog,
-    GridEdit, MetadataSuggestions,
+    ConvertResult, CoverInput, CuePoint, DeleteResult, DupCandidate, DuplicateGroup, EventLevel,
+    EventLog, GridEdit, MetadataSuggestions,
     RelocateResult, SkippedFile, TrackAnalysis, UndoEntry, WriteMetadataItem,
 };
 
@@ -1689,6 +1689,60 @@ pub fn grid_edit_clear(app: AppHandle, paths: Vec<String>) -> AppResult<()> {
     Ok(())
 }
 
+/// Every mark on one track, in time order.
+#[tauri::command]
+pub fn cues_load(app: AppHandle, path: String) -> AppResult<Vec<CuePoint>> {
+    let database = db::require(&app)?;
+    let conn = database.conn()?;
+    Ok(db::load_cue_points(&conn, &path)?)
+}
+
+/// Replaces every mark on a track with exactly this list.
+///
+/// Whole-list, never a diff, the way `playlist_set` is: the order is the
+/// payload. No event — a mark is visible on the waveform the instant it is set,
+/// and a message per mark would be noise.
+#[tauri::command]
+pub fn cues_set(app: AppHandle, path: String, cues: Vec<CuePoint>) -> AppResult<()> {
+    check_cues(&cues)?;
+    let database = db::require(&app)?;
+    let mut conn = database.conn()?;
+    Ok(db::set_cue_points(&mut conn, &path, &cues)?)
+}
+
+/// What a set of marks has to be before it is stored.
+///
+/// Its own function so it can be tested without a window, the same as
+/// [`check_grid`]. The values being checked are the ones that leave the app:
+/// `num` becomes `Num` in the Rekordbox export and a player reads it, and a
+/// position that is not a position would draw a mark nowhere. The schema
+/// carries the range and the one-letter-per-track rule as constraints too,
+/// because `set_cue_points` is reachable without coming through here.
+fn check_cues(cues: &[CuePoint]) -> AppResult<()> {
+    let mut letters = std::collections::HashSet::new();
+    for cue in cues {
+        if !(-1..=7).contains(&cue.num) {
+            return Err(AppError::Probe(format!(
+                "a cue is -1 for a memory cue or 0 to 7 for a hot cue, not {}",
+                cue.num
+            )));
+        }
+        if !cue.position_secs.is_finite() || cue.position_secs < 0.0 {
+            return Err(AppError::Probe(
+                "a cue's position is a place in the track".into(),
+            ));
+        }
+        // One mark per hot cue letter. Memory cues are all `-1` and may repeat.
+        if cue.num >= 0 && !letters.insert(cue.num) {
+            return Err(AppError::Probe(format!(
+                "hot cue {} is set twice on the same track",
+                cue.num
+            )));
+        }
+    }
+    Ok(())
+}
+
 /// The last duplicate result.
 #[tauri::command]
 pub fn duplicates_load(app: AppHandle) -> AppResult<Vec<serde_json::Value>> {
@@ -2768,6 +2822,55 @@ mod tests {
             }
             // Zero is a position: the first beat of a track can be at zero.
             assert!(check_grid(&GridEdit { offset_secs: 0.0, ..edit() }).is_ok());
+        }
+    }
+
+    mod cues {
+        use super::*;
+
+        fn cue(num: i64, position_secs: f64) -> CuePoint {
+            CuePoint {
+                num,
+                position_secs,
+                name: String::new(),
+                colour: None,
+            }
+        }
+
+        #[test]
+        fn both_kinds_are_stored() {
+            // -1 is a memory cue and there may be any number of them; 0..7 are
+            // the eight hot cue letters.
+            let cues: Vec<CuePoint> = (0..=7).map(|n| cue(n, n as f64)).collect();
+            assert!(check_cues(&cues).is_ok());
+            assert!(check_cues(&[cue(-1, 1.0), cue(-1, 2.0), cue(-1, 3.0)]).is_ok());
+            assert!(check_cues(&[]).is_ok());
+        }
+
+        #[test]
+        fn a_mark_outside_the_two_kinds_is_refused() {
+            // `Num` is read by a player. A -2 or an 8 is a mark it cannot place.
+            for num in [-2, 8, 99] {
+                assert!(check_cues(&[cue(num, 1.0)]).is_err());
+            }
+        }
+
+        #[test]
+        fn one_hot_cue_letter_per_track() {
+            // Two marks on the same button is a state no player can represent,
+            // and the schema's partial index says the same thing.
+            assert!(check_cues(&[cue(3, 1.0), cue(3, 2.0)]).is_err());
+            // While memory cues repeat by definition.
+            assert!(check_cues(&[cue(-1, 1.0), cue(-1, 2.0)]).is_ok());
+        }
+
+        #[test]
+        fn a_position_that_is_not_one_is_refused() {
+            for at in [-1.0, f64::NAN, f64::INFINITY] {
+                assert!(check_cues(&[cue(0, at)]).is_err());
+            }
+            // Zero is a position: a mark on the first sample is a mark.
+            assert!(check_cues(&[cue(0, 0.0)]).is_ok());
         }
     }
 

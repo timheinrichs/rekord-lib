@@ -319,6 +319,33 @@ is never next to a green that means "that worked".
 gradient, no glow — including as a skeleton shimmer, which is why placeholders
 pulse their opacity instead.
 
+**The Borrowed-Colour Exception**, and it is the only one. A colour the app did
+not choose, and which a *device* will show back to the user, is **data** — it is
+neither brand nor verdict, and rendering it in violet would be an app that
+disagrees with the machine it is preparing files for. Today there is exactly one
+such value: a hot cue's colour, which comes from Rekordbox's own fixed palette
+and is what a CDJ lights the button with. It is stored as the number the format
+carries, drawn as that number, and it is the only colour in the app that is not
+a token.
+
+Three conditions, all of which have to hold before anything else claims this:
+
+- **It is round-tripped, not invented.** The app reads it from a file or writes
+  it into one; it never picks a hue. A palette we chose is a second accent
+  however it is justified.
+- **It carries no meaning of its own.** It must not be read as a status — see
+  the Semantic Colour Rule, which is not suspended by this. Two cues in
+  different colours are two cues, not a good one and a bad one.
+- **It is never the only difference.** A hot cue and a memory cue are told apart
+  by *shape*; the colour is on top. An uncoloured hot cue next to a memory cue
+  must still read as the other kind, and somebody who cannot see the difference
+  loses nothing.
+
+The values themselves are recorded in `docs/CUES.md` alongside the export they
+were read off, for the same reason `UNESCAPED` in `export/rekordbox.rs` records
+its 2219 locations: a palette guessed from a screenshot is a palette that is
+wrong in a way nobody can check.
+
 **The Opacity Rule.** Never express *disabled* with `opacity`. Opacity
 multiplies with whatever colour the content already carries, so the same state
 lands on a different grey in every control. Say it in colour: a filled control

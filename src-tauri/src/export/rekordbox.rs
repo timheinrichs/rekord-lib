@@ -227,15 +227,30 @@ fn track_xml(
         Some(g) => (Some(g.offset_secs), g.downbeat),
         None => (t.beat_offset_secs.map(f64::from), 1),
     };
-    match (md.bpm, offset) {
-        (Some(bpm), Some(offset)) if bpm > 0.0 => {
-            line.push_str(">\n");
-            line.push_str(&format!(
+
+    // Children collected before the decision, rather than the decision being
+    // made from the grid. For two releases the grid was the only child a track
+    // could have, so "does this have a tempo" and "does this element have
+    // contents" were the same question. Cue points (A4) make them different: a
+    // track can carry marks and no grid at all, and a `<TRACK/>` that closed
+    // itself because the phase was missing would silently drop them.
+    let mut children: Vec<String> = Vec::new();
+    if let (Some(bpm), Some(offset)) = (md.bpm, offset) {
+        if bpm > 0.0 {
+            children.push(format!(
                 "      <TEMPO Inizio=\"{offset:.3}\" Bpm=\"{bpm:.2}\" Metro=\"4/4\" Battito=\"{battito}\"/>\n",
             ));
-            line.push_str("    </TRACK>\n");
         }
-        _ => line.push_str("/>\n"),
+    }
+
+    if children.is_empty() {
+        line.push_str("/>\n");
+    } else {
+        line.push_str(">\n");
+        for child in &children {
+            line.push_str(child);
+        }
+        line.push_str("    </TRACK>\n");
     }
     line
 }

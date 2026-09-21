@@ -299,6 +299,27 @@ pub struct GridEdit {
     pub edited_ms: i64,
 }
 
+/// One mark on a track.
+///
+/// The two kinds a player tells apart are one field: `num` is `-1` for a memory
+/// cue — the unlettered marks the cue buttons step through — and `0..=7` for
+/// the hot cues A to H, the lettered ones a button jumps straight to. Spelled
+/// the way the Rekordbox export spells it, so nothing is translated on the way
+/// out.
+///
+/// The position is absolute seconds, not a beat index: a track with no grid
+/// still carries marks, and whether a mark sits on a beat is derived.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct CuePoint {
+    /// -1 = memory cue, 0..=7 = hot cue A..H.
+    pub num: i64,
+    pub position_secs: f64,
+    /// Empty rather than absent: Rekordbox writes `Name=""` for an unnamed mark.
+    pub name: String,
+    /// `0xRRGGBB`, or `None` for a mark with no colour of its own.
+    pub colour: Option<u32>,
+}
+
 /// A playlist, without its contents.
 ///
 /// The tracks are a separate table and a separate call: the sidebar-shaped

@@ -121,6 +121,8 @@ reachable through this API and no view passes `true`. Only `forceBpm` is, from
 | `grid_edits_load` | — | `AppResult<Record<string, GridEdit>>` |
 | `grid_edit_set` | `path`, `edit` | `AppResult<()>` |
 | `grid_edit_clear` | `paths` | `AppResult<()>` |
+| `cues_load` | `path` | `AppResult<CuePoint[]>` |
+| `cues_set` | `path`, `cues` | `AppResult<()>` |
 
 `library_delete` forgets rows; it does not touch files. Deleting a file is
 `delete_files`. `library_relocate` re-points stored paths at a moved folder and
@@ -139,6 +141,14 @@ table rather than in a `tracks` column the next rescan rewrites — and
 last found, which is what *reset to detected* goes back to. `grid_edit_set`
 refuses a `downbeat` outside 1..4 instead of storing it: it is written into the
 Rekordbox export as `Battito`, and the players read it.
+
+`cues_set` replaces a track's marks with exactly the list it is given, in that
+order — never a diff, for the same reason `playlist_set` is not one. The two
+kinds a player tells apart are the single `num` field: `-1` is a memory cue and
+may repeat, `0`–`7` are the hot cues A–H and each letter is used at most once,
+which the command refuses and the schema's partial index enforces. A mark is
+visible on the waveform the moment it is set, so neither command announces
+anything — a message per mark would be noise.
 
 `playlist_set` replaces a playlist's contents with exactly the list it is given,
 in that order — never a diff. The order is the payload, and `src/lib/playlists.ts`

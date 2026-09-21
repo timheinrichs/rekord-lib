@@ -21,7 +21,7 @@ use tauri::{AppHandle, Manager, State};
 use crate::audio::compat;
 use crate::error::{AppError, AppResult};
 use crate::models::{
-    GridEdit, Playlist,
+    CuePoint, GridEdit, Playlist,
     AppEvent, AudioInfo, EventLevel, RelocateResult, TrackAnalysis, TrackMetadata, UndoEntry,
     WriteMetadataItem,
 };
@@ -429,8 +429,8 @@ fn relocated_path(path: &str, old_dir: &str, new_dir: &str) -> Option<String> {
 /// for that path exists yet; everything else is counted as skipped and left
 /// alone, because this runs precisely when the user is trying to recover data.
 /// Foreign keys are deferred for the transaction: `fingerprints.path`,
-/// `waveforms.path`, `grid_edits.path` and `playlist_items.path` all reference
-/// `tracks(path)`, so
+/// `waveforms.path`, `grid_edits.path`, `cue_points.path` and
+/// `playlist_items.path` all reference `tracks(path)`, so
 /// updating the parent key would otherwise fail before the child rows can
 /// follow. **Every one of them has to be listed here.** A child left behind
 /// does not fail where it was forgotten — it fails at `COMMIT`, as a bare
@@ -465,6 +465,8 @@ pub fn relocate_tracks(
         let mut move_edit = tx.prepare("UPDATE edits SET path = ?2 WHERE path = ?1")?;
         let mut move_grid =
             tx.prepare("UPDATE grid_edits SET path = ?2 WHERE path = ?1")?;
+        let mut move_cues =
+            tx.prepare("UPDATE cue_points SET path = ?2 WHERE path = ?1")?;
         let mut move_member =
             tx.prepare("UPDATE playlist_items SET path = ?2 WHERE path = ?1")?;
 
@@ -482,6 +484,7 @@ pub fn relocate_tracks(
             move_waveform.execute(params![old_path, new_path])?;
             move_edit.execute(params![old_path, new_path])?;
             move_grid.execute(params![old_path, new_path])?;
+            move_cues.execute(params![old_path, new_path])?;
             move_member.execute(params![old_path, new_path])?;
             result.moved += 1;
         }
@@ -513,7 +516,9 @@ pub fn relocate_tracks(
 ///   foreign keys satisfied: they reference `tracks(path)`, which is being
 ///   rewritten under them.
 ///
-/// **What does move, and is the exception.** The hand-set `grid_edits` row. A
+/// **What does move, and is the exception.** The hand-set `grid_edits` row and
+/// the `cue_points` on the track — on a merge, only onto a target that has none
+/// of its own. A
 /// conversion resamples or re-containers the same music; it does not move a
 /// beat, and an anchor somebody placed by hand is worth more than the risk. The
 /// one case it gets wrong is a *lossy* source, where the decoder's priming can
@@ -558,6 +563,19 @@ pub fn replace_track(conn: &mut Connection, old_path: &str, new_path: &str) -> D
                 "UPDATE OR IGNORE grid_edits SET path = ?2 WHERE path = ?1",
                 params![old_path, new_path],
             )?;
+            // The marks move for the same reason, and the merge case needs more
+            // than `OR IGNORE`: two sets of marks interleaved under one
+            // `ordinal` would be a set neither user made, and it can break the
+            // one-mark-per-letter index. So the target's own marks win, and the
+            // old track's go with its row.
+            if taken {
+                tx.execute("DELETE FROM cue_points WHERE path = ?1", params![old_path])?;
+            } else {
+                tx.execute(
+                    "UPDATE cue_points SET path = ?2 WHERE path = ?1",
+                    params![old_path, new_path],
+                )?;
+            }
             if taken {
                 // Cascades: whatever memberships did not move, plus the caches.
                 tx.execute("DELETE FROM tracks WHERE path = ?1", params![old_path])?;
@@ -729,6 +747,67 @@ pub fn set_grid_edit(conn: &Connection, path: &str, edit: &GridEdit) -> DbResult
 pub fn clear_grid_edit(conn: &Connection, path: &str) -> DbResult<()> {
     conn.execute("DELETE FROM grid_edits WHERE path = ?1", params![path])?;
     Ok(())
+}
+
+// --- cue points --------------------------------------------------------------
+
+/// Every mark on one track, in time order.
+pub fn load_cue_points(conn: &Connection, path: &str) -> DbResult<Vec<CuePoint>> {
+    let mut stmt = conn.prepare(
+        "SELECT num, position_secs, name, colour FROM cue_points
+         WHERE path = ?1 ORDER BY ordinal",
+    )?;
+    let rows = stmt.query_map(params![path], |row| {
+        Ok(CuePoint {
+            num: row.get(0)?,
+            position_secs: row.get(1)?,
+            name: row.get(2)?,
+            colour: row.get::<_, Option<i64>>(3)?.map(|c| c as u32),
+        })
+    })?;
+    rows.collect()
+}
+
+/// Replaces every mark on a track with exactly this list, in this order.
+///
+/// Whole-list, never a diff — the same shape as [`set_playlist_paths`] and for
+/// the same reason: the order *is* the payload, and `ordinal` is an artefact of
+/// storing it rather than something a caller tracks. A track whose row has gone
+/// is forgiven, and nothing else is; see [`is_missing_track`] for why that
+/// distinction is drawn this narrowly.
+pub fn set_cue_points(
+    conn: &mut Connection,
+    path: &str,
+    cues: &[CuePoint],
+) -> DbResult<()> {
+    let tx = conn.transaction()?;
+    tx.execute("DELETE FROM cue_points WHERE path = ?1", params![path])?;
+    {
+        let mut insert = tx.prepare(
+            "INSERT INTO cue_points
+                 (path, ordinal, num, position_secs, name, colour, created_ms)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
+        )?;
+        let now = now_ms();
+        for (ordinal, cue) in cues.iter().enumerate() {
+            let written = insert.execute(params![
+                path,
+                ordinal as i64,
+                cue.num,
+                cue.position_secs,
+                cue.name,
+                cue.colour.map(|c| c as i64),
+                now,
+            ]);
+            if let Err(e) = written {
+                if is_missing_track(&e) {
+                    return Ok(());
+                }
+                return Err(e);
+            }
+        }
+    }
+    tx.commit()
 }
 
 // --- duplicate groups -------------------------------------------------------
@@ -1242,6 +1321,15 @@ mod tests {
             TRACK_COLUMN_COUNT,
             "TRACK_COLUMN_COUNT no longer matches TRACK_COLUMNS"
         );
+    }
+
+    fn cue(num: i64, position_secs: f64) -> CuePoint {
+        CuePoint {
+            num,
+            position_secs,
+            name: String::new(),
+            colour: None,
+        }
     }
 
     fn grid_edit(offset_secs: f64) -> GridEdit {
@@ -1943,6 +2031,132 @@ mod tests {
 
         delete_tracks(&mut conn, &["/lib/a.aiff".to_string()]).unwrap();
         assert!(load_grid_edits(&conn).unwrap().is_empty());
+    }
+
+    #[test]
+    fn a_track_keeps_its_marks_in_the_order_they_were_given() {
+        let db = Db::open_in_memory().unwrap();
+        let mut conn = db.0.lock().unwrap();
+        upsert_tracks(&mut conn, "/lib", &[record("/lib/a.aiff", None)]).unwrap();
+
+        set_cue_points(
+            &mut conn,
+            "/lib/a.aiff",
+            &[cue(0, 1.0), cue(-1, 2.0), cue(-1, 3.5), cue(7, 4.0)],
+        )
+        .unwrap();
+
+        let cues = load_cue_points(&conn, "/lib/a.aiff").unwrap();
+        assert_eq!(
+            cues.iter().map(|c| c.num).collect::<Vec<_>>(),
+            vec![0, -1, -1, 7]
+        );
+        // A memory cue repeats and a hot cue letter does not — the two kinds
+        // differ by that one field and by nothing else.
+        assert_eq!(cues[1].position_secs, 2.0);
+    }
+
+    #[test]
+    fn a_hot_cue_letter_cannot_be_used_twice_on_one_track() {
+        // The database holds this, not only the command: `set_cue_points` is a
+        // plain `pub fn`, and two marks on the same button is a state no player
+        // can represent.
+        let db = Db::open_in_memory().unwrap();
+        let mut conn = db.0.lock().unwrap();
+        upsert_tracks(&mut conn, "/lib", &[record("/lib/a.aiff", None)]).unwrap();
+
+        assert!(set_cue_points(&mut conn, "/lib/a.aiff", &[cue(3, 1.0), cue(3, 2.0)]).is_err());
+        // And nothing was left behind by the attempt.
+        assert!(load_cue_points(&conn, "/lib/a.aiff").unwrap().is_empty());
+    }
+
+    #[test]
+    fn writing_the_marks_again_replaces_them_whole() {
+        let db = Db::open_in_memory().unwrap();
+        let mut conn = db.0.lock().unwrap();
+        upsert_tracks(&mut conn, "/lib", &[record("/lib/a.aiff", None)]).unwrap();
+
+        set_cue_points(&mut conn, "/lib/a.aiff", &[cue(0, 1.0), cue(1, 2.0)]).unwrap();
+        set_cue_points(&mut conn, "/lib/a.aiff", &[cue(0, 9.0)]).unwrap();
+
+        let cues = load_cue_points(&conn, "/lib/a.aiff").unwrap();
+        assert_eq!(cues.len(), 1);
+        assert_eq!(cues[0].position_secs, 9.0);
+    }
+
+    #[test]
+    fn forgetting_a_track_takes_its_marks_with_it() {
+        let db = Db::open_in_memory().unwrap();
+        let mut conn = db.0.lock().unwrap();
+        upsert_tracks(&mut conn, "/lib", &[record("/lib/a.aiff", None)]).unwrap();
+        set_cue_points(&mut conn, "/lib/a.aiff", &[cue(0, 1.0)]).unwrap();
+
+        delete_tracks(&mut conn, &["/lib/a.aiff".to_string()]).unwrap();
+        assert!(load_cue_points(&conn, "/lib/a.aiff").unwrap().is_empty());
+    }
+
+    #[test]
+    fn a_rescan_does_not_touch_the_marks() {
+        // The same claim the hand-set grid rests on, and worth its own test for
+        // the same reason: the scan rewrites the whole `tracks` row, and these
+        // are in a table it cannot reach. An `INSERT OR REPLACE` introduced
+        // later would cascade every mark away in silence.
+        let db = Db::open_in_memory().unwrap();
+        let mut conn = db.0.lock().unwrap();
+        upsert_tracks(&mut conn, "/lib", &[record("/lib/a.aiff", Some(identity(7, 8)))])
+            .unwrap();
+        set_cue_points(&mut conn, "/lib/a.aiff", &[cue(0, 1.0), cue(-1, 2.0)]).unwrap();
+
+        upsert_tracks(&mut conn, "/lib", &[record("/lib/a.aiff", Some(identity(9, 10)))])
+            .unwrap();
+        invalidate_on_version_change(&conn, "9.9.9").unwrap();
+
+        assert_eq!(load_cue_points(&conn, "/lib/a.aiff").unwrap().len(), 2);
+    }
+
+    #[test]
+    fn a_replacing_conversion_carries_the_marks_but_never_merges_two_sets() {
+        let db = Db::open_in_memory().unwrap();
+        let mut conn = db.0.lock().unwrap();
+        upsert_tracks(&mut conn, "/lib", &[record("/lib/a.wav", None)]).unwrap();
+        set_cue_points(&mut conn, "/lib/a.wav", &[cue(0, 1.0)]).unwrap();
+
+        // Onto a path the library does not know: the marks come along, because
+        // a conversion re-encodes the same music.
+        assert!(replace_track(&mut conn, "/lib/a.wav", "/lib/a.aiff").unwrap());
+        assert_eq!(load_cue_points(&conn, "/lib/a.aiff").unwrap().len(), 1);
+
+        // Onto one it does, and which has marks of its own: those win. Two sets
+        // interleaved under one ordinal would be a set neither user made.
+        upsert_tracks(&mut conn, "/lib", &[record("/lib/b.wav", None)]).unwrap();
+        set_cue_points(&mut conn, "/lib/b.wav", &[cue(1, 5.0), cue(2, 6.0)]).unwrap();
+        assert!(replace_track(&mut conn, "/lib/b.wav", "/lib/a.aiff").unwrap());
+
+        let cues = load_cue_points(&conn, "/lib/a.aiff").unwrap();
+        assert_eq!(cues.len(), 1);
+        assert_eq!(cues[0].num, 0);
+        assert!(load_cue_points(&conn, "/lib/b.wav").unwrap().is_empty());
+    }
+
+    #[test]
+    fn a_v11_database_gains_the_cue_points_table() {
+        let conn = Connection::open_in_memory().unwrap();
+        conn.execute_batch(
+            "CREATE TABLE schema_meta (key TEXT PRIMARY KEY, value TEXT NOT NULL);
+             INSERT INTO schema_meta VALUES ('schema_version', '11');",
+        )
+        .unwrap();
+        schema::init(&conn).unwrap();
+        assert!(table_exists_for_test(&conn, "cue_points"));
+    }
+
+    fn table_exists_for_test(conn: &Connection, name: &str) -> bool {
+        conn.query_row(
+            "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?1",
+            params![name],
+            |_| Ok(()),
+        )
+        .is_ok()
     }
 
     #[test]

@@ -131,6 +131,35 @@ export interface GridEdit {
   edited_ms: number;
 }
 
+/**
+ * One mark on a track.
+ *
+ * The two kinds a player tells apart are one field: `num` is `-1` for a
+ * **memory cue** — the unlettered marks the cue buttons step through — and
+ * `0..7` for the **hot cues** A to H, the lettered ones a button jumps straight
+ * to. Spelled the way the Rekordbox export spells it, so nothing is translated
+ * on the way out.
+ *
+ * They are worth naming apart even though they differ by a number: a DJ sets
+ * them for different reasons, and a UI that offers "a cue" without saying which
+ * will reliably produce the other one.
+ */
+export interface CuePoint {
+  /** -1 = memory cue, 0..7 = hot cue A..H. */
+  num: number;
+  position_secs: number;
+  /** Empty rather than absent: Rekordbox writes `Name=""` for an unnamed mark. */
+  name: string;
+  /**
+   * `0xRRGGBB`, or `null` where the mark has no colour of its own.
+   *
+   * The one colour in the app that is not a token — it comes from the player's
+   * own palette and is what a CDJ lights the button with. See the
+   * Borrowed-Colour Exception in `DESIGN.md`.
+   */
+  colour: number | null;
+}
+
 export interface ConvertOptions {
   format: TargetFormat;
   bit_depth: number;

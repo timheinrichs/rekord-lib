@@ -1,5 +1,11 @@
 import { invoke } from "@tauri-apps/api/core";
-import type { GridEdit, RelocateResult, TrackAnalysis, TrackEdit } from "../types";
+import type {
+  CuePoint,
+  GridEdit,
+  RelocateResult,
+  TrackAnalysis,
+  TrackEdit,
+} from "../types";
 
 /**
  * The track database lives in SQLite in the Rust backend, not in the JSON
@@ -94,4 +100,20 @@ export function saveGridEdit(path: string, edit: GridEdit): Promise<void> {
 export function clearGridEdits(paths: string[]): Promise<void> {
   if (!paths.length) return Promise.resolve();
   return invoke("grid_edit_clear", { paths });
+}
+
+/** Every mark on one track, in time order. */
+export function loadCues(path: string): Promise<CuePoint[]> {
+  return invoke<CuePoint[]>("cues_load", { path });
+}
+
+/**
+ * Replaces every mark on a track with exactly this list.
+ *
+ * Whole-list, never a diff — the same contract `playlist_set` has, and for the
+ * same reason: the order is the payload, and the row numbering is an artefact
+ * of storing it.
+ */
+export function saveCues(path: string, cues: CuePoint[]): Promise<void> {
+  return invoke("cues_set", { path, cues });
 }

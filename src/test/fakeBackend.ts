@@ -43,6 +43,7 @@ import type {
   ConvertOptions,
   ConvertResult,
   DeleteResult,
+  CuePoint,
   DuplicateGroup,
   EventLevel,
   GridEdit,
@@ -70,6 +71,8 @@ export interface FakeState {
   edits: Record<string, TrackEdit>;
   /** Hand-set beat grids, keyed by path — the overlay, not the detected value. */
   gridEdits: Record<string, GridEdit>;
+  /** Cue points per track, in the order the backend would hand them back. */
+  cues: Record<string, CuePoint[]>;
   groups: DuplicateGroup[];
   events: AppEvent[];
   undo: UndoEntry[];
@@ -139,6 +142,7 @@ function defaults(): FakeState {
     tracks: [],
     edits: {},
     gridEdits: {},
+    cues: {},
     groups: [],
     events: [],
     undo: [],
@@ -436,6 +440,25 @@ export function installFakeBackend(
       state.gridEdits[args.path as string] = edit;
       return null;
     },
+    cues_load: (args) => state.cues[args.path as string] ?? [],
+    cues_set: (args) => {
+      const cues = (args.cues as CuePoint[]) ?? [];
+      // The command refuses these rather than storing them, and the schema says
+      // the same: `num` is read by a player, and one button cannot hold two
+      // marks.
+      const letters = new Set<number>();
+      for (const cue of cues) {
+        if (cue.num < -1 || cue.num > 7) {
+          throw new Error(`a cue is -1 for a memory cue or 0 to 7, not ${cue.num}`);
+        }
+        if (cue.num >= 0 && letters.has(cue.num)) {
+          throw new Error(`hot cue ${cue.num} is set twice on the same track`);
+        }
+        if (cue.num >= 0) letters.add(cue.num);
+      }
+      state.cues[args.path as string] = cues;
+      return null;
+    },
     grid_edit_clear: (args) => {
       for (const path of (args.paths as string[]) ?? []) {
         delete state.gridEdits[path];
@@ -711,6 +734,8 @@ export function installFakeBackend(
     "grid_edits_load",
     "grid_edit_set",
     "grid_edit_clear",
+    "cues_load",
+    "cues_set",
     "duplicates_load",
     "duplicates_save",
     "duplicates_dismiss",

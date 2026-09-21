@@ -162,6 +162,8 @@ pub fn run() {
             commands::grid_edits_load,
             commands::grid_edit_set,
             commands::grid_edit_clear,
+            commands::cues_load,
+            commands::cues_set,
             commands::duplicates_load,
             commands::duplicates_save,
             commands::duplicates_dismiss,
