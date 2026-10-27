@@ -7,6 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/)
 (`MAJOR.MINOR.PATCH`). As long as the version is at `0.x`, MINOR bumps may
 contain incompatible changes.
 
+## [0.11.2] - 2026-10-27
+
+### Security
+- **The Bandcamp unpacker reads less, and a newer library does it.** `zip`
+  moves from 2.4.2 to 9.1.2 for three advisories in its `extract` function
+  (RUSTSEC-2026-0367, 0368, 0369: kept SUID bits, and symlinks that point or
+  write outside the target folder). The app never called that function — it
+  unpacks an album entry by entry, skips links and applies no permissions — so
+  it was not exposed, but it no longer depends on a version that is.
+- At the same time the unpacker lost every compression method a Bandcamp album
+  does not use. It still reads stored and deflated entries; bzip2, LZMA, XZ,
+  PPMd, Deflate64, Zstandard and AES-encrypted entries are refused instead of
+  decoded. Every one of those was a decoder running over a file from the
+  internet for no reason, and Zstandard alone carried fourteen advisories of its
+  own (RUSTSEC-2026-0391, 0395 … 0406, 0410), which are gone with it.
+
 ## [0.11.1] - 2026-10-27
 
 ### Security
@@ -1157,6 +1173,7 @@ tool for a CDJ/XDJ- and Rekordbox-compatible library.
   ffmpeg/ffprobe sidecar, first analysis/conversion pipeline.
 
 [Unreleased]: https://github.com/timheinrichs/rekord-lib/compare/v0.10.0...HEAD
+[0.11.2]: https://github.com/timheinrichs/rekord-lib/compare/v0.11.1...v0.11.2
 [0.11.1]: https://github.com/timheinrichs/rekord-lib/compare/v0.11.0...v0.11.1
 [0.11.0]: https://github.com/timheinrichs/rekord-lib/compare/v0.10.0...v0.11.0
 [0.10.0]: https://github.com/timheinrichs/rekord-lib/compare/v0.9.3...v0.10.0
