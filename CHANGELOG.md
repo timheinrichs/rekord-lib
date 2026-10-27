@@ -7,6 +7,46 @@ and this project adheres to [Semantic Versioning](https://semver.org/)
 (`MAJOR.MINOR.PATCH`). As long as the version is at `0.x`, MINOR bumps may
 contain incompatible changes.
 
+## [0.11.2] - 2026-10-27
+
+### Security
+- **The Bandcamp unpacker reads less, and a newer library does it.** `zip`
+  moves from 2.4.2 to 9.1.2 for three advisories in its `extract` function
+  (RUSTSEC-2026-0367, 0368, 0369: kept SUID bits, and symlinks that point or
+  write outside the target folder). The app never called that function — it
+  unpacks an album entry by entry, skips links and applies no permissions — so
+  it was not exposed, but it no longer depends on a version that is.
+- At the same time the unpacker lost every compression method a Bandcamp album
+  does not use. It still reads stored and deflated entries; bzip2, LZMA, XZ,
+  PPMd, Deflate64, Zstandard and AES-encrypted entries are refused instead of
+  decoded. Every one of those was a decoder running over a file from the
+  internet for no reason, and Zstandard alone carried fourteen advisories of its
+  own (RUSTSEC-2026-0391, 0395 … 0406, 0410), which are gone with it.
+
+## [0.11.1] - 2026-10-27
+
+### Security
+- **The TLS stack, patched again.** `rustls` moves from 0.23.45 to 0.23.46 for
+  four advisories (RUSTSEC-2026-0346 … 0349) — among them an unauthenticated
+  ServerHello that could downgrade later connections to classical key exchange,
+  and a compressed certificate that could allocate up to 1 GiB before anything
+  was authenticated. `rustls-webpki` (0.103.16) and the bundled root
+  certificates (`webpki-roots` 1.0.11) follow, so the distrusted emSign
+  intermediates are no longer accepted (RUSTSEC-2026-0381, 0382, 0383). That is
+  the transport under every network path the app has: the metadata lookups, the
+  Bandcamp download, and the updater.
+- `tokio` moves to 1.54.1 for RUSTSEC-2026-0386, an I/O-safety hole in
+  `AsyncFd`'s constructors. The app never builds an `AsyncFd`, so this is
+  hygiene rather than a fix. `quinn-proto` (0.11.19, five advisories) is the
+  same: it is in the lockfile but not compiled for macOS.
+
+### Changed
+- **Three more Linux-only notices accepted.** `zbus_names`, `zvariant` and
+  `zvariant_derive` are reported unmaintained; they reach the lockfile through
+  the Linux side of the opener plugin and are not in the macOS tree. They join
+  the accepted list in `src-tauri/.cargo/audit.toml` with that evidence and the
+  condition that reopens them.
+
 ## [0.11.0] - 2026-09-21
 
 ### Added
@@ -1133,6 +1173,9 @@ tool for a CDJ/XDJ- and Rekordbox-compatible library.
   ffmpeg/ffprobe sidecar, first analysis/conversion pipeline.
 
 [Unreleased]: https://github.com/timheinrichs/rekord-lib/compare/v0.10.0...HEAD
+[0.11.2]: https://github.com/timheinrichs/rekord-lib/compare/v0.11.1...v0.11.2
+[0.11.1]: https://github.com/timheinrichs/rekord-lib/compare/v0.11.0...v0.11.1
+[0.11.0]: https://github.com/timheinrichs/rekord-lib/compare/v0.10.0...v0.11.0
 [0.10.0]: https://github.com/timheinrichs/rekord-lib/compare/v0.9.3...v0.10.0
 [0.9.3]: https://github.com/timheinrichs/rekord-lib/compare/v0.9.2...v0.9.3
 [0.9.2]: https://github.com/timheinrichs/rekord-lib/compare/v0.9.1...v0.9.2

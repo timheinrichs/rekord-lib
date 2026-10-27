@@ -40,6 +40,22 @@ ignore = [
   "RUSTSEC-2024-0429",  # glib 0.18.5 — unsound VariantStrIter iterators
   "RUSTSEC-2026-0221",  # event-listener 5.4.1 — !Send tags cross threads
   "RUSTSEC-2024-0370",  # proc-macro-error 1.0.4 — unmaintained
+  # Added 2026-10-27 (issues #35–#37): the D-Bus stack, reached through
+  # tauri-plugin-opener's Linux side. Unmaintained, not vulnerable — and here,
+  # not compiled either.
+  "RUSTSEC-2026-0371",  # zbus_names 4.3.3 — unmaintained
+  "RUSTSEC-2026-0370",  # zvariant 5.13.0 — unmaintained
+  "RUSTSEC-2026-0372",  # zvariant_derive 5.13.0 — unmaintained
+  # Added 2026-10-27 (issues #29–#34): zip 4.6.1, a
+  # `cfg(target_os = "windows")` dependency of tauri-plugin-updater (2.10.1 here;
+  # the newest, 2.14, still resolves to 4.x). The app's own `zip` is 9.x, past
+  # all three, and never calls `extract()` anyway. Since the ids
+  # cannot be scoped to a version, this also hides them for a future 9.x
+  # regression — reopen when the updater moves off 4.x, and drop the entries
+  # then rather than leave them.
+  "RUSTSEC-2026-0367",  # zip 4.6.1 — SUID/SGID bits kept by extract()
+  "RUSTSEC-2026-0368",  # zip 4.6.1 — extract() creates escaping symlinks
+  "RUSTSEC-2026-0369",  # zip 4.6.1 — extract() chmods through symlinks
 
   # --- In the tree, unmaintained only, and no version fixes it ---------------
   # "Unmaintained" is not a vulnerability: it says the crate has no maintainer,

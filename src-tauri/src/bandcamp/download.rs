@@ -463,7 +463,10 @@ fn extract_zip_within(
         if !entry.is_file() || is_symlink {
             continue;
         }
-        let name = entry.name().to_string();
+        // A name the archive cannot decode is no name either.
+        let Ok(name) = entry.name().map(|n| n.to_string()) else {
+            continue;
+        };
         let Some(file_name) = Path::new(&name)
             .file_name()
             .and_then(|n| n.to_str())
@@ -877,6 +880,88 @@ mod tests {
         };
         let err = extract_zip_within(&archive, dir.path(), "Album", limits).unwrap_err();
         assert!(format!("{err}").contains("entries"), "got {err}");
+    }
+
+    #[test]
+    fn extract_zip_reads_stored_and_deflated_entries() {
+        // The two methods a Bandcamp album comes in, and the only two the
+        // `zip` features still decode.
+        let dir = tempfile::tempdir().unwrap();
+        let mut buf = Vec::new();
+        {
+            let mut zw = zip::ZipWriter::new(std::io::Cursor::new(&mut buf));
+            for (name, method) in [
+                ("01 Stored.flac", zip::CompressionMethod::Stored),
+                ("02 Deflated.flac", zip::CompressionMethod::Deflated),
+            ] {
+                let options = SimpleFileOptions::default().compression_method(method);
+                zw.start_file(name, options).unwrap();
+                zw.write_all(name.as_bytes()).unwrap();
+            }
+            zw.finish().unwrap();
+        }
+        let archive = dir.path().join("archive.part");
+        std::fs::write(&archive, buf).unwrap();
+
+        let files = extract_zip(&archive, dir.path(), "Album").unwrap();
+        assert_eq!(files.len(), 2);
+        for f in &files {
+            let name = Path::new(f).file_name().unwrap().to_str().unwrap();
+            assert_eq!(std::fs::read(f).unwrap(), name.as_bytes());
+        }
+    }
+
+    #[test]
+    fn extract_zip_refuses_a_codec_it_was_built_without() {
+        // A stored entry relabelled as bzip2 (method 12), in the local header
+        // and in the central directory. Decoding it is no longer compiled in,
+        // and an archive using it has to come back as an error — not a panic,
+        // and not the raw bytes written out as if they were the track.
+        let dir = tempfile::tempdir().unwrap();
+        let mut buf = Vec::new();
+        {
+            let mut zw = zip::ZipWriter::new(std::io::Cursor::new(&mut buf));
+            let options =
+                SimpleFileOptions::default().compression_method(zip::CompressionMethod::Stored);
+            zw.start_file("01 Song.flac", options).unwrap();
+            zw.write_all(b"audio").unwrap();
+            zw.finish().unwrap();
+        }
+        let mut relabelled = 0;
+        for (sig, offset) in [(b"PK\x03\x04", 8), (b"PK\x01\x02", 10)] {
+            let at = buf.windows(4).position(|w| w == sig).unwrap() + offset;
+            buf[at..at + 2].copy_from_slice(&12u16.to_le_bytes());
+            relabelled += 1;
+        }
+        assert_eq!(relabelled, 2);
+        let archive = dir.path().join("archive.part");
+        std::fs::write(&archive, buf).unwrap();
+
+        assert!(extract_zip(&archive, dir.path(), "Album").is_err());
+        assert!(!dir.path().join("Album").join("01 Song.flac").exists());
+    }
+
+    #[test]
+    fn extract_zip_skips_a_symlink_entry() {
+        // The shape of RUSTSEC-2026-0368: a link whose target is outside the
+        // destination. `extract_zip` never follows or creates one.
+        let dir = tempfile::tempdir().unwrap();
+        let mut buf = Vec::new();
+        {
+            let mut zw = zip::ZipWriter::new(std::io::Cursor::new(&mut buf));
+            zw.add_symlink("link.flac", "/etc/passwd", SimpleFileOptions::default())
+                .unwrap();
+            zw.start_file("ok.flac", SimpleFileOptions::default()).unwrap();
+            zw.write_all(b"audio").unwrap();
+            zw.finish().unwrap();
+        }
+        let archive = dir.path().join("archive.part");
+        std::fs::write(&archive, buf).unwrap();
+
+        let files = extract_zip(&archive, dir.path(), "Album").unwrap();
+        assert_eq!(files.len(), 1, "got {files:?}");
+        assert!(files[0].ends_with("Album/ok.flac"));
+        assert!(!dir.path().join("Album").join("link.flac").exists());
     }
 
     #[test]
