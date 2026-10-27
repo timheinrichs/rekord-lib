@@ -35,7 +35,9 @@ reqwest = { version = "0.12", default-features = false, features = ["json", "rus
 tokio = { version = "1", features = ["fs", "io-util", "process", "time"] }
 thiserror = "2"
 base64 = "0.22"
-zip = "2"
+# Deflate only: a Bandcamp album is deflate or stored, and every other codec is
+# decoder surface over an untrusted archive that nothing here reads.
+zip = { version = "9", default-features = false, features = ["deflate-flate2-zlib-rs"] }
 rusty-chromaprint = "0.3"
 rustfft = "6"
 trash = "5.2.6"
